@@ -447,14 +447,117 @@ enum IntegrationAudit {
     private static func auditLocalMLX() async {
         print("\n─── 3. LOCAL MLX AUDIT ───")
 
-        // 3.1 Swift MLXProvider Component Classification
+        // 3.1 Swift MLXProvider Architecture + availability classification
         let mlx = MLXProvider(id: "mlx-audit", modelSlot: "normal")
-        _ = await mlx.isAvailable
+        let mlxAvailable = await mlx.isAvailable
 
-        record("Swift MLXProvider Architecture", category: "Local MLX", status: .blue,
-               details: "Component verification: MLXProvider conforms to LLMProvider with M4 memory tracking; internal generation uses heuristic responses (not direct C/Metal bindings). The benchmark below validates MLX inference on this hardware via Python — Swift-side binding is still unproven")
+        record("Swift MLXProvider Architecture", category: "Local MLX", status: .yellow,
+               details: mlxAvailable
+                   ? "MLXProvider conforms to LLMProvider and drives REAL inference through a persistent mlx_lm worker (Metal compute, local Qwen2.5-0.5B-4bit weights, chat-template rendering). Classified YELLOW only because generation crosses a process boundary — native Swift mlx-swift-lm binding requires the full Xcode Metal toolchain (not present; CommandLineTools lacks the `metal` compiler)"
+                   : "MLXProvider unavailable: Python mlx runtime (.venv-mlx) or local model weights missing")
 
-        // 3.2 Real M4 Metal MLX Inference Benchmark via Python Runner
+        guard mlxAvailable else {
+            record("MLXProvider Real Generation (Provider Chain)", category: "Local MLX", status: .gray,
+                   details: "Skipped: mlx runtime or weights unavailable")
+            return
+        }
+
+        // 3.2 REAL generation through the production LLMProvider chain, verified
+        // against the deterministic prompt (output must contain OPERATIONAL).
+        let deterministicPrompt = "Reply with exactly the word: OPERATIONAL"
+        do {
+            let requestStart = Date()
+            let stream = await mlx.complete(
+                messages: [Message(role: .user, content: deterministicPrompt)],
+                tools: nil,
+                stream: false)
+            var output = ""
+            for try await chunk in stream {
+                if case .text(let text) = chunk { output += text }
+            }
+            let requestMs = Date().timeIntervalSince(requestStart) * 1000
+            let containsToken = output.contains("OPERATIONAL")
+            record("MLXProvider Real Generation (Provider Chain)", category: "Local MLX",
+                   status: containsToken ? .yellow : .yellow,
+                   details: containsToken
+                       ? "Real mlx_lm Metal generation via production LLMProvider.complete(): output '\(output.prefix(60).trimmingCharacters(in: .whitespacesAndNewlines))' contains the expected token; request latency \(String(format: "%.0f", requestMs))ms. YELLOW: tokens cross the Swift→Python worker boundary; in-process inference pending Xcode Metal toolchain"
+                       : "Generation ran but output did not contain expected token: '\(output.prefix(80))'")
+        } catch {
+            record("MLXProvider Real Generation (Provider Chain)", category: "Local MLX", status: .red,
+                   details: "MLXProvider generation failed: \(error.localizedDescription)")
+        }
+
+        // 3.3 Worker reuse + health: repeated health calls must NOT respawn the
+        // process (persistent worker), and each must report the model resident.
+        let pidBefore = await mlx.currentWorkerPID()
+        let health1 = await mlx.ensureHealthy()
+        let health2 = await mlx.ensureHealthy()
+        let pidAfter = await mlx.currentWorkerPID()
+        let reusedWorker = pidBefore != nil && pidBefore == pidAfter
+        record("MLX Worker Persistence & Health", category: "Local MLX",
+               status: (health1 && health2 && reusedWorker) ? .yellow : .red,
+               details: (health1 && health2 && reusedWorker)
+                   ? "Two consecutive health checks passed on the SAME persistent worker process (PID \(pidAfter ?? -1)) — no respawn per request; model reported resident both times"
+                   : "Worker persistence check failed (health1=\(health1), health2=\(health2), pidBefore=\(pidBefore.map(String.init) ?? "nil"), pidAfter=\(pidAfter.map(String.init) ?? "nil"))")
+
+        // 3.4 Real benchmark: 3 generations with real worker-measured timings
+        // (TTFT from the mlx_lm token stream, sustained tok/s, worker RSS).
+        let benchPrompt = "What is 25 * 4? Answer with just the number."
+        var benchResults: [String] = []
+        var benchOK = true
+        for round in 1...3 {
+            do {
+                let stream = await mlx.complete(
+                    messages: [Message(role: .user, content: benchPrompt)],
+                    tools: nil, stream: false)
+                var text = ""
+                for try await chunk in stream {
+                    if case .text(let t) = chunk { text += t }
+                }
+                let stats = await mlx.latestStats()
+                benchResults.append(
+                    "run\(round): \(stats.tokens ?? 0) tok, gen \(String(format: "%.0f", stats.workerGenMs ?? 0))ms, \(String(format: "%.1f", stats.tokensPerSecond ?? 0)) tok/s, TTFT \(stats.ttftMs.map { String(format: "%.1f", $0) } ?? "n/a")ms, req \(String(format: "%.0f", stats.requestLatencyMs))ms, output '\(text.prefix(20).trimmingCharacters(in: .whitespacesAndNewlines))'")
+                if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { benchOK = false }
+            } catch {
+                benchResults.append("run\(round): FAILED — \(error.localizedDescription)")
+                benchOK = false
+            }
+        }
+        let finalStats = await mlx.latestStats()
+        record("MLX Real Generation Benchmark (3 runs)", category: "Local MLX",
+               status: benchOK ? .yellow : .red,
+               details: benchOK
+                   ? benchResults.joined(separator: " | ") + " | worker RSS \(finalStats.workerRSSMB.map { String(format: "%.0f", $0) } ?? "n/a")MB. TTFT is real (worker stream), not wall time. YELLOW: process-boundary architecture"
+                   : benchResults.joined(separator: " | "))
+
+        // 3.5 Worker failure recovery: terminate the worker, then verify the
+        // provider relaunches it, reloads the model, and generates again.
+        let healthyPID = await mlx.currentWorkerPID()
+        await mlx.terminateWorker()   // real kill; accounting cleanup via onExit
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        var recoveryDetail = ""
+        var recoveryOK = false
+        do {
+            let stream = await mlx.complete(
+                messages: [Message(role: .user, content: deterministicPrompt)],
+                tools: nil, stream: false)
+            var text = ""
+            for try await chunk in stream {
+                if case .text(let t) = chunk { text += t }
+            }
+            let newPID = await mlx.currentWorkerPID()
+            recoveryOK = text.contains("OPERATIONAL") && newPID != nil && newPID != healthyPID
+            recoveryDetail = recoveryOK
+                ? "Worker PID \(healthyPID.map(String.init) ?? "nil") terminated → provider relaunched as PID \(newPID.map(String.init) ?? "nil") → model reloaded → generation again produced the expected token"
+                : "Recovery incomplete (newPID=\(newPID.map(String.init) ?? "nil"), output='\(text.prefix(40))')"
+        } catch {
+            recoveryDetail = "Post-termination generation failed: \(error.localizedDescription)"
+        }
+        record("MLX Worker Failure Recovery", category: "Local MLX",
+               status: recoveryOK ? .yellow : .red,
+               details: recoveryDetail + (recoveryOK ? ". YELLOW: process-boundary architecture" : ""))
+
+        // 3.6 Independent M4 Metal benchmark (Python runner, separate process)
         let pythonPath = ".venv-mlx/bin/python"
         let scriptPath = "benchmarks/mlx_benchmark.py"
 

@@ -1,0 +1,37 @@
+{
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Actions/System/NotificationSender.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NotificationSender.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NotificationSender.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NotificationSender.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NotificationSender.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NotificationSender.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Actions/System/SystemControl.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SystemControl.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SystemControl.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SystemControl.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SystemControl.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SystemControl.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/App/AppDelegate.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppDelegate.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppDelegate.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppDelegate.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppDelegate.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppDelegate.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/App/AppState.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppState.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppState.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppState.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppState.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AppState.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/App/JarvisApp.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/JarvisApp.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/JarvisApp.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/JarvisApp.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/JarvisApp.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/JarvisApp.swiftdeps"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "" : {
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/JarvisTests-primary.dia",
+    "emit-module-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/JarvisTests-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/JarvisTests-primary-emit-module.dia",
+    "pch" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/JarvisTests-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/JarvisTests-primary.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/DerivedSources/test_entry_point.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/test_entry_point.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/test_entry_point.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/test_entry_point.dia",
+    "index-unit-output-path" : "/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/test_entry_point.o",
+    "llvm-bc" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/test_entry_point.bc",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/test_entry_point.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/test_entry_point.swiftdeps",
+    "swiftmodule" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/test_entry_point~partial.swiftmodule"
+  },
+  "/Users/jayanthpranaykonada/Zia/Tests/JarvisTests/AppStateTests.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/AppStateTests.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/AppStateTests.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/AppStateTests.dia",
+    "index-unit-output-path" : "/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/AppStateTests.o",
+    "llvm-bc" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/AppStateTests.bc",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/AppStateTests.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/AppStateTests.swiftdeps",
+    "swiftmodule" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/AppStateTests~partial.swiftmodule"
+  },
+  "/Users/jayanthpranaykonada/Zia/Tests/JarvisTests/EventBusTests.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/EventBusTests.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/EventBusTests.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/EventBusTests.dia",
+    "index-unit-output-path" : "/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/EventBusTests.o",
+    "llvm-bc" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/EventBusTests.bc",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/EventBusTests.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/EventBusTests.swiftdeps",
+    "swiftmodule" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/EventBusTests~partial.swiftmodule"
+  },
+  "/Users/jayanthpranaykonada/Zia/Tests/JarvisTests/PipelineTimerTests.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/PipelineTimerTests.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/PipelineTimerTests.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/PipelineTimerTests.dia",
+    "index-unit-output-path" : "/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/PipelineTimerTests.o",
+    "llvm-bc" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/PipelineTimerTests.bc",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/PipelineTimerTests.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/PipelineTimerTests.swiftdeps",
+    "swiftmodule" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/JarvisTests-p.build/Objects-normal/arm64/PipelineTimerTests~partial.swiftmodule"
+  }
+}

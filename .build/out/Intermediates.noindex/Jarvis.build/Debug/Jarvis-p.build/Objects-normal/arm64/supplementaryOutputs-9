@@ -1,0 +1,30 @@
+{
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Voice/AudioCapture.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioCapture.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioCapture.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioCapture.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioCapture.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioCapture.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Voice/AudioPlayer.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioPlayer.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioPlayer.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioPlayer.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioPlayer.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/AudioPlayer.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Voice/EmergencyInterrupt.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/EmergencyInterrupt.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/EmergencyInterrupt.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/EmergencyInterrupt.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/EmergencyInterrupt.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/EmergencyInterrupt.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Voice/SpeechRecognizer.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SpeechRecognizer.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SpeechRecognizer.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SpeechRecognizer.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SpeechRecognizer.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/SpeechRecognizer.swiftdeps"
+  }
+}

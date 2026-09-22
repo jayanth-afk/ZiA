@@ -1,0 +1,30 @@
+{
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/KeychainManager.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/KeychainManager.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/KeychainManager.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/KeychainManager.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/KeychainManager.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/KeychainManager.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/Logger.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/Logger.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/Logger.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/Logger.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/Logger.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/Logger.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/NetworkMonitor.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NetworkMonitor.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NetworkMonitor.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NetworkMonitor.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NetworkMonitor.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/NetworkMonitor.swiftdeps"
+  },
+  "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/PipelineTimer.swift" : {
+    "const-values" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/PipelineTimer.swiftconstvalues",
+    "dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/PipelineTimer.d",
+    "diagnostics" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/PipelineTimer.dia",
+    "object" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/PipelineTimer.o",
+    "swift-dependencies" : "/Users/jayanthpranaykonada/Zia/.build/out/Intermediates.noindex/Jarvis.build/Debug/Jarvis-p.build/Objects-normal/arm64/PipelineTimer.swiftdeps"
+  }
+}

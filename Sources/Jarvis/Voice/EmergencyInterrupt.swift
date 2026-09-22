@@ -16,6 +16,41 @@ final class EmergencyInterrupt {
         "halt"
     ]
 
+    // MARK: - Emergency stop wiring
+
+    /// Subscriptions registered by emergencyStopSubscriberCount; used by the
+    /// integration audit to verify that the REAL app wiring responds to
+    /// EmergencyStopEvent (no ad-hoc test listeners involved).
+    private var eventSubscriptions: [UUID] = []
+    private(set) var emergencyStopSubscriberCount = 0
+
+    /// Registers the production emergency-stop wiring on the EventBus:
+    /// TTS stop, AudioPlayer stop, SpeechRecognizer cancel, and
+    /// TaskWorkerPool.cancelAll() must all happen via event propagation.
+    func registerProductionSubscribers() {
+        guard eventSubscriptions.isEmpty else { return }
+
+        eventSubscriptions.append(EventBus.shared.subscribe(EmergencyStopEvent.self) { _ in
+            TTSEngine.shared.stop()
+            AudioPlayer.shared.stopPlayback()
+        })
+        eventSubscriptions.append(EventBus.shared.subscribe(EmergencyStopEvent.self) { _ in
+            SpeechRecognizer.shared.cancelRecognition()
+        })
+        eventSubscriptions.append(EventBus.shared.subscribe(EmergencyStopEvent.self) { _ in
+            Task { await ShellExecutor.shared.cancelAll() }
+        })
+        eventSubscriptions.append(EventBus.shared.subscribe(EmergencyStopEvent.self) { _ in
+            Task { await BrowserManager.shared.cancelAutomation() }
+        })
+        eventSubscriptions.append(EventBus.shared.subscribe(EmergencyStopEvent.self) { _ in
+            Task { await TaskWorkerPool.shared.cancelAll() }
+        })
+
+        emergencyStopSubscriberCount = eventSubscriptions.count
+        JarvisLogger.security.info("EmergencyInterrupt production subscribers registered: \(self.emergencyStopSubscriberCount)")
+    }
+
     private init() {}
 
     // MARK: - Public API

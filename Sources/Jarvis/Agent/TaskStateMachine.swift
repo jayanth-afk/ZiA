@@ -265,4 +265,15 @@ final class TaskStateMachine: @unchecked Sendable {
         defer { lock.unlock() }
         return stateHistory[taskId] ?? []
     }
+
+    /// Record a failure and enter the recovery/replanning cycle.
+    /// Encapsulates the real recovery transition chain used by AgentLoop:
+    ///   RUNNING -> FAILED -> RECOVERING -> REPLANNING -> RUNNING
+    @discardableResult
+    func recordFailureAndRecover(taskId: UUID, error: String) throws -> JarvisTask {
+        try transition(taskId: taskId, to: .failed, error: error)
+        try transition(taskId: taskId, to: .recovering)
+        try transition(taskId: taskId, to: .replanning)
+        return try transition(taskId: taskId, to: .running)
+    }
 }

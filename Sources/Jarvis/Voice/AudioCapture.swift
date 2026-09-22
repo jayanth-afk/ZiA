@@ -3,12 +3,11 @@ import AVFoundation
 
 /// Captures microphone audio using AVAudioEngine and distributes PCM buffers.
 /// Standardized for speech recognition and VAD at 16kHz mono PCM.
-@MainActor
-final class AudioCapture {
+final class AudioCapture: @unchecked Sendable {
     static let shared = AudioCapture()
 
     // MARK: - State
-    private(set) var isCapturing = false
+    @MainActor private(set) var isCapturing = false
 
     // MARK: - Audio Engine
     private let engine = AVAudioEngine()
@@ -54,6 +53,7 @@ final class AudioCapture {
     }
 
     /// Start capturing audio from the default input device.
+    @MainActor
     func startCapturing() throws {
         guard !isCapturing else { return }
 
@@ -69,10 +69,7 @@ final class AudioCapture {
         inputNode.removeTap(onBus: 0)
         let bufferSize: AVAudioFrameCount = 1024
 
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, _ in
-            guard let self = self else { return }
-            self.distributeBuffer(buffer)
-        }
+        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat, block: makeTapBlock())
 
         do {
             try engine.start()
@@ -85,7 +82,14 @@ final class AudioCapture {
         }
     }
 
+    private nonisolated func makeTapBlock() -> (AVAudioPCMBuffer, AVAudioTime) -> Void {
+        return { [weak self] buffer, _ in
+            self?.distributeBuffer(buffer)
+        }
+    }
+
     /// Stop capturing audio.
+    @MainActor
     func stopCapturing() {
         guard isCapturing else { return }
 

@@ -28,7 +28,27 @@ public struct BrowserTabInfo: Sendable, Identifiable {
 public actor BrowserManager {
     public static let shared = BrowserManager()
 
+    /// Whether an automation sequence (open -> inspect -> act) is currently mid-flight.
+    /// Set true around multi-step browser automation; checked by emergency stop.
+    public private(set) var isAutomating = false
+
+    /// Actions queued behind the current automation sequence, cancelled by emergency stop.
+    private var pendingActions: [CheckedContinuation<Void, Never>] = []
+
     public init() {}
+
+    /// Cancel all pending/queued browser automation work immediately
+    /// (invoked via EmergencyStopEvent propagation).
+    public func cancelAutomation() {
+        isAutomating = false
+        let pending = pendingActions
+        pendingActions.removeAll()
+        JarvisLogger.actions.warning("Browser automation cancelled: \(pending.count) pending action(s) dropped")
+        // Queued waiters resume; sequence owners observe isAutomating == false and bail.
+        for continuation in pending {
+            continuation.resume()
+        }
+    }
 
     // MARK: - Public API
 

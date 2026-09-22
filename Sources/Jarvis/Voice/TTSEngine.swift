@@ -15,8 +15,27 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     // MARK: - State
-    private(set) var isSpeaking = false
+
+    /// Text of the utterance currently enqueued/playing. AVSpeechUtterance is
+    /// not Sendable, so delegate callbacks compare via speechString identity
+    /// instead of capturing the object across isolation boundaries. A stale
+    /// didCancel from a previous utterance can therefore never clear the
+    /// speaking state of a brand-new utterance issued after a barge-in stop.
+    private var currentUtteranceText: String?
+
+    /// Measured latency from speak() dispatch to AVSpeechSynthesizer didStart (actual audio start).
+    /// This is the only truthful TTFA source — dispatch time alone is NOT TTFA.
+    private(set) var lastAudioStartLatencyMs: Double?
+    private var speakDispatchTime: CFAbsoluteTime?
+
     private let synthesizer = AVSpeechSynthesizer()
+
+    /// Ground truth: whether the synthesizer is actually producing (or paused
+    /// while producing) audio. Derived from AVFoundation rather than a
+    /// manually-maintained flag so stale callbacks can never lie about it.
+    var isSpeaking: Bool {
+        synthesizer.isSpeaking || synthesizer.isPaused
+    }
 
     // Callbacks
     var onSpeechFinished: (@MainActor @Sendable () -> Void)?
@@ -33,7 +52,8 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
         // If currently speaking, stop immediately for new utterance
-        if synthesizer.isSpeaking {
+        if synthesizer.isSpeaking || synthesizer.isPaused {
+            currentUtteranceText = nil
             synthesizer.stopSpeaking(at: .immediate)
         }
 
@@ -49,9 +69,9 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
 
     /// Stop speech immediately (barge-in / interrupt).
     func stop() {
-        guard isSpeaking || synthesizer.isSpeaking else { return }
+        guard isSpeaking else { return }
+        currentUtteranceText = nil
         synthesizer.stopSpeaking(at: .immediate)
-        isSpeaking = false
         JarvisLogger.voice.info("TTS stopped immediately")
     }
 
@@ -68,24 +88,43 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
             utterance.voice = voice
         }
 
-        isSpeaking = true
+        currentUtteranceText = text
+        speakDispatchTime = CFAbsoluteTimeGetCurrent()
         JarvisLogger.voice.info("Speaking: '\(text)'")
         synthesizer.speak(utterance)
     }
 
     // MARK: - AVSpeechSynthesizerDelegate
 
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        let text = utterance.speechString
         Task { @MainActor [weak self] in
-            self?.isSpeaking = false
+            guard let self, text == self.currentUtteranceText else { return }
+            if let dispatch = self.speakDispatchTime {
+                self.lastAudioStartLatencyMs = (CFAbsoluteTimeGetCurrent() - dispatch) * 1000.0
+                JarvisLogger.voice.info("TTS audio started (audio-start latency: \(String(format: "%.1f", self.lastAudioStartLatencyMs ?? 0))ms)")
+            }
+        }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        let text = utterance.speechString
+        Task { @MainActor [weak self] in
+            guard let self, text == self.currentUtteranceText else { return }
+            self.currentUtteranceText = nil
             JarvisLogger.voice.debug("TTS finished speaking utterance")
-            self?.onSpeechFinished?()
+            self.onSpeechFinished?()
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        let text = utterance.speechString
         Task { @MainActor [weak self] in
-            self?.isSpeaking = false
+            // Only treat cancellation of the CURRENT utterance as meaningful.
+            // A stale didCancel from a replaced utterance must not clear state
+            // of a newly enqueued one.
+            guard let self, text == self.currentUtteranceText else { return }
+            self.currentUtteranceText = nil
             JarvisLogger.voice.debug("TTS utterance was cancelled")
         }
     }

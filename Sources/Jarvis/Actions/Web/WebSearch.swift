@@ -117,6 +117,12 @@ public actor WebSearch {
             return parsedResults
         }
 
+        // Secondary zero-key fallback: DuckDuckGo Lite (stable simple-table markup)
+        if let liteResults = try? await searchViaDuckDuckGoLite(query: query, maxResults: maxResults),
+           !liteResults.isEmpty {
+            return liteResults
+        }
+
         // If HTML parsing found no structured matches, return a clean direct search result entry
         return [
             SearchResult(
@@ -127,37 +133,99 @@ public actor WebSearch {
         ]
     }
 
-    private func parseDuckDuckGoHTML(_ html: String, maxResults: Int) -> [SearchResult] {
-        var results: [SearchResult] = []
+    // MARK: - DuckDuckGo Lite Fallback
 
-        // Match result blocks: class="result__body" or class="result results_links"
-        let resultPattern = #"(?s)<div class="result__body"[^>]*>.*?<a class="result__url"[^>]*href="([^"]+)"[^>]*>.*?<a class="result__snippet"[^>]*>(.*?)</a>"#
-        guard let regex = try? NSRegularExpression(pattern: resultPattern, options: []) else {
+    private func searchViaDuckDuckGoLite(query: String, maxResults: Int) async throws -> [SearchResult] {
+        guard let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://lite.duckduckgo.com/lite/?q=\(encoded)") else {
+            return []
+        }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10.0
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            return []
+        }
+
+        let html = String(data: data, encoding: .utf8) ?? ""
+        // Lite layout: result links carry class="result-link" with uddg= redirect hrefs
+        let linkPattern = #"<a[^>]*class="result-link"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#
+        guard let regex = try? NSRegularExpression(pattern: linkPattern, options: [.caseInsensitive]) else {
             return []
         }
 
         let nsString = html as NSString
         let matches = regex.matches(in: html, options: [], range: NSRange(location: 0, length: nsString.length))
 
-        for match in matches.prefix(maxResults) {
+        var results: [SearchResult] = []
+        for match in matches.prefix(maxResults * 2) {
             guard match.numberOfRanges >= 3 else { continue }
             var rawURL = nsString.substring(with: match.range(at: 1))
-            let rawSnippet = nsString.substring(with: match.range(at: 2))
+            let rawTitle = cleanHTML(nsString.substring(with: match.range(at: 2)))
+
+            // Skip sponsored/ad redirects
+            if rawURL.contains("y.js") || rawURL.contains("/ad_domain") { continue }
+
+            if let uddgRange = rawURL.range(of: "uddg=") {
+                let encodedURL = String(rawURL[uddgRange.upperBound...])
+                if let ampRange = encodedURL.range(of: "&") {
+                    rawURL = String(encodedURL[..<ampRange.lowerBound]).removingPercentEncoding ?? rawURL
+                } else {
+                    rawURL = encodedURL.removingPercentEncoding ?? rawURL
+                }
+            }
+
+            guard rawURL.hasPrefix("http"), !rawTitle.isEmpty else { continue }
+            results.append(SearchResult(title: rawTitle, url: rawURL, snippet: "(DuckDuckGo Lite result — open URL for content)"))
+            if results.count >= maxResults { break }
+        }
+
+        return results
+    }
+
+    private func parseDuckDuckGoHTML(_ html: String, maxResults: Int) -> [SearchResult] {
+        var results: [SearchResult] = []
+
+        // Primary parse: result title anchors (class="result__a") paired with snippets
+        let titlePattern = #"<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>"#
+        let snippetPattern = #"<a[^>]*class="result__snippet"[^>]*>(.*?)</a>"#
+        guard let titleRegex = try? NSRegularExpression(pattern: titlePattern, options: [.caseInsensitive]),
+              let snippetRegex = try? NSRegularExpression(pattern: snippetPattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else {
+            return []
+        }
+
+        let nsString = html as NSString
+        let titleMatches = titleRegex.matches(in: html, options: [], range: NSRange(location: 0, length: nsString.length))
+        let snippetMatches = snippetRegex.matches(in: html, options: [], range: NSRange(location: 0, length: nsString.length))
+
+        for (index, match) in titleMatches.prefix(maxResults * 2).enumerated() {
+            guard match.numberOfRanges >= 3 else { continue }
+            var rawURL = nsString.substring(with: match.range(at: 1))
+            let rawTitle = cleanHTML(nsString.substring(with: match.range(at: 2)))
+
+            // Skip sponsored/ad redirects
+            if rawURL.contains("y.js") || rawURL.contains("/ad_domain") { continue }
 
             // DuckDuckGo redirects through /l/?kh=-1&uddg=...
             if let uddgRange = rawURL.range(of: "uddg=") {
                 let encodedURL = String(rawURL[uddgRange.upperBound...])
-                if let decodedURL = encodedURL.removingPercentEncoding {
-                    rawURL = decodedURL
+                if let ampRange = encodedURL.range(of: "&") {
+                    rawURL = String(encodedURL[..<ampRange.lowerBound]).removingPercentEncoding ?? rawURL
+                } else {
+                    rawURL = encodedURL.removingPercentEncoding ?? rawURL
                 }
             }
 
-            let snippet = cleanHTML(rawSnippet)
-            let title = rawURL.components(separatedBy: "://").last?.components(separatedBy: "/").first ?? "Result"
+            let snippet = index < snippetMatches.count && snippetMatches[index].numberOfRanges >= 2
+                ? cleanHTML(nsString.substring(with: snippetMatches[index].range(at: 1)))
+                : ""
 
-            if !rawURL.isEmpty && !snippet.isEmpty {
-                results.append(SearchResult(title: title, url: rawURL, snippet: snippet))
-            }
+            guard rawURL.hasPrefix("http"), !rawTitle.isEmpty else { continue }
+            results.append(SearchResult(title: rawTitle, url: rawURL, snippet: snippet))
+            if results.count >= maxResults { break }
         }
 
         return results

@@ -44,7 +44,7 @@ actor ShellExecutor {
                 // Await completion with cancellation check
                 while process.isRunning {
                     if Task.isCancelled {
-                        process.terminate()
+                        if process.isRunning { process.terminate() }
                         runningProcesses.removeValue(forKey: processID)
                         throw CancellationError()
                     }
@@ -69,12 +69,15 @@ actor ShellExecutor {
                     durationMs: elapsed
                 )
             } catch {
-                process.terminate()
+                if process.isRunning { process.terminate() }
                 runningProcesses.removeValue(forKey: processID)
                 throw error
             }
         } onCancel: {
-            process.terminate()
+            // Guard: terminate() raises NSInvalidArgumentException on an
+            // unlaunched or already-exited process (double-terminate during
+            // emergency stop when cancelAll() already killed it).
+            if process.isRunning { process.terminate() }
         }
     }
 

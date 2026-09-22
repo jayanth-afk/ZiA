@@ -120,7 +120,7 @@ public actor BrowserManager {
         }
 
         do {
-            let output = try await AppleScriptBridge.shared.execute(script)
+            let output = try await AppleScriptBridge.shared.execute(script, timeoutSeconds: 4.0)
             guard !output.isEmpty else { return nil }
 
             let parts = output.components(separatedBy: "|||")
@@ -171,7 +171,7 @@ public actor BrowserManager {
             throw JarvisError.actionFailed(action: "executeJavaScript", reason: "Browser \(browser.rawValue) not supported for JS execution")
         }
 
-        return try await AppleScriptBridge.shared.execute(appleScript)
+        return try await AppleScriptBridge.shared.execute(appleScript, timeoutSeconds: 4.0)
     }
 
     /// Closes the active tab in the designated browser.
@@ -200,7 +200,7 @@ public actor BrowserManager {
             return false
         }
 
-        let result = try await AppleScriptBridge.shared.execute(script)
+        let result = try await AppleScriptBridge.shared.execute(script, timeoutSeconds: 4.0)
         return result.contains("true")
     }
 }

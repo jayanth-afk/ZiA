@@ -24,10 +24,15 @@ actor AppleScriptBridge {
             do {
                 try process.run()
 
+                let startTime = Date()
                 while process.isRunning {
                     if Task.isCancelled {
                         process.terminate()
                         throw CancellationError()
+                    }
+                    if Date().timeIntervalSince(startTime) > timeoutSeconds {
+                        process.terminate()
+                        throw JarvisError.actionFailed(action: "executeAppleScript", reason: "AppleScript execution timed out after \(timeoutSeconds)s")
                     }
                     try await Task.sleep(nanoseconds: 50_000_000)
                 }

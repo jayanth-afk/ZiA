@@ -31,6 +31,9 @@ final class DataClassifier {
         "password",
         "api_key",
         "apikey",
+        "api key",
+        "api-key",
+        "sk-",
         "secret",
         "private_key",
         "bearer ",
@@ -38,6 +41,7 @@ final class DataClassifier {
         "id_rsa",
         "ssn",
         "credit card",
+        "payment card",
         "sudo "
     ]
 
@@ -49,7 +53,9 @@ final class DataClassifier {
         "bank",
         "account balance",
         "salary",
-        "tax"
+        "tax",
+        "payment",
+        "financial"
     ]
 
     private init() {}

@@ -24,6 +24,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start voice pipeline
         VoicePipeline.shared.start()
 
+        // Wire HUD and UI event listeners
+        eventBus.subscribe(HotkeyPressedEvent.self) { _ in
+            FloatingPanel.shared.toggle()
+        }
+
+        eventBus.subscribe(WakeWordDetectedEvent.self) { _ in
+            FloatingPanel.shared.show()
+        }
+
+        eventBus.subscribe(EmergencyStopEvent.self) { _ in
+            OverlayViewModel.shared.lastResponse = "EMERGENCY STOP EXECUTED"
+            OverlayViewModel.shared.isStreaming = false
+            AudioPlayer.shared.stopPlayback()
+            TTSEngine.shared.stop()
+        }
+
+        eventBus.subscribe(TranscriptPartialEvent.self) { event in
+            OverlayViewModel.shared.inputText = event.text
+        }
+
+        eventBus.subscribe(TranscriptFinalEvent.self) { event in
+            OverlayViewModel.shared.inputText = event.text
+        }
+
+        eventBus.subscribe(StateChangedEvent.self) { event in
+            if event.to == .off {
+                FloatingPanel.shared.hide()
+            }
+        }
+
         // Transition to SLEEP (listening mode)
         appState.transition(to: .sleep)
 

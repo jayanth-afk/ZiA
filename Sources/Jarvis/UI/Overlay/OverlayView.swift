@@ -1,0 +1,165 @@
+import SwiftUI
+
+@MainActor
+final class OverlayViewModel: ObservableObject {
+    static let shared = OverlayViewModel()
+    @Published var inputText: String = ""
+    @Published var lastResponse: String = ""
+    @Published var isStreaming: Bool = false
+    @Published var latencyMs: Int = 140
+    @Published var isSpeaking: Bool = false
+}
+
+/// Main floating HUD view displayed by FloatingPanel.
+struct OverlayView: View {
+    let appState: AppState
+    @ObservedObject var viewModel: OverlayViewModel = .shared
+
+    init(appState: AppState = .shared) {
+        self.appState = appState
+    }
+
+    var body: some View {
+        VStack(spacing: DesignTokens.Spacing.md) {
+            // Header Bar
+            HStack {
+                // Status pill
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 8, height: 8)
+                    Text(statusText)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundColor(DesignTokens.Colors.textPrimary)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(DesignTokens.Colors.backgroundSecondary)
+                .clipShape(Capsule())
+
+                Spacer()
+
+                // Emergency STOP button
+                Button(action: {
+                    EventBus.shared.publish(EmergencyStopEvent(phrase: "STOP"))
+                    AudioPlayer.shared.stopPlayback()
+                    TTSEngine.shared.stop()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "stop.circle.fill")
+                            .foregroundColor(DesignTokens.Colors.error)
+                        Text("STOP")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(DesignTokens.Colors.error)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(DesignTokens.Colors.error.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Audio Waveform Visualizer
+            WaveformView(
+                isActive: appState.state == .active || viewModel.isSpeaking,
+                amplitude: viewModel.isSpeaking ? 0.75 : (appState.state == .active ? 0.5 : 0.0)
+            )
+            .padding(.horizontal, DesignTokens.Spacing.sm)
+
+            // Assistant Response Area
+            if !viewModel.lastResponse.isEmpty {
+                ResponseBubble(
+                    text: viewModel.lastResponse,
+                    isStreaming: viewModel.isStreaming,
+                    providerName: "JARVIS",
+                    latencyMs: viewModel.latencyMs
+                )
+            }
+
+            // Input Bar
+            HStack(spacing: DesignTokens.Spacing.sm) {
+                TextField("Ask JARVIS or type a command...", text: $viewModel.inputText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 13))
+                    .foregroundColor(DesignTokens.Colors.textPrimary)
+                    .onSubmit {
+                        guard !viewModel.inputText.isEmpty else { return }
+                        let query = viewModel.inputText
+                        viewModel.inputText = ""
+                        Task {
+                            await MainActor.run {
+                                if appState.state == .off {
+                                    appState.transition(to: .sleep)
+                                }
+                                appState.transition(to: .active)
+                                viewModel.isStreaming = true
+                                viewModel.lastResponse = "Processing: \(query)..."
+                            }
+                            do {
+                                let output = try await AgentLoop.shared.run(goal: query)
+                                await MainActor.run {
+                                    viewModel.isStreaming = false
+                                    viewModel.lastResponse = output
+                                    appState.transition(to: .sleep)
+                                }
+                            } catch {
+                                await MainActor.run {
+                                    viewModel.isStreaming = false
+                                    viewModel.lastResponse = "Error: \(error.localizedDescription)"
+                                    appState.transition(to: .sleep)
+                                }
+                            }
+                        }
+                    }
+
+                if !viewModel.inputText.isEmpty {
+                    Button(action: {
+                        viewModel.inputText = ""
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(DesignTokens.Colors.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(DesignTokens.Spacing.sm)
+            .background(DesignTokens.Colors.backgroundSecondary)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(DesignTokens.Colors.border, lineWidth: 1)
+            )
+        }
+        .padding(DesignTokens.Spacing.lg)
+        .frame(width: 440)
+        .background(
+            ZStack {
+                DesignTokens.Colors.background
+                DesignTokens.Gradients.glassSurface
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: DesignTokens.Spacing.panelCornerRadius))
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignTokens.Spacing.panelCornerRadius)
+                .stroke(DesignTokens.Colors.borderHighlight, lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.4), radius: 24, x: 0, y: 12)
+    }
+
+    private var statusColor: Color {
+        switch appState.state {
+        case .off: return DesignTokens.Colors.textTertiary
+        case .sleep: return DesignTokens.Colors.warning
+        case .active: return DesignTokens.Colors.success
+        }
+    }
+
+    private var statusText: String {
+        switch appState.state {
+        case .off: return "Disabled"
+        case .sleep: return "Listening..."
+        case .active: return "Processing"
+        }
+    }
+}

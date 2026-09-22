@@ -8,7 +8,7 @@ struct OpenAppTool: JarvisTool {
     let description = "Opens or switches to a macOS application by name"
     let impact: PermissionGate.ActionImpact = .safeMutation
 
-    func execute(arguments: [String: Any]) async throws -> ToolResult {
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let appName = arguments["app_name"] as? String else {
             throw JarvisError.actionFailed(action: name, reason: "Missing argument 'app_name'")
         }
@@ -18,7 +18,7 @@ struct OpenAppTool: JarvisTool {
     }
 
     func observe() async throws -> ObservationResult {
-        let frontmost = await NSWorkspace.shared.frontmostApplication?.localizedName ?? "none"
+        let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName ?? "none"
         return ObservationResult(observations: ["frontmostApp": frontmost])
     }
 
@@ -34,7 +34,7 @@ struct SetVolumeTool: JarvisTool {
     let description = "Sets the system audio output volume (0-100%)"
     let impact: PermissionGate.ActionImpact = .safeMutation
 
-    func execute(arguments: [String: Any]) async throws -> ToolResult {
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let level = arguments["level"] as? Int else {
             throw JarvisError.actionFailed(action: name, reason: "Missing argument 'level'")
         }
@@ -60,7 +60,7 @@ struct RunShellTool: JarvisTool {
     let description = "Executes a sandboxed shell command on macOS"
     let impact: PermissionGate.ActionImpact = .destructive
 
-    func execute(arguments: [String: Any]) async throws -> ToolResult {
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let command = arguments["command"] as? String else {
             throw JarvisError.actionFailed(action: name, reason: "Missing argument 'command'")
         }
@@ -73,5 +73,118 @@ struct RunShellTool: JarvisTool {
 
     func observe() async throws -> ObservationResult {
         return ObservationResult(observations: ["status": "completed"])
+    }
+}
+
+// MARK: - Web Search Tool
+
+struct WebSearchTool: JarvisTool {
+    let name = "web_search"
+    let description = "Searches the web for up-to-date information, returning top results with URLs and snippets"
+    let impact: PermissionGate.ActionImpact = .readOnly
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let query = arguments["query"] as? String else {
+            throw JarvisError.actionFailed(action: name, reason: "Missing argument 'query'")
+        }
+
+        let maxResults = (arguments["max_results"] as? Int) ?? 5
+        let results = try await WebSearch.shared.search(query: query, maxResults: maxResults)
+
+        // Record sources in SourceManager
+        for item in results {
+            if let url = URL(string: item.url) {
+                SourceManager.shared.recordSource(
+                    url: url,
+                    title: item.title,
+                    snippet: item.snippet,
+                    query: query
+                )
+            }
+        }
+
+        let formatted = results.enumerated().map { index, r in
+            "[\(index + 1)] \(r.title)\nURL: \(r.url)\nSnippet: \(r.snippet)"
+        }.joined(separator: "\n\n")
+
+        return ToolResult(
+            success: !results.isEmpty,
+            output: formatted.isEmpty ? "No results found for '\(query)'" : formatted,
+            sideEffects: ["web_searched"]
+        )
+    }
+
+    func observe() async throws -> ObservationResult {
+        let sources = SourceManager.shared.allSources()
+        return ObservationResult(observations: ["recordedSourcesCount": String(sources.count)])
+    }
+}
+
+// MARK: - Fetch URL Tool
+
+struct FetchURLTool: JarvisTool {
+    let name = "fetch_url"
+    let description = "Fetches web page content at a URL and extracts readable text and metadata"
+    let impact: PermissionGate.ActionImpact = .readOnly
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let urlStr = arguments["url"] as? String,
+              let url = URL(string: urlStr) else {
+            throw JarvisError.actionFailed(action: name, reason: "Missing or invalid 'url'")
+        }
+
+        let maxChars = (arguments["max_characters"] as? Int) ?? 8_000
+        let content = try await URLFetcher.shared.fetch(url: url, maxCharacters: maxChars)
+
+        SourceManager.shared.recordSource(
+            url: url,
+            title: content.title,
+            snippet: String(content.text.prefix(300))
+        )
+
+        let output = """
+        Title: \(content.title)
+        URL: \(content.url.absoluteString)
+        Status: \(content.statusCode)
+        Content Length: \(content.contentLength) bytes
+
+        --- Content ---
+        \(content.text)
+        """
+
+        return ToolResult(success: true, output: output, sideEffects: ["url_fetched"])
+    }
+
+    func observe() async throws -> ObservationResult {
+        return ObservationResult(observations: ["fetchStatus": "completed"])
+    }
+}
+
+// MARK: - Open Browser Tool
+
+struct OpenBrowserTool: JarvisTool {
+    let name = "open_browser"
+    let description = "Opens a web URL in the system default browser or specific browser (Safari, Chrome)"
+    let impact: PermissionGate.ActionImpact = .safeMutation
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let urlStr = arguments["url"] as? String,
+              let url = URL(string: urlStr) else {
+            throw JarvisError.actionFailed(action: name, reason: "Missing or invalid 'url'")
+        }
+
+        let browserName = arguments["browser"] as? String ?? "Default"
+        let browserType = BrowserType(rawValue: browserName) ?? .defaultBrowser
+
+        let opened = try await BrowserManager.shared.open(url: url, in: browserType)
+        return ToolResult(
+            success: opened,
+            output: "Opened \(url.absoluteString) in \(browserType.rawValue)",
+            sideEffects: ["browser_opened"]
+        )
+    }
+
+    func observe() async throws -> ObservationResult {
+        return ObservationResult(observations: ["browser": "opened"])
     }
 }

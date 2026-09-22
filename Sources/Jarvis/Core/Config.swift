@@ -167,4 +167,19 @@ final class Config {
         defaults.set(name, forKey: "jarvis.provider.\(slot).provider")
         JarvisLogger.app.info("Provider for \(slot) set to: \(name)")
     }
+
+    var localReflexModel: String {
+        get { modelName(for: "reflex") ?? "qwen2.5-3b" }
+        set { setModelName(newValue, for: "reflex") }
+    }
+
+    var localNormalModel: String {
+        get { modelName(for: "normal") ?? "qwen2.5-7b" }
+        set { setModelName(newValue, for: "normal") }
+    }
+
+    var voiceEnabled: Bool {
+        get { defaults.object(forKey: "jarvis.voice.enabled") == nil ? true : defaults.bool(forKey: "jarvis.voice.enabled") }
+        set { defaults.set(newValue, forKey: "jarvis.voice.enabled") }
+    }
 }

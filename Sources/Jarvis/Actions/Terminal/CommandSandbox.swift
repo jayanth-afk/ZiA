@@ -18,10 +18,13 @@ final class CommandSandbox {
         "chown -R",
         "diskutil erase",
         "diskutil partition",
-        "curl | sh",
-        "curl | bash",
-        "wget | sh",
-        "wget | bash",
+        "| sh",
+        "| bash",
+        "| zsh",
+        "| /bin/sh",
+        "| /bin/bash",
+        "curl |",
+        "wget |",
         "> /dev/sda",
         "> /dev/disk"
     ]
@@ -44,6 +47,16 @@ final class CommandSandbox {
                 JarvisLogger.security.fault("BLOCKED DANGEROUS COMMAND: '\(command)' contains '\(pattern)'")
                 throw JarvisError.commandBlocked(command: command, reason: "Dangerous pattern '\(pattern)' is blacklisted")
             }
+        }
+    }
+
+    /// Check if a command is safe without throwing.
+    func isSafe(_ command: String) -> Bool {
+        do {
+            try validateCommand(command)
+            return true
+        } catch {
+            return false
         }
     }
 }

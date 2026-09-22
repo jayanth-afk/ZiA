@@ -44,9 +44,10 @@ final class PermissionGate {
             required = .l2Autonomous
         }
 
-        guard currentLevel >= required else {
-            JarvisLogger.security.warning("Permission denied for '\(actionName)': requires L\(required.rawValue), current is L\(currentLevel.rawValue)")
-            throw JarvisError.permissionDenied(action: actionName, requiredLevel: required.rawValue, currentLevel: currentLevel.rawValue)
+        let current = self.currentLevel
+        guard current >= required else {
+            JarvisLogger.security.warning("Permission denied for '\(actionName)': requires L\(required.rawValue), current is L\(current.rawValue)")
+            throw JarvisError.permissionDenied(action: actionName, requiredLevel: required.rawValue, currentLevel: current.rawValue)
         }
 
         return true

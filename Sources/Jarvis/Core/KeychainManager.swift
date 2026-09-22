@@ -23,6 +23,7 @@ final class KeychainManager {
         case google = "jarvis.google.api_key"
         case groq = "jarvis.groq.api_key"
         case elevenlabs = "jarvis.elevenlabs.api_key"
+        case tavily = "jarvis.tavily.api_key"
 
         var displayName: String {
             switch self {
@@ -31,6 +32,7 @@ final class KeychainManager {
             case .google: return "Google AI (Gemini)"
             case .groq: return "Groq"
             case .elevenlabs: return "ElevenLabs"
+            case .tavily: return "Tavily Search"
             }
         }
     }
@@ -39,6 +41,10 @@ final class KeychainManager {
 
     func getAPIKey(for service: APIService) -> String? {
         try? keychain.get(service.rawValue)
+    }
+
+    func getCustomKey(_ keyName: String) -> String? {
+        try? keychain.get(keyName)
     }
 
     func setAPIKey(_ key: String, for service: APIService) throws {

@@ -14,9 +14,7 @@ struct JarvisApp: App {
 
     var body: some Scene {
         Settings {
-            Text("JARVIS Settings — Coming in Phase 12")
-                .frame(width: 400, height: 300)
-                .padding()
+            SettingsView()
         }
     }
 }

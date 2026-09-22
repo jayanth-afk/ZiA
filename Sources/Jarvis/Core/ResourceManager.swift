@@ -166,6 +166,11 @@ final class ResourceManager {
         loadedModels.values.reduce(0) { $0 + $1.estimatedMemoryMB }
     }
 
+    /// Simulates a memory pressure change for regression testing and validation.
+    func simulatePressureChange(to level: PressureLevel) {
+        handlePressureChange(level)
+    }
+
     // MARK: - Private
 
     private func handlePressureChange(_ level: PressureLevel) {

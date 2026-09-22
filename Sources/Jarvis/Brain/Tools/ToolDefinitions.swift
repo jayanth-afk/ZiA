@@ -20,7 +20,7 @@ protocol JarvisTool: Sendable {
     var impact: PermissionGate.ActionImpact { get }
 
     /// Step 1: Execute the action
-    func execute(arguments: [String: Any]) async throws -> ToolResult
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult
 
     /// Step 2: Observe the real-world state of the system
     func observe() async throws -> ObservationResult

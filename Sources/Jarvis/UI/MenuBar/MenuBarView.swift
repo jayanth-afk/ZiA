@@ -64,8 +64,23 @@ struct MenuBarView: View {
             Divider()
 
             // Controls
+            Button(action: {
+                FloatingPanel.shared.toggle()
+            }) {
+                Label("Toggle Overlay", systemImage: "macwindow.on.rectangle")
+            }
+            .buttonStyle(.plain)
+
             Button(action: toggleState) {
                 Label(toggleLabel, systemImage: toggleIcon)
+            }
+            .buttonStyle(.plain)
+
+            Button(action: {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }) {
+                Label("Settings…", systemImage: "gear")
             }
             .buttonStyle(.plain)
 

@@ -1,0 +1,51 @@
+import Foundation
+
+/// Executes tools with permission checks, observation, and verification.
+/// Adheres strictly to Rule 7: execute -> observe -> verify.
+@MainActor
+final class ToolExecutor {
+    static let shared = ToolExecutor()
+
+    private init() {}
+
+    // MARK: - Public API
+
+    /// Execute a tool by name with full observation and verification.
+    func execute(toolName: String, arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let tool = ToolRegistry.shared.getTool(named: toolName) else {
+            throw JarvisError.actionFailed(action: toolName, reason: "Tool '\(toolName)' is not registered")
+        }
+
+        // 1. Permission check
+        _ = try PermissionGate.shared.isAuthorized(actionName: tool.name, impact: tool.impact)
+
+        let timer = PipelineTimer()
+        timer.mark(.actionStart)
+
+        // 2. Execute
+        let expected = try await tool.execute(arguments: arguments)
+        timer.mark(.actionExecuted)
+
+        // 3. Observe
+        let observed = try await tool.observe()
+        timer.mark(.actionObserved)
+
+        // 4. Verify
+        let isVerified = tool.verify(expected: expected, observed: observed)
+        timer.mark(.actionVerified)
+
+        guard isVerified else {
+            JarvisLogger.actions.error("Verification failed for tool '\(toolName)'")
+            throw JarvisError.verificationFailed(
+                action: toolName,
+                expected: expected.output,
+                actual: observed.observations.description
+            )
+        }
+
+        let elapsed = timer.elapsed(from: .actionStart, to: .actionVerified) ?? 0
+        JarvisLogger.actions.info("Tool '\(toolName)' executed and verified in \(String(format: "%.1f", elapsed))ms")
+
+        return expected
+    }
+}

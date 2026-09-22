@@ -1,0 +1,24 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved.bak
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+
+# Build / log output
+build.log
+*.log
+
+# macOS
+.DS_Store
+
+# Local environment / secrets — never commit API keys
+.env
+.env.*
+*.local
+Secrets.swift
+.freebuff/

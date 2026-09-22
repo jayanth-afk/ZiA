@@ -1,4 +1,0 @@
-module Jarvis {
-header "Jarvis-Swift.h"
-export *
-}

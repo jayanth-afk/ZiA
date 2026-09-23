@@ -774,6 +774,105 @@ enum SelfTest {
         check(overlayVM.lastResponse == "Ready", "OverlayViewModel tracks assistant response text")
         overlayVM.lastResponse = ""
 
+        // ── Phase 13: MLX Planner Plan Parsing & Validation (component tests) ──
+        print("\n─── Phase 13: Agent Plan Parser & Validator ───")
+
+        // 13.1 Valid single-tool plan parses and validates
+        let goodPlanJSON = """
+        {"goal":"open Calculator","steps":[{"id":"step_1","tool":"open_app","arguments":{"app_name":"Calculator"},"purpose":"open the app"}]}
+        """
+        var parsedGood: AgentPlan?
+        if case .success(let p) = AgentPlanParser.parse(goodPlanJSON) { parsedGood = p }
+        check(parsedGood != nil, "Valid plan JSON parses")
+        check(parsedGood?.goal == "open Calculator", "Parsed plan preserves goal")
+        check(parsedGood?.steps.count == 1, "Parsed plan has 1 step")
+        check(parsedGood?.steps.first?.toolName == "open_app", "Parsed step references open_app")
+        if let p = parsedGood {
+            var valid = false
+            if case .success = PlanValidator.validate(p) { valid = true }
+            check(valid, "Valid plan passes ToolRegistry-grounded validation")
+        }
+
+        // 13.2 Prose-wrapped JSON with fences still parses
+        let fenced = "```json\n{\"goal\":\"g\",\"steps\":[{\"id\":\"s1\",\"tool\":null,\"arguments\":{},\"purpose\":\"compose\"}]}\n```"
+        var parsedFenced: AgentPlan?
+        if case .success(let p) = AgentPlanParser.parse(fenced) { parsedFenced = p }
+        check(parsedFenced != nil, "Fenced/prose-wrapped JSON extracts")
+
+        // 13.3 Unknown tool rejected
+        let unknownToolPlan = AgentPlan(goal: "g", steps: [PlanStep(id: "s1", toolName: "nuke_everything", arguments: [:], purpose: "p")])
+        var rejectedUnknown = false
+        if case .failure(.unknownTool(let name)) = PlanValidator.validate(unknownToolPlan), name == "nuke_everything" {
+            rejectedUnknown = true
+        }
+        check(rejectedUnknown, "Unknown/hallucinated tool rejected with unknownTool")
+
+        // 13.4 Missing required argument rejected
+        let missingArgPlan = AgentPlan(goal: "g", steps: [PlanStep(id: "s1", toolName: "open_app", arguments: [:], purpose: "p")])
+        var rejectedMissing = false
+        if case .failure(.missingArgument(let tool, let arg)) = PlanValidator.validate(missingArgPlan), tool == "open_app", arg == "app_name" {
+            rejectedMissing = true
+        }
+        check(rejectedMissing, "Missing required argument rejected")
+
+        // 13.5 Undeclared argument rejected
+        let extraArgPlan = AgentPlan(goal: "g", steps: [PlanStep(id: "s1", toolName: "open_app", arguments: ["app_name": "Safari", "shell": "/bin/zsh"], purpose: "p")])
+        var rejectedExtra = false
+        if case .failure(.unknownArgument(let tool, let arg)) = PlanValidator.validate(extraArgPlan), tool == "open_app", arg == "shell" {
+            rejectedExtra = true
+        }
+        check(rejectedExtra, "Undeclared (smuggled) argument rejected")
+
+        // 13.6 Wrong argument type rejected (int expected)
+        let wrongTypePlan = AgentPlan(goal: "g", steps: [PlanStep(id: "s1", toolName: "set_volume", arguments: ["level": "loud"], purpose: "p")])
+        var rejectedType = false
+        if case .failure(.wrongArgumentType(let tool, let arg, _)) = PlanValidator.validate(wrongTypePlan), tool == "set_volume", arg == "level" {
+            rejectedType = true
+        }
+        check(rejectedType, "Non-integer value for int argument rejected")
+
+        // 13.7 Unsafe shell command rejected at plan time
+        let unsafePlan = AgentPlan(goal: "g", steps: [PlanStep(id: "s1", toolName: "run_shell", arguments: ["command": "rm -rf /"], purpose: "p")])
+        var rejectedUnsafe = false
+        if case .failure(.unsafeOperation(let tool, _)) = PlanValidator.validate(unsafePlan), tool == "run_shell" {
+            rejectedUnsafe = true
+        }
+        check(rejectedUnsafe, "Unsafe shell command rejected by plan-time sandbox check")
+
+        // 13.8 Garbage (no JSON) fails with noJSONFound
+        if case .failure(.noJSONFound) = AgentPlanParser.parse("I cannot do that, sorry!") {
+            check(true, "Non-JSON output rejected with noJSONFound")
+        } else {
+            check(false, "Non-JSON output rejected with noJSONFound")
+        }
+
+        // 13.9 Empty steps rejected
+        let emptySteps = AgentPlan(goal: "g", steps: [])
+        var rejectedEmpty = false
+        if case .failure(.emptySteps) = PlanValidator.validate(emptySteps) { rejectedEmpty = true }
+        check(rejectedEmpty, "Empty steps array rejected")
+
+        // 13.10 Composition step (tool=null) is valid
+        let composePlan = AgentPlan(goal: "g", steps: [PlanStep(id: "s1", toolName: nil, arguments: [:], purpose: "compose the answer")])
+        var composeValid = false
+        if case .success = PlanValidator.validate(composePlan) { composeValid = true }
+        check(composeValid, "tool:null composition step validates")
+
+        // 13.11 Numeric arguments normalize to strings (NSNumber bridging)
+        let numericJSON = "{\"goal\":\"v\",\"steps\":[{\"id\":\"s1\",\"tool\":\"set_volume\",\"arguments\":{\"level\":40},\"purpose\":\"p\"}]}"
+        var numericOK = false
+        if case .success(let p) = AgentPlanParser.parse(numericJSON), p.steps.first?.arguments["level"] == "40" {
+            numericOK = true
+        }
+        check(numericOK, "JSON number argument coerced to string for typed validation")
+
+        // 13.12 Planner context clipping stays compact
+        let ctx = PlannerContext.initial(goal: "g").with(
+            failure: String(repeating: "x", count: 500),
+            observations: [String(repeating: "y", count: 500), String(repeating: "z", count: 500)])
+        check((ctx.previousFailure?.count ?? 0) <= 160, "Replan failure context clipped to 160 chars")
+        check(ctx.priorObservations.count <= 2, "Replan keeps at most 2 prior observations")
+
         // ── Results ──
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

@@ -44,7 +44,10 @@ final class EmergencyInterrupt {
             Task { await BrowserManager.shared.cancelAutomation() }
         })
         eventSubscriptions.append(EventBus.shared.subscribe(EmergencyStopEvent.self) { _ in
-            Task { await TaskWorkerPool.shared.cancelAll() }
+            Task<Void, Never> { await TaskWorkerPool.shared.cancelAll() }
+        })
+        eventSubscriptions.append(EventBus.shared.subscribe(EmergencyStopEvent.self) { _ in
+            Task<Void, Never> { await AgentLoop.shared.emergencyCancel() }
         })
 
         emergencyStopSubscriberCount = eventSubscriptions.count

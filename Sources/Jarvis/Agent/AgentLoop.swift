@@ -3,8 +3,37 @@ import Foundation
 /// Core autonomous agent loop implementing:
 /// SENSE -> UNDERSTAND -> PLAN -> EXECUTE -> OBSERVE -> VERIFY -> RESPOND -> RECOVER
 /// Preserves the fundamental JARVIS architecture.
+///
+/// Phase D: planning is now REAL — the goal goes to the local MLX model
+/// (MLXPlanner -> MLXProvider -> persistent mlx_lm worker), which returns a
+/// structured plan that PlanValidator grounds against the live ToolRegistry.
+/// Simple deterministic commands still bypass the LLM entirely via
+/// DeterministicRouter. The task state machine, ToolExecutor recovery chain,
+/// and Emergency Stop semantics are unchanged.
 actor AgentLoop {
     static let shared = AgentLoop()
+
+    /// Real planner metrics from the most recent run (for audit + UI).
+    private let lastPlannerMetrics = LockedValue<MLXPlanner.PlannerMetrics?>(nil)
+    /// Number of replans in the most recent run.
+    private let lastReplanCount = LockedValue(0)
+
+    func latestReplanCount() -> Int { lastReplanCount.value }
+
+    /// Real planner metrics from the most recent run (nil after a fast-path
+    /// deterministic hit, or before the first planner generation).
+    func latestPlannerMetrics() -> MLXPlanner.PlannerMetrics? { lastPlannerMetrics.value }
+
+    /// Set externally when the run's Task is cancelled (via onCancel in run()).
+    private nonisolated(unsafe) static var cancellationObserved = LockedValue(false)
+
+    /// Emergency Stop: request cancellation of the in-flight agent run.
+    /// Combined with the cooperative cancellation checks inside the loop and
+    /// the TaskWorkerPool.cancelAll() path registered in EmergencyInterrupt.
+    func emergencyCancel() {
+        Self.cancellationObserved.value = true
+        JarvisLogger.security.fault("AgentLoop.emergencyCancel: in-flight agent run cancellation requested")
+    }
 
     private init() {}
 
@@ -12,6 +41,12 @@ actor AgentLoop {
 
     /// Execute an autonomous compound goal through the full pipeline.
     func run(goal: String) async throws -> String {
+        Self.cancellationObserved.value = false
+        defer { Self.cancellationObserved.value = false }
+        return try await runInternal(goal: goal)
+    }
+
+    private func runInternal(goal: String) async throws -> String {
         let timer = PipelineTimer()
         timer.mark(.actionStart)
 
@@ -22,69 +57,141 @@ actor AgentLoop {
         let impact: PermissionGate.ActionImpact = sensitivity == .highlySensitive ? .destructive : .safeMutation
         _ = try await PermissionGate.shared.isAuthorized(actionName: "AgentLoop.run", impact: impact)
 
-        // 2. PLAN (Decompose into discrete steps)
+        // 2. FAST PATH: deterministic commands never touch the LLM (0ms router).
+        // This preserves the Phase B/C fast path — only complex/ambiguous goals
+        // reach the MLX planner.
+        if let match = await MainActor.run(body: { DeterministicRouter.shared.match(goal) }) {
+            JarvisLogger.brain.info("AgentLoop: deterministic fast path hit for '\(goal)'")
+            let output = try await ActionEngine.shared.execute(
+                intent: match.intent,
+                isDeterministic: true,
+                action: match.action)
+            lastReplanCount.value = 0
+            lastPlannerMetrics.value = nil
+            return output
+        }
+        // 3. PLAN via the real local MLX model (structured, validated, bounded).
         let stateMachine = TaskStateMachine.shared
         let task = stateMachine.createTask(title: "Autonomous Goal", goal: goal)
         try stateMachine.transition(taskId: task.id, to: .planning)
 
-        let steps = planSteps(for: goal)
-        try stateMachine.setSteps(taskId: task.id, steps: steps)
+        var plannerContext = PlannerContext.initial(goal: goal)
+        var plan = try await planWithRecovery(
+            goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+        try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
 
-        // 3. EXECUTE -> OBSERVE -> VERIFY -> RECOVER loop
+        // 4. EXECUTE -> OBSERVE -> VERIFY -> RECOVER loop
         try stateMachine.transition(taskId: task.id, to: .running)
 
         var completedOutputs: [String] = []
-        var retryCount = 0
-        let maxRetries = task.maxRetries
+        var observations: [String] = []
+        var replanCount = 0
+        // Total attempts across the whole task (initial pass + replans), bounded.
+        let maxTotalAttempts = 3 + plan.steps.count
 
-        for (index, step) in steps.enumerated() {
-            var stepSucceeded = false
+        var attempt = 0
+        var stepIndex = 0
 
-            while !stepSucceeded && retryCount <= maxRetries {
+        while stepIndex < plan.steps.count {
+            attempt += 1
+            guard attempt <= maxTotalAttempts else {
+                try stateMachine.transition(taskId: task.id, to: .failed, error: "Max agent attempts exceeded")
+                throw JarvisError.actionFailed(action: "AgentLoop.run", reason: "Max agent attempts exceeded (\(maxTotalAttempts))")
+            }
+
+            let step = plan.steps[stepIndex]
+
+            do {
+                // Cooperative cancellation points: task cancellation (user or
+                // Emergency Stop) and terminal task state (emergency path).
                 try Task.checkCancellation()
+                if Self.cancellationObserved.value {
+                    try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                    throw CancellationError()
+                }
+                if let current = stateMachine.getTask(id: task.id), current.state == .cancelled {
+                    throw CancellationError()
+                }
 
-                do {
-                    try stateMachine.updateStep(taskId: task.id, stepIndex: index, state: .running)
+                try stateMachine.updateStep(taskId: task.id, stepIndex: stepIndex, state: .running)
 
-                    if let toolName = step.toolName {
-                        var args: [String: any Sendable] = [:]
-                        for (k, v) in step.arguments {
-                            args[k] = v
-                        }
+                if let toolName = step.toolName {
+                    var args: [String: any Sendable] = [:]
+                    for (k, v) in step.arguments { args[k] = v }
 
-                        let result = try await ToolExecutor.shared.execute(toolName: toolName, arguments: args)
-                        completedOutputs.append(result.output)
-                    } else {
-                        completedOutputs.append("Processed step: \(step.description)")
+                    // EXECUTE (ToolExecutor does permission gate + execute + observe + verify)
+                    let result = try await ToolExecutor.shared.execute(toolName: toolName, arguments: args)
+
+                    // Emergency Stop / cancel may have fired during execution:
+                    // do not record this step as completed if so.
+                    if Self.cancellationObserved.value {
+                        try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                        throw CancellationError()
+                    }
+
+                    // OBSERVE: consume the actual tool output (real result text).
+                    completedOutputs.append(result.output)
+                    observations.append("[\(toolName)] \(result.output)")
+
+                    // VERIFY at the outcome level, beyond ToolExecutor's
+                    // expected.success check: empty/failed output fails the step.
+                    if !result.success || result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        throw JarvisError.verificationFailed(
+                            action: toolName,
+                            expected: "meaningful output",
+                            actual: result.output)
                     }
 
                     try stateMachine.updateStep(
                         taskId: task.id,
-                        stepIndex: index,
+                        stepIndex: stepIndex,
                         state: .completed,
-                        output: completedOutputs.last
-                    )
-                    stepSucceeded = true
-
-                } catch {
-                    retryCount += 1
-                    JarvisLogger.actions.warning("Step \(step.stepNumber) failed (attempt \(retryCount)/\(maxRetries)): \(error.localizedDescription)")
-
-                    if retryCount <= maxRetries {
-                        // RECOVER -> REPLANNING -> RUNNING
-                        try stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
-                        try stateMachine.transition(taskId: task.id, to: .recovering)
-                        try stateMachine.transition(taskId: task.id, to: .replanning)
-                        try stateMachine.transition(taskId: task.id, to: .running)
-                    } else {
-                        try stateMachine.transition(taskId: task.id, to: .failed, error: "Max retries exceeded")
-                        throw error
-                    }
+                        output: completedOutputs.last)
+                    stepIndex += 1
+                } else {
+                    // Composition step: the planner deferred to the answer phase.
+                    completedOutputs.append(step.purpose)
+                    try stateMachine.updateStep(
+                        taskId: task.id,
+                        stepIndex: stepIndex,
+                        state: .completed,
+                        output: completedOutputs.last)
+                    stepIndex += 1
                 }
+
+            } catch is CancellationError {
+                try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                throw CancellationError()
+            } catch {
+                // RECOVER: real failure -> existing recovery chain (unchanged).
+                replanCount += 1
+                lastReplanCount.value = replanCount
+                JarvisLogger.actions.warning("Step '\(step.purpose)' failed (replan \(replanCount)): \(error.localizedDescription)")
+
+                try stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
+                try stateMachine.transition(taskId: task.id, to: .recovering)
+                try stateMachine.transition(taskId: task.id, to: .replanning)
+
+                // REPLAN with real failure context (not a blind repeat): the
+                // planner sees the actual error and prior observations.
+                if Self.cancellationObserved.value {
+                    try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                    throw CancellationError()
+                }
+                plannerContext = plannerContext.with(
+                    failure: error.localizedDescription,
+                    observations: observations)
+                plan = try await planWithRecovery(
+                    goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+                try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
+                // A replan can produce a shorter plan; restart traversal so the
+                // new plan executes from its first step (bounded by attempts).
+                if stepIndex >= plan.steps.count { stepIndex = 0 }
+                try stateMachine.transition(taskId: task.id, to: .running)
             }
         }
 
-        // 4. VERIFY & RESPOND
+        // 5. VERIFY & RESPOND
         try stateMachine.transition(taskId: task.id, to: .verifying)
         try stateMachine.transition(taskId: task.id, to: .completed)
 
@@ -94,52 +201,52 @@ actor AgentLoop {
         return response.isEmpty ? "All actions executed and verified." : response
     }
 
-    // MARK: - Planning Heuristic
+    // MARK: - Planning
 
-    /// Breaks user goal into structured executable steps.
-    private func planSteps(for goal: String) -> [TaskStep] {
-        let lower = goal.lowercased()
-        var steps: [TaskStep] = []
-
-        // Check for compound command connectors like "and", "then", ";"
-        let subgoals = lower.components(separatedBy: " and ")
-
-        for (index, subgoal) in subgoals.enumerated() {
-            let trimmed = subgoal.trimmingCharacters(in: .whitespacesAndNewlines)
-
-            if trimmed.contains("open ") {
-                let appName = trimmed.replacingOccurrences(of: "open ", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-                steps.append(TaskStep(
-                    stepNumber: index + 1,
-                    description: "Open application \(appName)",
-                    toolName: "open_app",
-                    arguments: ["app_name": appName]
-                ))
-            } else if trimmed.contains("volume") {
-                // Extract digits
-                let digits = trimmed.filter { $0.isNumber }
-                let level = digits.isEmpty ? "50" : digits
-                steps.append(TaskStep(
-                    stepNumber: index + 1,
-                    description: "Set volume to \(level)%",
-                    toolName: "set_volume",
-                    arguments: ["level": level]
-                ))
-            } else if trimmed.hasPrefix("echo ") || trimmed.hasPrefix("ls ") || trimmed.hasPrefix("pwd") {
-                steps.append(TaskStep(
-                    stepNumber: index + 1,
-                    description: "Run command: \(trimmed)",
-                    toolName: "run_shell",
-                    arguments: ["command": trimmed]
-                ))
-            } else {
-                steps.append(TaskStep(
-                    stepNumber: index + 1,
-                    description: trimmed
-                ))
+    /// Plan through the MLXPlanner; a planning failure enters the same recovery
+    /// chain as execution failures, bounded by the same attempt budget.
+    private func planWithRecovery(
+        goal: String,
+        context: PlannerContext,
+        taskId: UUID,
+        stateMachine: TaskStateMachine
+    ) async throws -> AgentPlan {
+        do {
+            let plan = try await MLXPlanner.shared.plan(goal: goal, context: context)
+            if let metrics = await MLXPlanner.shared.latestMetrics() {
+                lastPlannerMetrics.value = metrics
+            }
+            return plan
+        } catch is CancellationError {
+            _ = try? stateMachine.transition(taskId: taskId, to: .cancelled, error: "Agent task cancelled during planning")
+            throw CancellationError()
+        } catch {
+            // PLANNING -> FAILED -> RECOVERING -> REPLANNING -> retry, bounded.
+            // A second consecutive planning failure propagates (fail safely).
+            try stateMachine.transition(taskId: taskId, to: .failed, error: "Planner failed: \(error.localizedDescription)")
+            try stateMachine.transition(taskId: taskId, to: .recovering)
+            try stateMachine.transition(taskId: taskId, to: .replanning)
+            do {
+                let retryPlan = try await MLXPlanner.shared.plan(goal: goal, context: context)
+                if let metrics = await MLXPlanner.shared.latestMetrics() {
+                    lastPlannerMetrics.value = metrics
+                }
+                return retryPlan
+            } catch is CancellationError {
+                _ = try? stateMachine.transition(taskId: taskId, to: .cancelled, error: "Agent task cancelled during planning")
+                throw CancellationError()
             }
         }
+    }
 
-        return steps
+    /// Convert validated plan steps into state-machine TaskSteps.
+    private func toTaskSteps(_ plan: AgentPlan) -> [TaskStep] {
+        plan.steps.enumerated().map { index, step in
+            TaskStep(
+                stepNumber: index + 1,
+                description: step.purpose,
+                toolName: step.toolName,
+                arguments: step.arguments)
+        }
     }
 }

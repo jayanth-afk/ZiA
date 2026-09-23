@@ -29,15 +29,29 @@ final class ToolRegistry {
         return Array(tools.values)
     }
 
-    /// Generates ToolDefinitions formatted for LLM function calling schemas.
+    /// Generates ToolDefinitions formatted for LLM function calling schemas,
+    /// including a real JSON schema built from each tool's declared parameters.
     func getToolDefinitions() -> [ToolDefinition] {
         return allTools.map { tool in
             ToolDefinition(
                 name: tool.name,
                 description: tool.description,
-                parametersJSON: "{}" // Schema definitions
+                parametersJSON: Self.parametersJSON(for: tool)
             )
         }
+    }
+
+    /// Compact JSON schema of a tool's declared parameters.
+    private nonisolated static func parametersJSON(for tool: any JarvisTool) -> String {
+        var properties: [String] = []
+        var required: [String] = []
+        for spec in tool.parameterSpec {
+            properties.append("\"\(spec.name)\":{\"type\":\"\(spec.kind.rawValue)\"}")
+            if spec.required { required.append("\"\(spec.name)\"") }
+        }
+        let props = properties.joined(separator: ",")
+        let req = required.joined(separator: ",")
+        return "{\"type\":\"object\",\"properties\":{\(props)},\"required\":[\(req)]}"
     }
 
     // MARK: - Private

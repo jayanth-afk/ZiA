@@ -7,6 +7,9 @@ struct OpenAppTool: JarvisTool {
     let name = "open_app"
     let description = "Opens or switches to a macOS application by name"
     let impact: PermissionGate.ActionImpact = .safeMutation
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "app_name", kind: .string, required: true, description: "Application name, e.g. Safari or Calculator")
+    ]
 
     func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let appName = arguments["app_name"] as? String else {
@@ -33,6 +36,9 @@ struct SetVolumeTool: JarvisTool {
     let name = "set_volume"
     let description = "Sets the system audio output volume (0-100%)"
     let impact: PermissionGate.ActionImpact = .safeMutation
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "level", kind: .int, required: true, description: "Volume level from 0 to 100")
+    ]
 
     func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let level = arguments["level"] as? Int else {
@@ -59,6 +65,9 @@ struct RunShellTool: JarvisTool {
     let name = "run_shell"
     let description = "Executes a sandboxed shell command on macOS"
     let impact: PermissionGate.ActionImpact = .destructive
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "command", kind: .string, required: true, description: "Shell command to run; must pass the security sandbox")
+    ]
 
     func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let command = arguments["command"] as? String else {
@@ -82,6 +91,10 @@ struct WebSearchTool: JarvisTool {
     let name = "web_search"
     let description = "Searches the web for up-to-date information, returning top results with URLs and snippets"
     let impact: PermissionGate.ActionImpact = .readOnly
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "query", kind: .string, required: true, description: "Search query text"),
+        ToolParameterSpec(name: "max_results", kind: .int, required: false, description: "Maximum number of results (default 5)")
+    ]
 
     func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let query = arguments["query"] as? String else {
@@ -126,6 +139,10 @@ struct FetchURLTool: JarvisTool {
     let name = "fetch_url"
     let description = "Fetches web page content at a URL and extracts readable text and metadata"
     let impact: PermissionGate.ActionImpact = .readOnly
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "url", kind: .string, required: true, description: "Absolute http(s) URL to fetch"),
+        ToolParameterSpec(name: "max_characters", kind: .int, required: false, description: "Maximum characters of extracted text (default 8000)")
+    ]
 
     func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let urlStr = arguments["url"] as? String,
@@ -166,6 +183,10 @@ struct OpenBrowserTool: JarvisTool {
     let name = "open_browser"
     let description = "Opens a web URL in the system default browser or specific browser (Safari, Chrome)"
     let impact: PermissionGate.ActionImpact = .safeMutation
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "url", kind: .string, required: true, description: "Absolute http(s) URL to open"),
+        ToolParameterSpec(name: "browser", kind: .string, required: false, description: "Browser name: Default, Safari, or Chrome")
+    ]
 
     func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let urlStr = arguments["url"] as? String,

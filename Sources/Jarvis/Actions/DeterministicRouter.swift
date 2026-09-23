@@ -5,10 +5,10 @@ import Foundation
 final class DeterministicRouter {
     static let shared = DeterministicRouter()
 
-    struct Match {
+    struct Match: Sendable {
         let intent: String
         let parameters: [String: String]
-        let action: () async throws -> String
+        let action: @Sendable () async throws -> String
     }
 
     private init() {}
@@ -87,7 +87,7 @@ final class DeterministicRouter {
                 return Match(
                     intent: "system.volume.set",
                     parameters: ["level": String(level)],
-                    action: { try SystemControl.shared.setVolume(level) }
+                    action: { try await MainActor.run { try SystemControl.shared.setVolume(level) } }
                 )
             }
         }
@@ -97,7 +97,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.volume.up",
                 parameters: [:],
-                action: { try SystemControl.shared.volumeUp() }
+                action: { try await MainActor.run { try SystemControl.shared.volumeUp() } }
             )
         }
 
@@ -106,7 +106,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.volume.down",
                 parameters: [:],
-                action: { try SystemControl.shared.volumeDown() }
+                action: { try await MainActor.run { try SystemControl.shared.volumeDown() } }
             )
         }
 
@@ -115,7 +115,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.volume.mute",
                 parameters: [:],
-                action: { try SystemControl.shared.mute() }
+                action: { try await MainActor.run { try SystemControl.shared.mute() } }
             )
         }
 
@@ -123,7 +123,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.volume.unmute",
                 parameters: [:],
-                action: { try SystemControl.shared.unmute() }
+                action: { try await MainActor.run { try SystemControl.shared.unmute() } }
             )
         }
 
@@ -165,7 +165,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.lock",
                 parameters: [:],
-                action: { try SystemControl.shared.lockScreen() }
+                action: { try await MainActor.run { try SystemControl.shared.lockScreen() } }
             )
         }
 
@@ -173,7 +173,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.emptyTrash",
                 parameters: [:],
-                action: { try SystemControl.shared.emptyTrash() }
+                action: { try await MainActor.run { try SystemControl.shared.emptyTrash() } }
             )
         }
 
@@ -186,7 +186,7 @@ final class DeterministicRouter {
                 intent: "clipboard.read",
                 parameters: [:],
                 action: {
-                    if let text = ClipboardManager.shared.getClipboardText() {
+                    if let text = await MainActor.run { ClipboardManager.shared.getClipboardText() } {
                         return "Clipboard contains: \(text)"
                     } else {
                         return "Clipboard is empty"
@@ -200,7 +200,7 @@ final class DeterministicRouter {
                 intent: "clipboard.clear",
                 parameters: [:],
                 action: {
-                    ClipboardManager.shared.clearClipboard()
+                    await MainActor.run { ClipboardManager.shared.clearClipboard() }
                     return "Clipboard cleared"
                 }
             )
@@ -215,10 +215,12 @@ final class DeterministicRouter {
                 intent: "system.status",
                 parameters: [:],
                 action: {
-                    let mem = ResourceManager.shared.totalMemoryMB
-                    let pressure = ResourceManager.shared.currentPressure.rawValue
-                    let online = AppState.shared.isOnline ? "online" : "offline"
-                    return "All systems operational. Memory is \(mem)MB (\(pressure) pressure), network is \(online)."
+                    await MainActor.run {
+                        let mem = ResourceManager.shared.totalMemoryMB
+                        let pressure = ResourceManager.shared.currentPressure.rawValue
+                        let online = AppState.shared.isOnline ? "online" : "offline"
+                        return "All systems operational. Memory is \(mem)MB (\(pressure) pressure), network is \(online)."
+                    }
                 }
             )
         }
@@ -228,10 +230,12 @@ final class DeterministicRouter {
                 intent: "system.memory",
                 parameters: [:],
                 action: {
-                    let mem = ResourceManager.shared.totalMemoryMB
-                    let pressure = ResourceManager.shared.currentPressure.rawValue
-                    let models = ResourceManager.shared.totalModelMemoryMB
-                    return "Total memory: \(mem)MB. Memory pressure is \(pressure). Models using \(models)MB."
+                    await MainActor.run {
+                        let mem = ResourceManager.shared.totalMemoryMB
+                        let pressure = ResourceManager.shared.currentPressure.rawValue
+                        let models = ResourceManager.shared.totalModelMemoryMB
+                        return "Total memory: \(mem)MB. Memory pressure is \(pressure). Models using \(models)MB."
+                    }
                 }
             )
         }

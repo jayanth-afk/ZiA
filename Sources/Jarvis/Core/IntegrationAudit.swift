@@ -676,9 +676,9 @@ enum IntegrationAudit {
         print("\n─── 6. AGENT LOOP AUDIT ───")
 
         // 6.1 Real End-to-End Agent Task: Goal -> Sense -> Plan -> Execute Tools -> Observe -> Verify -> Complete
-        let prevAutonomy = Config.shared.autonomyLevel
+        let prevAutonomy = capturePersistedAutonomy()
         Config.shared.autonomyLevel = 2 // Elevate to L2 Autonomous so run_shell is permitted
-        defer { Config.shared.autonomyLevel = prevAutonomy } // restore even on thrown errors
+        defer { restorePersistedAutonomy(prevAutonomy) } // restore even on thrown errors
         do {
             let agentOutput = try await AgentLoop.shared.run(goal: "pwd and echo jarvis_e2e_verified")
             let hasVerifiedToken = agentOutput.contains("jarvis_e2e_verified")
@@ -691,7 +691,6 @@ enum IntegrationAudit {
             record("End-to-End Agent Execution", category: "Agent", status: .red,
                    details: "AgentLoop end-to-end execution failed: \(error.localizedDescription)")
         }
-        Config.shared.autonomyLevel = prevAutonomy
 
         // 6.2 REAL Tool Failure → Observe → Recover → Replan → Success (no manual state choreography)
         struct AlwaysFailingTool: JarvisTool {
@@ -712,9 +711,9 @@ enum IntegrationAudit {
 
         // The recovery tool is run_shell (.destructive → requires L2). Elevate
         // for this scenario only; defer guarantees restore even on error paths.
-        let prevRecoveryAutonomy = Config.shared.autonomyLevel
+        let prevRecoveryAutonomy = capturePersistedAutonomy()
         Config.shared.autonomyLevel = 2
-        defer { Config.shared.autonomyLevel = prevRecoveryAutonomy }
+        defer { restorePersistedAutonomy(prevRecoveryAutonomy) }
 
         let failTask = sm.createTask(title: "Recovery Verification", goal: "Audit failure recovery")
         let originalSteps = [
@@ -782,8 +781,9 @@ enum IntegrationAudit {
 
         // Elevate to L2 for the audit so destructive run_shell is permitted;
         // restored on every exit path via defer.
-        let prevAutonomy = Config.shared.autonomyLevel
+        let prevAutonomy = capturePersistedAutonomy()
         Config.shared.autonomyLevel = 2
+        defer { restorePersistedAutonomy(prevAutonomy) } // restore even on thrown errors
 
         // Register audit-only tools once (idempotent by name in the registry).
         struct AlwaysFailingPlannerTool: JarvisTool {
@@ -812,18 +812,31 @@ enum IntegrationAudit {
         // (non-nil worker-measured stats) and the plan must have executed.
         if mlxReady {
             do {
+                // Router-proof probe goal: verified with --planner-probe to
+                // yield an attempt-1 valid plan {run_shell, "echo <token>"}.
+                // The plain "echo <token>" form is consumed by the Phase D.5
+                // deterministic echo matcher before the planner can run.
+                let plannerGoal = "write the word jarvis_planner_e2e_verified using run_shell"
                 let runStart = Date()
-                let output = try await AgentLoop.shared.run(goal: "echo jarvis_planner_e2e_verified")
+                let output = try await AgentLoop.shared.run(goal: plannerGoal)
                 let wallMs = Date().timeIntervalSince(runStart) * 1000
                 let metrics = await AgentLoop.shared.latestPlannerMetrics()
                 let usedRealPlanner = metrics != nil && (metrics!.tokens ?? 0) > 0
                 let goalFulfilled = output.contains("jarvis_planner_e2e_verified")
+                // Structural proof the plan EXECUTED as a tool step (not a
+                // composed answer): the task for this goal must contain a
+                // COMPLETED run_shell step whose observed output has the token.
+                let daTask = TaskStateMachine.shared.allTasks.last { $0.goal == plannerGoal }
+                let executedToolStep = daTask?.steps.contains {
+                    $0.toolName == "run_shell" && $0.state == .completed
+                        && ($0.output?.contains("jarvis_planner_e2e_verified") ?? false)
+                } ?? false
                 record("D-A Real MLX Planner (E2E)", category: "Agent Loop",
-                       status: (usedRealPlanner && goalFulfilled) ? .green : (usedRealPlanner ? .yellow : .red),
+                       status: (usedRealPlanner && goalFulfilled && executedToolStep) ? .green : (usedRealPlanner ? .yellow : .red),
                        details: usedRealPlanner
-                           ? (goalFulfilled
-                              ? "Goal -> AgentLoop -> MLXPlanner -> MLXProvider (worker gen \(Int(metrics!.workerGenMs ?? 0))ms, \(metrics!.tokens ?? 0) tok, TTFT \(metrics!.ttftMs.map { String(format: "%.0f", $0) } ?? "n/a")ms) -> validated plan -> ToolExecutor run_shell. Output contains the verification token. Total task \(String(format: "%.0f", wallMs))ms"
-                              : "Real planner generation occurred (gen \(Int(metrics!.workerGenMs ?? 0))ms, \(metrics!.tokens ?? 0) tok, TTFT \(metrics!.ttftMs.map { String(format: "%.0f", $0) } ?? "n/a")ms) but the 0.5B model's plan did not fulfill the goal: output='\(output.prefix(80))'. YELLOW: pipeline works end-to-end; model strength is the limitation")
+                           ? (goalFulfilled && executedToolStep
+                              ? "Goal -> AgentLoop -> MLXPlanner -> MLXProvider (worker gen \(Int(metrics!.workerGenMs ?? 0))ms, \(metrics!.tokens ?? 0) tok, TTFT \(metrics!.ttftMs.map { String(format: "%.0f", $0) } ?? "n/a")ms) -> validated plan -> PlanValidator -> ToolExecutor run_shell -> COMPLETED step observed '\(output.prefix(40))'. Real worker metrics present; deterministic router did not intercept (router-proof goal). Total task \(String(format: "%.0f", wallMs))ms"
+                              : "Real planner generation occurred (gen \(Int(metrics!.workerGenMs ?? 0))ms, \(metrics!.tokens ?? 0) tok, TTFT \(metrics!.ttftMs.map { String(format: "%.0f", $0) } ?? "n/a")ms) but the 0.5B model's plan did not fulfill the goal as an executed run_shell step: output='\(output.prefix(80))'. YELLOW: pipeline works end-to-end; model strength is the limitation")
                            : "No real planner generation recorded (metrics nil or zero tokens) — plan did not come from the local model: '\(output.prefix(60))'")
             } catch {
                 record("D-A Real MLX Planner (E2E)", category: "Agent Loop", status: .red,
@@ -850,9 +863,8 @@ enum IntegrationAudit {
                 if case .success(let plan) = parsed {
                     if case .failure(let e) = PlanValidator.validate(plan) { validationError = e.description }
                 }
-                let repairFeedbackOk = !garbage.isEmpty // repair prompt path exercised in MLXPlanner on attempt 2
                 record("D-B Structured Plan + Bounded Repair", category: "Agent Loop",
-                       status: (validationError != nil && repairFeedbackOk) ? .blue : .red,
+                       status: validationError != nil ? .blue : .red,
                        details: validationError != nil
                            ? "Real parser+validator rejected hallucinated tool ('definitely_not_a_tool'): \(validationError!). Repair-retry path is bounded (1 initial + 1 repair generation). BLUE: repair loop not triggered end-to-end this audit run (first attempts all passed) — component-level proof only"
                            : "Parser/validator FAILED to reject a hallucinated tool")
@@ -863,9 +875,14 @@ enum IntegrationAudit {
             // execute -> observe -> verify) ran the planner-selected tool and
             // its REAL output reached the response.
             do {
-                let output = try await AgentLoop.shared.run(goal: "run the command echo observe_verify_probe")
+                // Router-proof planner goal (the old "run the command echo …"
+                // form was consumed by the deterministic echo matcher).
+                let output = try await AgentLoop.shared.run(goal: "write the word observe_verify_probe using run_shell")
                 let metrics = await AgentLoop.shared.latestPlannerMetrics()
-                let executed = output.contains("observe_verify_probe")
+                // Requires BOTH the real stdout in the response AND a real
+                // planner generation — a deterministic fast-path hit no longer
+                // satisfies this check.
+                let executed = output.contains("observe_verify_probe") && (metrics?.tokens ?? 0) > 0
                 let anyToolRan = (metrics?.tokens ?? 0) > 0 && output != "All actions executed and verified."
                 record("D-C/D/E Execute+Observe+Verify (E2E)", category: "Agent Loop",
                        status: executed ? .green : (anyToolRan ? .yellow : .red),
@@ -944,16 +961,20 @@ enum IntegrationAudit {
                 // Through the REAL production path: any plan the model may emit
                 // naming a non-registry tool is rejected by PlanValidator.
                 let output = try await AgentLoop.shared.run(goal: "open the application Frobnicator3000 and then echo done_probe")
-                // Unknown app: open_app fails or planner picks another route; the
-                // safety property is that nothing crashes and no invented tool runs.
-                let noCrash = !output.isEmpty || true // run returning at all = safe handling
+                // Non-tautological check: the nonexistent app must NOT complete
+                // as success — the response must report the failure.
+                let rejected = output.lowercased().contains("not found")
+                    || output.lowercased().contains("failed")
+                    || output.lowercased().contains("unable")
                 record("D-J No Hallucinated Tools (E2E)", category: "Agent Loop",
-                       status: noCrash ? .green : .red,
-                       details: "Goal referencing a nonexistent application executed through the production path; PlanValidator grounds every step against the live ToolRegistry (\(registryNames.count) tools) — unknown tools are rejected before execution, planner repair attempted once, then fail-safe. Output: '\(output.prefix(60))'")
+                       status: rejected ? .green : .yellow,
+                       details: rejected
+                           ? "Nonexistent-application goal did not complete as success; every step is grounded against the live ToolRegistry (\(registryNames.count) tools) and the production path reported the failure: '\(output.prefix(70))'"
+                           : "Goal completed without a clear failure marker: '\(output.prefix(70))' — no invented tool executed (PlanValidator grounds all steps), but safe rejection was not clearly observed")
             } catch {
                 // A clean structured failure is ALSO safe rejection.
                 record("D-J No Hallucinated Tools (E2E)", category: "Agent Loop", status: .green,
-                       details: "Goal referencing a nonexistent application failed safely through the production path (bounded planner attempts + validation, no invented tool executed): \(String(error.localizedDescription.prefix(100)))")
+                       details: "Goal referencing a nonexistent application failed safely through the production path (no invented tool executed): \(String(error.localizedDescription.prefix(100)))")
             }
         } else {
             for name in ["D-A Real MLX Planner (E2E)", "D-B Structured Plan + Bounded Repair",
@@ -987,8 +1008,30 @@ enum IntegrationAudit {
                        : "Emergency propagation incomplete (wired=\(wired), haltedWithCancellation=\(haltedWithCancellation))")
         }
 
-        Config.shared.autonomyLevel = prevAutonomy
         _ = catalog // catalog text embedded above; kept for future prompt parity checks
+    }
+
+    // MARK: - Autonomy persistence guard
+
+    /// The raw defaults key for the persisted autonomy level (mirrors
+    /// Config.Keys.autonomyLevel, which is private to Config).
+    private static let autonomyDefaultsKey = "jarvis.autonomyLevel"
+
+    /// Captures the persisted autonomy level exactly as stored (nil = key absent).
+    private static func capturePersistedAutonomy() -> Int? {
+        UserDefaults.standard.object(forKey: autonomyDefaultsKey) as? Int
+    }
+
+    /// Restores the persisted autonomy level after an audit section elevated it:
+    /// rewrites the previous value, or removes the key entirely if nothing was
+    /// persisted before the audit (the registered default stays effective and
+    /// no value is invented). Call from defer so every exit path restores.
+    private static func restorePersistedAutonomy(_ previousLevel: Int?) {
+        if let previousLevel {
+            UserDefaults.standard.set(previousLevel, forKey: autonomyDefaultsKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: autonomyDefaultsKey)
+        }
     }
 
     // MARK: - 7. Emergency Stop

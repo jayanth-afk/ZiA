@@ -17,6 +17,11 @@ final class DeterministicRouter {
 
     /// Match a transcript to a known deterministic command.
     /// Returns nil if the query requires an LLM / reflex model.
+    ///
+    /// Phase D.5: extended conservatively (STEP 2). Only unambiguous intents
+    /// whose parameters can be extracted safely are matched — this is NOT a
+    /// regex chatbot. Semantic/multi-step/ambiguous goals still go to the
+    /// MLX planner. Latency is measured by the caller (AgentLoop/audit).
     func match(_ transcript: String) -> Match? {
         let lower = transcript.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !lower.isEmpty else { return nil }
@@ -42,7 +47,101 @@ final class DeterministicRouter {
         // 6. System Status: "memory status", "system status"
         if let status = matchStatusCommand(cleaned) { return status }
 
+        // 7. Clipboard write: "copy hello world to the clipboard" (Phase D.5)
+        if let clipWrite = matchClipboardWrite(cleaned) { return clipWrite }
+
+        // 8. Text to speech: "say good morning" (Phase D.5)
+        if let say = matchSayCommand(cleaned) { return say }
+
+        // 9. Safe single echo passthrough: "echo hello" / "run echo hello"
+        //    (Phase D.5) — the router-level subset of run_shell.
+        if let echo = matchEchoCommand(cleaned) { return echo }
+
         return nil
+    }
+
+    // MARK: - Phase D.5 matchers
+
+    /// "copy <text> to the clipboard" — unambiguous write intent. The copied
+    /// text is preserved verbatim (only the fixed prefix/suffix is stripped).
+    private func matchClipboardWrite(_ text: String) -> Match? {
+        let prefixes = ["copy ", "put "]
+        let suffixes = [" to the clipboard", " to clipboard", " on the clipboard", " in the clipboard"]
+        for prefix in prefixes {
+            guard text.hasPrefix(prefix) else { continue }
+            var body = String(text.dropFirst(prefix.count))
+            guard let suffix = suffixes.first(where: { body.hasSuffix($0) }) else { continue }
+            body = String(body.dropLast(suffix.count)).trimmingCharacters(in: .whitespaces)
+            guard !body.isEmpty else { continue }
+            return Match(
+                intent: "clipboard.write",
+                parameters: ["text": body],
+                action: {
+                    await MainActor.run { ClipboardManager.shared.setClipboardText(body) }
+                    return "Copied to clipboard."
+                }
+            )
+        }
+        return nil
+    }
+
+    /// "say <text>" / "speak the text <text>" — speak text aloud via TTS and
+    /// return the spoken text as the response.
+    private func matchSayCommand(_ text: String) -> Match? {
+        var body: String?
+        if text.hasPrefix("say ") {
+            body = String(text.dropFirst("say ".count))
+        } else if text.hasPrefix("speak the text ") {
+            body = String(text.dropFirst("speak the text ".count))
+        } else if text.hasPrefix("speak ") {
+            body = String(text.dropFirst("speak ".count))
+        }
+        guard let textToSpeak = body?.trimmingCharacters(in: .whitespaces), !textToSpeak.isEmpty else {
+            return nil
+        }
+        return Match(
+            intent: "speech.say",
+            parameters: ["text": textToSpeak],
+            action: {
+                await MainActor.run { TTSEngine.shared.speak(textToSpeak) }
+                return textToSpeak
+            }
+        )
+    }
+
+    /// "echo <text>" / "run echo <text>" / "run the command echo <text>" —
+    /// safe single echo with no shell metacharacters. Everything else goes to
+    /// the planner. Wrapped in a quoted, sandbox-checked run_shell call so the
+    /// existing permission + safety gates stay in the path.
+    private func matchEchoCommand(_ text: String) -> Match? {
+        var body: String?
+        if text.hasPrefix("echo ") {
+            body = String(text.dropFirst("echo ".count))
+        } else if text.hasPrefix("run echo ") {
+            body = String(text.dropFirst("run echo ".count))
+        } else if text.hasPrefix("run the command echo ") {
+            body = String(text.dropFirst("run the command echo ".count))
+        }
+        guard let echoText = body?.trimmingCharacters(in: .whitespaces), !echoText.isEmpty else {
+            return nil
+        }
+        // Refuse anything beyond a plain single echo: no metacharacters, no
+        // quotes, no flags. This keeps the deterministic subset strictly safe;
+        // complex shell requests still go through the planner + full sandbox.
+        let forbidden = CharacterSet(charactersIn: "|&;$><`\\\"'\n\r")
+        guard echoText.unicodeScalars.allSatisfy({ !forbidden.contains($0) }), !echoText.hasPrefix("-") else {
+            return nil
+        }
+        let command = "echo \(echoText)"
+        guard CommandSandbox.shared.isSafe(command) else { return nil }
+        return Match(
+            intent: "shell.echo",
+            parameters: ["command": command],
+            action: {
+                let output = try await ShellExecutor.shared.execute(command)
+                return output.stdout.isEmpty ? output.stderr : output.stdout
+            }
+        )
     }
 
     // MARK: - Matchers

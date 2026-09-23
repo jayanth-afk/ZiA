@@ -24,6 +24,11 @@ actor MLXPlanner {
     /// Last real planner measurements (thread-safe for sync readers).
     private let lastMetrics = LockedValue<PlannerMetrics?>(nil)
 
+    /// Raw model outputs from the most recent plan() call (one entry per
+    /// generation attempt). Diagnostic visibility into the 0.5B model's actual
+    /// behavior — the audit/benchmark use this to report honest failure modes.
+    private let lastRunRawOutputs = LockedValue<[String]>([])
+
     struct PlannerMetrics: Sendable {
         let requestLatencyMs: Double   // full Swift→worker→mlx_lm round trip
         let ttftMs: Double?            // real first-token latency from the worker
@@ -36,6 +41,16 @@ actor MLXPlanner {
 
     func latestMetrics() -> PlannerMetrics? { lastMetrics.value }
 
+    /// Raw model outputs (per attempt) from the most recent plan() invocation.
+    func latestRawOutputs() -> [String] { lastRunRawOutputs.value }
+
+    /// Test/diagnostic hook: exposes the deterministic hint decision so the
+    /// self-test can verify the hint layer without any model generation.
+    /// nonisolated: the hint function is a pure static predicate.
+    nonisolated static func testHookToolFamilyHint(for goal: String) -> Set<String> {
+        toolFamilyHint(for: goal)
+    }
+
     private init() {}
 
     // MARK: - Public API
@@ -43,20 +58,39 @@ actor MLXPlanner {
     /// Plan a goal with the local MLX model. Throws on invalid plans after
     /// the bounded repair attempt; never invents a plan itself.
     func plan(goal: String, context: PlannerContext) async throws -> AgentPlan {
-        let catalog = await Self.toolCatalog()
+        // STEP 4: deterministic tool-family hint narrows the catalog when the
+        // goal unambiguously names one family; full catalog otherwise.
+        let hint = Self.toolFamilyHint(for: goal)
+        var catalog: String
+        if hint.isEmpty {
+            catalog = await Self.toolCatalog()
+        } else {
+            let allTools = await MainActor.run { ToolRegistry.shared.allTools }
+            if let hinted = Self.hintedCatalog(from: allTools, families: hint) {
+                catalog = hinted
+            } else {
+                catalog = await Self.toolCatalog()
+            }
+        }
         var attempt = 0
         var lastError: PlanValidationError?
+        var rawOutputs: [String] = []
 
         // Bounded: 1 initial attempt + 1 repair attempt. No loops.
+        var lastRawOutput: String?
         while attempt < 2 {
             attempt += 1
             let prompt = Self.buildPrompt(
                 goal: goal,
                 catalog: catalog,
-                repairFeedback: lastError.map { Self.repairFeedback(for: $0, context: context) }
+                repairFeedback: lastError.map { Self.repairFeedback(for: $0, context: context) },
+                previousAttempt: attempt > 1 ? lastRawOutput : nil
             )
 
-            let raw = try await generate(prompt: prompt)
+            let raw = try await generate(prompt: prompt, maxTokens: Self.plannerMaxTokens)
+            rawOutputs.append(raw.text)
+            lastRunRawOutputs.value = rawOutputs
+            lastRawOutput = raw.text
             let metrics = PlannerMetrics(
                 requestLatencyMs: raw.metrics.requestLatencyMs,
                 ttftMs: raw.metrics.ttftMs,
@@ -84,6 +118,7 @@ actor MLXPlanner {
             }
         }
 
+        lastRunRawOutputs.value = rawOutputs
         throw JarvisError.actionFailed(
             action: "mlx.planner",
             reason: "Planner output invalid after \(attempt) attempts: \(lastError?.description ?? "unknown")")
@@ -91,12 +126,22 @@ actor MLXPlanner {
 
     // MARK: - Generation
 
-    private func generate(prompt: String) async throws -> (text: String, metrics: PlannerMetrics) {
+    /// Token budget for planner generations. The default worker budget (256)
+    /// truncated the 0.5B model's JSON mid-object on multi-step goals (observed
+    /// raw failure: `"command":"echo jarvis_planner_e2e_verifi`). 384 leaves
+    /// headroom for 2-3 step plans while staying bounded.
+    static let plannerMaxTokens = 384
+
+    private func generate(prompt: String, maxTokens: Int = MLXPlanner.plannerMaxTokens) async throws -> (text: String, metrics: PlannerMetrics) {
         // Cancellation must surface as CancellationError even while waiting on
         // the provider stream (worker request continuations do not auto-abort).
         try Task.checkCancellation()
         let message = Message(role: .user, content: prompt)
-        let stream = await provider.complete(messages: [message], tools: nil, stream: false)
+        let stream = await provider.complete(
+            messages: [message],
+            tools: nil,
+            stream: false,
+            options: ["max_tokens": maxTokens])
         var text = ""
         for try await chunk in stream {
             try Task.checkCancellation()
@@ -119,18 +164,73 @@ actor MLXPlanner {
         return (text, metrics)
     }
 
+    // MARK: - Tool-family hints (deterministic, generic — no audit phrases)
+
+    /// Lightweight deterministic hint layer (STEP 4): narrow the planner's
+    /// catalog to the most relevant tool family when the goal unambiguously
+    /// names one. Heuristics NEVER hide the only valid tool: when no family is
+    /// confident, the FULL catalog is exposed. No execution happens here.
+    private static func toolFamilyHint(for goal: String) -> Set<String> {
+        let g = goal.lowercased()
+        var families: Set<String> = []
+
+        let openVerbs = ["open ", "launch ", "start ", "switch to ", "quit ", "close ", "kill "]
+        if openVerbs.contains(where: { g.hasPrefix($0) }) { families.insert("app") }
+
+        if g.contains("search the web") || g.contains("web search") || g.hasPrefix("search ")
+            || g.hasPrefix("look up ") || g.contains("on the internet") || g.contains("online for") {
+            families.insert("web")
+        }
+        if g.hasPrefix("fetch ") || g.hasPrefix("download ") || g.contains("content of the page")
+            || g.contains("read the page at") || g.contains("url") {
+            families.insert("web")
+        }
+        if g.hasPrefix("open ") && (g.contains("http") || g.contains(".com") || g.contains(".org") || g.contains(".io") || g.contains(".net")) {
+            families.remove("app")
+            families.insert("web")
+        }
+        let shellVerbs = ["run ", "execute ", "shell", "command ", "print ", "echo ", "list files", "directory", "working directory", "show me the current"]
+        if shellVerbs.contains(where: { g.contains($0) }) { families.insert("shell") }
+
+        return families
+    }
+
+    /// Filter the catalog to the hinted families. Returns nil when no hint is
+    /// confident (full catalog). Defensive: a hint that would filter out every
+    /// tool returns the full catalog instead.
+    private static func hintedCatalog(from tools: [any JarvisTool], families: Set<String>) -> String? {
+        guard !families.isEmpty else { return nil }
+        let familyTools: (String) -> [any JarvisTool] = { family in
+            switch family {
+            case "app": return tools.filter { $0.name == "open_app" }
+            case "shell": return tools.filter { $0.name == "run_shell" }
+            case "web": return tools.filter { ["web_search", "fetch_url", "open_browser"].contains($0.name) }
+            default: return []
+            }
+        }
+        let selected = families.flatMap(familyTools)
+        guard !selected.isEmpty else { return nil }
+        return selected.sorted { $0.name < $1.name }.map { tool in
+            let params = tool.parameterSpec
+                .map { spec in "\(spec.name)\(spec.required ? "" : "?"):\(spec.kind.rawValue)" }
+                .joined(separator: ", ")
+            return "- \(tool.name)(\(params)): \(tool.description)"
+        }.joined(separator: "\n")
+    }
+
     // MARK: - Prompt construction (kept compact for the 0.5B model)
 
     /// Compact catalog of the live ToolRegistry. Only these tools can ever be
     /// planned; anything else is rejected by PlanValidator.
     private static func toolCatalog() async -> String {
         let tools = await MainActor.run { ToolRegistry.shared.allTools.sorted { $0.name < $1.name } }
-        return tools.map { tool -> String in
+        return Self.renderCatalog(tools)
+    }
+
+    private static func renderCatalog(_ tools: [any JarvisTool]) -> String {
+        tools.map { tool -> String in
             let params = tool.parameterSpec
-                .map { spec in
-                    let req = spec.required ? "" : "?"
-                    return "\(spec.name)\(req):\(spec.kind.rawValue)"
-                }
+                .map { spec in "\(spec.name)\(spec.required ? "" : "?"):\(spec.kind.rawValue)" }
                 .joined(separator: ", ")
             return "- \(tool.name)(\(params)): \(tool.description)"
         }
@@ -140,7 +240,12 @@ actor MLXPlanner {
     /// Builds the full planner prompt. Tuned for a 0.5B model: short, rigid
     /// template, exact output shape with NO prose — small models copy structure
     /// far more reliably than they follow abstract instructions.
-    private static func buildPrompt(goal: String, catalog: String, repairFeedback: String?) -> String {
+    ///
+    /// Repair mode (STEP 6) feeds the ACTUAL validation error plus the model's
+    /// own previous output (clipped) — the model edits its real attempt instead
+    /// of regenerating from an empty skeleton. No tool catalog is repeated in
+    /// the repair block, keeping the prompt compact.
+    private static func buildPrompt(goal: String, catalog: String, repairFeedback: String?, previousAttempt: String?) -> String {
         var prompt = """
         Available tools:
         \(catalog)
@@ -159,13 +264,15 @@ actor MLXPlanner {
         Goal: what is the capital of France
         {"goal":"what is the capital of France","steps":[{"id":"step_1","tool":null,"arguments":{},"purpose":"answer from knowledge"}]}
         Goal: \(goal)
-        JSON:
         """
         if let repairFeedback {
-            let skeleton = "\n{\"goal\":\"" + goal + "\",\"steps\":[{\"id\":\"step_1\",\"tool\":\"<tool>\",\"arguments\":{},\"purpose\":\"\"}]}\n"
-            prompt += skeleton
-            prompt += "Your previous JSON was INVALID: \(repairFeedback)\nOutput the corrected JSON object only.\nJSON:\n"
+            prompt += "\nYour previous JSON was INVALID: \(repairFeedback)\n"
+            if let previousAttempt {
+                prompt += "Previous output: \(String(previousAttempt.prefix(500)))\n"
+            }
+            prompt += "Output the corrected JSON object only. Keep the same tool and arguments unless the error says otherwise.\n"
         }
+        prompt += "JSON: "
         return prompt
     }
 

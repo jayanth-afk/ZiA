@@ -26,6 +26,9 @@ actor AgentLoop {
 
     /// Set externally when the run's Task is cancelled (via onCancel in run()).
     private nonisolated(unsafe) static var cancellationObserved = LockedValue(false)
+    /// Generation counter that makes emergency Cancel/flag-reset race-free:
+    /// a new run must not inherit a stale emergency flag from a previous run.
+    private nonisolated(unsafe) static var runGeneration = LockedValue(0)
 
     /// Emergency Stop: request cancellation of the in-flight agent run.
     /// Combined with the cooperative cancellation checks inside the loop and
@@ -41,8 +44,16 @@ actor AgentLoop {
 
     /// Execute an autonomous compound goal through the full pipeline.
     func run(goal: String) async throws -> String {
+        // Generational flag reset: a new run must not inherit (and must not
+        // clear mid-flight) an emergency flag belonging to another run.
+        Self.runGeneration.value += 1
+        let myGeneration = Self.runGeneration.value
         Self.cancellationObserved.value = false
-        defer { Self.cancellationObserved.value = false }
+        defer {
+            if Self.runGeneration.value == myGeneration {
+                Self.cancellationObserved.value = false
+            }
+        }
         return try await runInternal(goal: goal)
     }
 
@@ -149,8 +160,22 @@ actor AgentLoop {
                         output: completedOutputs.last)
                     stepIndex += 1
                 } else {
-                    // Composition step: the planner deferred to the answer phase.
-                    completedOutputs.append(step.purpose)
+                    // Composition step (tool:null): produce a REAL direct answer
+                    // with one bounded local-model generation conditioned on the
+                    // goal + actual observations. Falls back to the planner's own
+                    // purpose text only if composition fails — never a fake answer.
+                    let composed: String
+                    do {
+                        composed = try await DirectComposer().composeAnswer(
+                            goal: goal, observations: observations)
+                    } catch is CancellationError {
+                        try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                        throw CancellationError()
+                    } catch {
+                        JarvisLogger.brain.warning("Direct composition failed, using planner purpose: \(error.localizedDescription)")
+                        composed = step.purpose
+                    }
+                    completedOutputs.append(composed)
                     try stateMachine.updateStep(
                         taskId: task.id,
                         stepIndex: stepIndex,
@@ -221,6 +246,12 @@ actor AgentLoop {
             _ = try? stateMachine.transition(taskId: taskId, to: .cancelled, error: "Agent task cancelled during planning")
             throw CancellationError()
         } catch {
+            // Emergency Stop must bypass the recovery chain entirely: no
+            // replanning after an emergency cancellation request.
+            if Self.cancellationObserved.value {
+                _ = try? stateMachine.transition(taskId: taskId, to: .cancelled, error: "Agent task cancelled")
+                throw CancellationError()
+            }
             // PLANNING -> FAILED -> RECOVERING -> REPLANNING -> retry, bounded.
             // A second consecutive planning failure propagates (fail safely).
             try stateMachine.transition(taskId: taskId, to: .failed, error: "Planner failed: \(error.localizedDescription)")

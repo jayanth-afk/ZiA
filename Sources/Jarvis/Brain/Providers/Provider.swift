@@ -67,5 +67,24 @@ protocol LLMProvider: Actor {
         stream: Bool
     ) -> AsyncThrowingStream<StreamChunk, Error>
 
-    func healthCheck() async -> ProviderHealth
+    /// Optional per-request overrides (e.g. ["max_tokens": 384]). Default
+    /// implementation ignores options and forwards to complete(messages:tools:stream:).
+    /// Callers that never pass options are unaffected.
+    func complete(
+        messages: [Message],
+        tools: [ToolDefinition]?,
+        stream: Bool,
+        options: [String: any Sendable]
+    ) -> AsyncThrowingStream<StreamChunk, Error>
+}
+
+extension LLMProvider {
+    func complete(
+        messages: [Message],
+        tools: [ToolDefinition]?,
+        stream: Bool,
+        options: [String: any Sendable]
+    ) -> AsyncThrowingStream<StreamChunk, Error> {
+        complete(messages: messages, tools: tools, stream: stream)
+    }
 }

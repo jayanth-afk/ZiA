@@ -1,4 +1,12 @@
 import Foundation
+import CoreFoundation
+
+/// Type ID of a genuine JSON boolean (CFBoolean) as bridged to NSNumber.
+/// Used to keep booleans distinct from numeric 0/1 when normalizing arguments.
+private func CFBooleanGetFalseTypeID() -> CFTypeID {
+    let falseBoolean = false as NSNumber
+    return CFGetTypeID(falseBoolean)
+}
 
 // MARK: - Plan Schema
 
@@ -79,25 +87,127 @@ enum AgentPlanParser {
 
     /// Extract the outermost JSON object from arbitrary model output
     /// (handles prose wrapping and ```json fences) and decode it.
+    ///
+    /// The 0.5B model frequently emits MULTIPLE plan objects for multi-step
+    /// goals (one per sub-goal). Candidates are tried in order; the first
+    /// schema-valid object wins.
     static func parse(_ text: String) -> Result<AgentPlan, PlanValidationError> {
-        let bounded = String(text.prefix(maxPlannerOutputCharacters))
-        guard let jsonText = extractJSONObject(in: bounded) else {
+        // The repair prompt embeds an example skeleton containing the goal text.
+        // Small models sometimes echo it verbatim alongside their real plan;
+        // a skeleton echo is never a plan (it has a placeholder tool value).
+        let boundedRaw = String(text.prefix(maxPlannerOutputCharacters))
+        let bounded = stripJSONTerminatorEcho(stripSkeletonEcho(boundedRaw))
+        let candidates = extractJSONObjectCandidates(in: bounded)
+        guard !candidates.isEmpty else {
             return .failure(.noJSONFound)
         }
 
-        guard let data = jsonText.data(using: .utf8) else {
-            return .failure(.noJSONFound)
-        }
-
-        do {
-            let raw = try JSONSerialization.jsonObject(with: data)
-            guard let object = raw as? [String: Any] else {
-                return .failure(.wrongType(field: "root"))
+        var firstFailure: PlanValidationError?
+        for jsonText in candidates {
+            guard let data = jsonText.data(using: .utf8) else { continue }
+            do {
+                let raw = try JSONSerialization.jsonObject(with: data)
+                guard let object = raw as? [String: Any] else {
+                    if firstFailure == nil { firstFailure = .wrongType(field: "root") }
+                    continue
+                }
+                switch validateSchema(object) {
+                case .success(let plan):
+                    return .success(plan)
+                case .failure(let error):
+                    if firstFailure == nil { firstFailure = error }
+                }
+            } catch {
+                if firstFailure == nil {
+                    firstFailure = .malformedJSON(underlying: error.localizedDescription, raw: jsonText)
+                }
             }
-            return validateSchema(object)
-        } catch {
-            return .failure(.malformedJSON(underlying: error.localizedDescription, raw: jsonText))
         }
+
+        // Attempt prefix-join repair of an unterminated JSON string at the end
+        // of the output (truncated mid-value by the token cap). Joining a
+        // string that was split across an object boundary preserves the model's
+        // intended value verbatim — no new content is invented. This is a
+        // formatting repair only: every semantic check still runs afterward.
+        let repairCandidate = firstFailure.map({ error -> PlanValidationError? in
+            if case .malformedJSON = error { return error }
+            return nil
+        })
+        if repairCandidate != nil {
+            // Formatting repair 1: orphaned purpose — the model closes the step
+            // object early and emits "purpose" at array level
+            // (`}},"purpose":"X"}]`). Removing one brace reattaches it to the
+            // step it belongs to.
+            let orphanFixed = bounded.replacingOccurrences(
+                of: "}},\"purpose\":\"",
+                with: "},\"purpose\":\"")
+            if orphanFixed != bounded,
+               let data = orphanFixed.data(using: .utf8),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               case .success(let plan) = validateSchema(object) {
+                return .success(plan)
+            }
+
+            // Formatting repair 2: prefix-join of a string truncated by the
+            // token cap (value split across an object boundary).
+            if let joined = joinSplitJSONString(in: bounded),
+               let joinedData = joined.data(using: .utf8),
+               let joinedObject = try? JSONSerialization.jsonObject(with: joinedData) as? [String: Any],
+               case .success(let repairedPlan) = validateSchema(joinedObject) {
+                return .success(repairedPlan)
+            }
+        }
+
+        return .failure(firstFailure ?? .noJSONFound)
+    }
+
+    /// Remove a verbatim echo of the repair-prompt skeleton. The skeleton ends
+    /// with `"tool":"<tool>"` — the placeholder distinguishes it from real plans.
+    private static func stripSkeletonEcho(_ text: String) -> String {
+        guard text.contains("\"tool\":\"<tool>\"") || text.contains("\"tool\": \"<tool>\"") else {
+            return text
+        }
+        var result = text
+        for needle in ["\"tool\":\"<tool>\"", "\"tool\": \"<tool>\""] {
+            if let range = result.range(of: needle) {
+                result.removeSubrange(range)
+            }
+        }
+        return result
+    }
+
+    /// The prompt terminates with `JSON:`; a 0.5B model frequently glues the
+    /// terminator onto the end of the echoed goal (`"goal":"echo hiJSON",
+    /// ... "echo hiJSON"}`, or `hiJSON:` before a newline). Strip terminator
+    /// suffixes from string values so echoed command text stays byte-identical
+    /// to the user's actual goal.
+    private static func stripJSONTerminatorEcho(_ text: String) -> String {
+        var result = text
+        // Observed 0.5B echo variants of the "JSON: " prompt terminator glued
+        // to string values: `valueJSON: "` (colon+space), `valueJSON"` (bare
+        // word), and `valueJSON:\n"` (colon+newline).
+        for needle in ["JSON: \"", "JSON\"", "JSON:\n\""] {
+            while let range = result.range(of: needle) {
+                result.replaceSubrange(range, with: "\"")
+            }
+        }
+        return result
+    }
+
+    /// Observed 0.5B truncation mode: a string value is cut by the token cap
+    /// and the remaining tail restarts mid-string in the next emitted object
+    /// (`"command":"echo foo\nbarbaz"}`). Join the head (minus the dangling
+    /// key quote) with the tail (minus its opening quote) to recover the
+    /// intended value. Returns nil when the text does not match this pattern.
+    private static func joinSplitJSONString(in text: String) -> String? {
+        guard let quoteSplit = text.range(of: "\"\n", options: .backwards) else { return nil }
+        var head = String(text[..<quoteSplit.lowerBound])
+        let tail = String(text[quoteSplit.upperBound...])
+        guard let colon = head.lastIndex(of: ":") else { return nil }
+        head = String(head[..<colon])
+        guard head.hasSuffix("\"") else { return nil }
+        head += ": \"" + tail
+        return head
     }
 
     // MARK: Schema-level validation (shape only; tool semantics live in the validator)
@@ -142,7 +252,14 @@ enum AgentPlanParser {
                     // so no object ever reaches tool execution unvalidated.
                     switch value {
                     case let s as String: arguments[key] = s
-                    case let n as NSNumber: arguments[key] = n.stringValue
+                    case let n as NSNumber:
+                        // Distinguish real JSON booleans (CFBoolean) from numeric
+                        // 0/1 before stringifying — 40 must stay "40", not "true".
+                        if CFGetTypeID(n) == CFBooleanGetFalseTypeID() {
+                            arguments[key] = n.boolValue ? "true" : "false"
+                        } else {
+                            arguments[key] = n.stringValue
+                        }
                     default:
                         return .failure(.wrongArgumentType(tool: toolName ?? "?", argument: key, expected: "a scalar"))
                     }
@@ -158,15 +275,15 @@ enum AgentPlanParser {
         return .success(AgentPlan(goal: goal, steps: steps))
     }
 
-    /// Extract the first balanced `{ ... }` block. String-aware so braces
+    /// Extract ALL balanced top-level `{ ... }` blocks. String-aware so braces
     /// inside JSON string values (e.g. shell commands) do not break extraction.
-    private static func extractJSONObject(in text: String) -> String? {
-        guard let start = text.firstIndex(of: "{") else { return nil }
-
+    private static func extractJSONObjectCandidates(in text: String) -> [String] {
+        var candidates: [String] = []
         var depth = 0
         var inString = false
         var escape = false
-        var index = start
+        var start: String.Index?
+        var index = text.startIndex
 
         while index < text.endIndex {
             let char = text[index]
@@ -177,17 +294,21 @@ enum AgentPlanParser {
             } else if char == "\"" {
                 inString.toggle()
             } else if !inString {
-                if char == "{" { depth += 1 }
+                if char == "{" {
+                    if depth == 0 { start = index }
+                    depth += 1
+                }
                 if char == "}" {
                     depth -= 1
-                    if depth == 0 {
-                        return String(text[start...index])
+                    if depth == 0, let s = start {
+                        candidates.append(String(text[s...index]))
+                        start = nil
                     }
                 }
             }
             index = text.index(after: index)
         }
-        return nil
+        return candidates
     }
 }
 
@@ -221,6 +342,14 @@ enum PlanValidator {
 
             guard let tool = registry.getTool(named: toolName) else {
                 return .failure(.unknownTool(toolName))
+            }
+
+            // An empty command is not a real plan — reject instead of
+            // executing a no-op shell invocation.
+            if toolName == "run_shell",
+               let command = step.arguments["command"],
+               command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return .failure(.unsafeOperation(tool: toolName, reason: "empty shell command"))
             }
 
             let declared = Dictionary(uniqueKeysWithValues: tool.parameterSpec.map { ($0.name, $0) })

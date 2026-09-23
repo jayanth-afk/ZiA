@@ -210,6 +210,18 @@ actor MLXProvider: LLMProvider {
         tools: [ToolDefinition]?,
         stream: Bool
     ) -> AsyncThrowingStream<StreamChunk, Error> {
+        complete(messages: messages, tools: tools, stream: stream, options: [:])
+    }
+
+    func complete(
+        messages: [Message],
+        tools: [ToolDefinition]?,
+        stream: Bool,
+        options: [String: any Sendable]
+    ) -> AsyncThrowingStream<StreamChunk, Error> {
+        // Per-request token budget (planner requests need more headroom than
+        // the 256-token default; small direct requests can be tighter).
+        let maxTokens = (options["max_tokens"] as? Int) ?? 256
         let slot = self.modelSlot
         return AsyncThrowingStream { continuation in
             Task {
@@ -222,7 +234,7 @@ actor MLXProvider: LLMProvider {
                     let reply = try await worker.request([
                         "op": "generate",
                         "prompt": prompt,
-                        "max_tokens": 256
+                        "max_tokens": maxTokens
                     ])
 
                     guard reply["ok"] as? Bool == true else {

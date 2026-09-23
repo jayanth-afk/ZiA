@@ -873,6 +873,84 @@ enum SelfTest {
         check((ctx.previousFailure?.count ?? 0) <= 160, "Replan failure context clipped to 160 chars")
         check(ctx.priorObservations.count <= 2, "Replan keeps at most 2 prior observations")
 
+        // ── Phase 14: Planner Reliability Hardening (Phase D.5 components) ──
+        print("\n─── Phase 14: Planner Reliability Hardening (D.5) ───")
+
+        // 14.1 Multi-object planner output: first schema-valid object wins
+        let multiObject = #"{"goal":"g one","steps":[{"id":"s1","tool":"run_shell","arguments":{"command":"echo one"},"purpose":"p"}]}"# + "\n" +
+            #"{"goal":"g two","steps":[{"id":"s1","tool":"run_shell","arguments":{"command":"echo two"},"purpose":"p"}]}"#
+        var multiOK = false
+        if case .success(let p) = AgentPlanParser.parse(multiObject), p.steps.count == 1,
+           p.steps.first?.arguments["command"] == "echo one" {
+            multiOK = true
+        }
+        check(multiOK, "Multi-object output parses to the first valid plan")
+
+        // 14.2 Orphaned purpose repair: }},"purpose":" reattaches the purpose
+        let orphanPurpose = #"{"goal":"g","steps":[{"id":"s1","tool":"run_shell","arguments":{"command":"echo hi"}},"purpose":"do it"}]}"#
+        var orphanOK = false
+        if case .success(let p) = AgentPlanParser.parse(orphanPurpose),
+           p.steps.first?.purpose == "do it", p.steps.first?.toolName == "run_shell" {
+            orphanOK = true
+        }
+        check(orphanOK, "Orphaned purpose brace-slip repaired")
+
+        // 14.3 JSON terminator echo stripped from string values
+        let terminatorEcho = #"{"goal":"say hiJSON: ","steps":[{"id":"s1","tool":"run_shell","arguments":{"command":"echo say hiJSON"},"purpose":"p"}]}"#
+        var terminatorOK = false
+        if case .success(let p) = AgentPlanParser.parse(terminatorEcho),
+           p.goal == "say hi", p.steps.first?.arguments["command"] == "echo say hi" {
+            terminatorOK = true
+        }
+        check(terminatorOK, "JSON terminator echo stripped from goal/arguments")
+
+        // 14.4 Boolean arguments normalize to "true"/"false" (not 0/1)
+        let boolJSON = #"{"goal":"g","steps":[{"id":"s1","tool":"run_shell","arguments":{"command":"ls","flag":true},"purpose":"p"}]}"#
+        var boolOK = false
+        if case .success(let p) = AgentPlanParser.parse(boolJSON),
+           p.steps.first?.arguments["flag"] == "true", p.steps.first?.arguments["command"] == "ls" {
+            boolOK = true
+        }
+        check(boolOK, "Boolean argument stringifies as true/false")
+
+        // 14.5 Empty shell command rejected at plan time
+        let emptyCmd = AgentPlan(goal: "g", steps: [PlanStep(id: "s1", toolName: "run_shell", arguments: ["command": "   "], purpose: "p")])
+        var emptyRejected = false
+        if case .failure(.unsafeOperation(let t, _)) = PlanValidator.validate(emptyCmd), t == "run_shell" {
+            emptyRejected = true
+        }
+        check(emptyRejected, "Empty shell command rejected as unsafe")
+
+        // 14.6-14.10 Router + hint layer checks. SelfTest is @MainActor, so
+        // MainActor-isolated router calls are made directly; the hint hook is
+        // nonisolated (pure function) so it needs no actor hop either.
+        var routeResults: [Bool] = []
+        // 14.6 safe echo matches; metacharacters do NOT
+        let echoMatch = DeterministicRouter.shared.match("echo hello world")
+        routeResults.append(echoMatch?.intent == "shell.echo")
+        let echoDanger = DeterministicRouter.shared.match("echo hello && rm -rf /")
+        routeResults.append(echoDanger == nil)
+        // 14.7 clipboard write with verbatim text extraction
+        let clipWriteMatch = DeterministicRouter.shared.match("copy meeting at 3pm to the clipboard")
+        routeResults.append(clipWriteMatch?.intent == "clipboard.write")
+        routeResults.append(clipWriteMatch?.parameters["text"] == "meeting at 3pm")
+        // 14.8 say command routes to TTS intent
+        let sayMatch = DeterministicRouter.shared.match("say good morning")
+        routeResults.append(sayMatch?.intent == "speech.say")
+        // 14.9 router does NOT overreach into semantic/ambiguous goals
+        for ambiguous in ["what is the capital of France", "explain recursion", "search the web for apples"] {
+            routeResults.append(DeterministicRouter.shared.match(ambiguous) == nil)
+        }
+        // 14.10 tool-family hint decisions (nonisolated static, no generation)
+        let shellHint = MLXPlanner.testHookToolFamilyHint(for: "run the command echo hello")
+        routeResults.append(shellHint.contains("shell"))
+        let noHint = MLXPlanner.testHookToolFamilyHint(for: "what is the capital of France")
+        routeResults.append(noHint.isEmpty)
+        let urlHint = MLXPlanner.testHookToolFamilyHint(for: "open https://example.com")
+        routeResults.append(urlHint.contains("web") && !urlHint.contains("app"))
+        check(routeResults.count == 11 && routeResults.allSatisfy { $0 },
+              "Router + hint layer: safe echo, metachar refusal, clipboard write, say, no semantic overreach, hint decisions (\(routeResults.count) checks)")
+
         // ── Results ──
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

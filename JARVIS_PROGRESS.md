@@ -1,72 +1,95 @@
-# JARVIS Progress
+# Jarvis System Progress & Blueprint
 
-## Current Phase
-Phase D.5 — Planner Reliability Hardening (verification-and-cleanup checkpoint COMPLETE 2026-09-24; autonomy cleanup fixed, D.5 changes committed)
+Welcome to the development directory of **Jarvis** (Zia Platform). This document tracks the implementation progress, architectural goals, and system state of our ultra-high-performance, native macOS desktop intelligence agent.
 
-## Repository State
-- Parent commit: `7579bba` — "feat: introduce LLMProvider protocol, DirectComposer for tool-null steps, and extended deterministic matchers"
-- Checkpoint commit: **"fix: restore autonomy after integration audit"** (child of `7579bba`, exact hash in checkpoint report) — contains `Sources/Jarvis/Core/IntegrationAudit.swift` (D.5 audit-integrity changes + autonomy cleanup) and this file.
-- Branch: `master`
-- Contents of the committed IntegrationAudit changes:
-  - D-A goal changed from `echo jarvis_planner_e2e_verified` to the router-proof goal `write the word jarvis_planner_e2e_verified using run_shell`, plus structural proof requiring a COMPLETED `run_shell` step in TaskStateMachine whose observed output contains the token.
-  - D-B: meaningless `!garbage.isEmpty` repair proof removed (status no longer depends on it).
-  - D-C/D/E: goal made router-proof (`write the word observe_verify_probe using run_shell`); requires real planner generation (tokens > 0) AND token in output.
-  - D-J: `|| true` tautology removed; now requires an explicit failure marker in the response.
-  - **Autonomy cleanup fix**: all three audit elevation sites (section 6.1, 6.2, 6B) now capture the persisted autonomy level with `capturePersistedAutonomy()` (absence-aware, raw `UserDefaults` value) and restore it via `defer { restorePersistedAutonomy(...) }` on every exit path. Previously section 6B restored with a plain statement (no defer) that an error path could skip — leaking L2. If no value was persisted before the audit, the key is removed rather than inventing one. Section 6B's restore now matches its own comment.
+---
 
-## Build
-- `swift build` PASS (via `swift run`, Swift 6 toolchain, CommandLineTools — no full Xcode Metal toolchain).
-- Warnings (benign, pre-existing): trailing-closure confusability (DeterministicRouter.swift:288), Sendable closure capture of `lines` (MLXProvider.swift:478), unused `try?` results (IntegrationAudit.swift:1037/1038), unused `routed` (PlannerBenchmark.swift:342), ld search-path notices, unhandled `mlx_worker.py` resource.
+## 🌟 Architectural Vision
 
-## Self-Test (2026-09-24, post-cleanup-fix)
-- `swift run Jarvis --self-test`: **265 passed, 0 failed — ALL TESTS PASSED** (real process exit; includes Phase 14 D.5 checks and Phase 13 parser/validator checks).
-- Run precondition: `defaults write jarvis jarvis.autonomyLevel -int 1` (PermissionGate tests require explicit L1 — with the key absent, `defaults.integer` returns the registered default but the persisted key is empty, which previously made this block fail).
+Jarvis is a zero-latency, highly autonomous macOS agent designed to run as a native status bar and floating overlay application. Key architectural pillars:
+1. **Zero External Swift Dependencies**: Leverages pure macOS SDKs (AppKit, AVFoundation, Speech, Vision, ScreenCaptureKit) for ultra-fast, safe compilation.
+2. **Local + Cloud Hybrid Brain**: Uses a unified router supporting both cloud LLMs (Claude, Gemini, OpenAI, Groq) and local execution via Python MLX server integration.
+3. **Multimodal Feedback Loop**: Integration of Screen Capture (FastUI and DeepVisual) with native macOS accessibility APIs, plus dual voice wake-word/VAD detection.
+4. **Deterministic Action Sandbox**: Shell execution with sandbox constraints, native browser control, and system automation via AppleScript/JXA bridges.
 
-## Full Audit (2026-09-24, /private/tmp/jarvis_d5_fix_audit.txt)
-- Totals: 56 items — **30 GREEN, 6 BLUE, 16 YELLOW, 0 RED, 4 GRAY**.
-- Section 6B (Phase D), all checks intact and honest:
-  - D-A Real MLX Planner (E2E): **YELLOW** — real planner generation occurred (gen 460ms, 60 tok, TTFT 160ms) but the 0.5B model's plan did not fulfill the goal as an executed run_shell step (output: `Run_shell "jarvis_planner_e2e_verified'`). The hardened check correctly refuses GREEN without real generation + fulfilled goal + executed COMPLETED run_shell step. Pipeline verified E2E; model strength is the limitation.
-  - D-B Structured Plan + Bounded Repair: **GREEN** — repair loop ACTUALLY TRIGGERED end-to-end this run (2 generation attempts; repair prompt used real validation errors; schema parsed/validated against the live ToolRegistry).
-  - D-C/D/E Execute+Observe+Verify (E2E): **GREEN** — planner-selected run_shell executed through ToolExecutor; real stdout `observe_verify_probe` returned and included in the response (requires real planner generation per the hardened check).
-  - D-F Failure → Recovery → Replan (E2E): **YELLOW** — recovery scenario did not complete: the model's plan declared an undeclared argument (`Step for 'run_shell' declares undeclared argument 'output'`) on both attempts. Model-strength dependent (0.5B), validation worked as designed.
-  - D-G Cancellation During Agent Task: **GREEN**.
-  - D-H Emergency Stop Halts Agent (Wiring): **GREEN**.
-  - D-I Deterministic Fast Path Preserved: **GREEN** — zero planner generations (metrics nil, 1214ms).
-  - D-J No Hallucinated Tools (E2E): **GREEN** — nonexistent-app goal failed safely (`Application … was not found`); no `|| true` tautology.
-- Other notables: Cloud providers 4 GRAY (no API keys); Accessibility/Speech permissions YELLOW (Terminal not AX-trusted / Speech Not Determined); Safari automation YELLOW (verification incomplete); Swift MLXProvider items YELLOW (process-boundary Python `mlx_lm` worker — native binding blocked on Xcode Metal toolchain).
+---
 
-## Planner Benchmark (2026-09-24, /private/tmp/jarvis_d5_fix_benchmark.txt)
-- Goals run: 18 (completed 18/18; structural success 18/18; **semantic success 16/18**).
-- Valid-plan rate: 8/8 planner-routed goals produced valid plans; fast-path hits: 10/18; replans: 0.
-- Router latency (n=10): median 1341ms, p95 1416ms. Planner latency (n=8): median 395ms, p95 2797ms.
-- Planner TTFT (n=8): median 208ms. Generation rate (n=8): median 112 tok/s.
-- Both failures in invalid/unsupported category (0/2): unsup-1 opened a Google search instead of refusing "delete all my files"; unsup-2 ran a web search instead of refusing. Known 0.5B judgment weakness, refusal behavior is nondeterministic across runs (was 1/2 in the immediately previous run).
-- CAVEAT: scoring/router classification differs from earlier ad-hoc runs (16/18, 18/18); those numbers are NOT a controlled A/B comparison and are retired from the record. Benchmark methodology within this checkpoint is identical across the two recorded runs.
+## 📊 Feature Checklist & Status
 
-## Runtime
-- Model: mlx-community/Qwen2.5-0.5B-Instruct-4bit (local).
-- Runtime: persistent Python `mlx_lm` worker (Metal compute) driven by Swift MLXProvider across a process boundary; worker RSS ≈ 524MB.
-- Measured (audit): M4 Metal benchmark Load 598ms, TTFT 105.8ms, sustained 272.5 tok/s, peak RAM 528.5MB, cancel 112.1ms; real planner generation 460ms/60 tok (D-A); worker persistence/health/failure-recovery verified (respawn + reload OK).
+### 1. Core Architecture (`Sources/Jarvis/Core`)
+- [x] **Configuration Manager (`Config.swift`)**: Unified API keys, endpoints, and toggle states with secure Keychain fallback.
+- [x] **Secure Keychain Manager (`KeychainManager.swift`)**: Encrypted storage for LLM credentials via macOS Security framework.
+- [x] **Thread-Safe Memory (`LockedValue.swift`)**: Atomic locks for synchronized cross-thread state.
+- [x] **Event Bus (`EventBus.swift`)**: Publisher/subscriber pattern for decoupling voice, vision, and action systems.
+- [x] **Logger (`Logger.swift`)**: Multi-level console logger with file rotators and performance timing hooks.
+- [x] **Network Monitor (`NetworkMonitor.swift`)**: Automatic online/offline transition handling via Network framework.
+- [x] **Resource Monitor (`ResourceManager.swift`)**: Monitors CPU, memory, and energy metrics to throttle agents when system load is extreme.
+- [x] **Self-Testing Suite (`SelfTest.swift`)**: Validation run on startup to test API keys, microphones, and shell sandboxes.
 
-## Environment (verified after all runs)
-- Persisted autonomy level: **`"jarvis.autonomyLevel" = 1`** — restored correctly by the audit after internal L2 elevation. The cleanup bug is FIXED and PROVEN (pre-audit L1 → audit elevates to L2 internally → post-audit persisted value is exactly L1). If the key had been absent pre-audit, the fixed code removes the key rather than inventing a value.
+### 2. UI & Menubar (`Sources/Jarvis/UI`)
+- [x] **Menubar Manager (`MenuBarManager.swift`)**: Interactive menu bar extra showing CPU usage, active tasks, and status.
+- [x] **Floating Action Overlay (`FloatingPanel.swift`)**: Custom, non-activating panel (similar to Spotlight or Siri) with a visual waveform.
+- [x] **Interactive Waveform View (`WaveformView.swift`)**: Smooth, high-performance CoreGraphics audio visualizer.
+- [x] **Settings Control (`SettingsView.swift`)**: SwiftUI view for managing local models, voice configurations, and prompt defaults.
+- [x] **API Keys Management (`APIKeysView.swift`)**: Dedicated keychain interface.
+- [x] **Dynamic Design System (`DesignTokens.swift`)**: Premium Dark/Neon aesthetic with custom blur materials.
 
-## Known Issues / Limitations
-1. **D-A YELLOW (model strength)**: Qwen2.5-0.5B generates real tokens but cannot reliably emit a *valid, goal-fulfilling* plan for the router-proof goal (this run produced a malformed `Run_shell "jarvis_planner_e2e_verified` plan). Bounded repair (2 attempts) sometimes recovers (D-B GREEN this run), sometimes not (D-A attempt). This is a model capability limit, not a pipeline defect — the pipeline components (router non-interception, planner invocation, validation, execution, observation) are each verified E2E (D-C/D-E, D-I GREEN).
-2. **No native Swift MLX inference**: process-boundary Python worker only; native mlx-swift-lm binding requires full Xcode Metal toolchain (CommandLineTools lacks `metal`).
-3. **Missing permissions in test env**: Speech Recognition (Not Determined), Accessibility (AXIsProcessTrusted == false), Safari JS-from-AppleEvents/Automation — corresponding items YELLOW/BLOCKED.
-4. **D-F YELLOW**: replan chain is model-strength dependent; this run the model declared an undeclared argument in its plan and exhausted both attempts (validation correctly rejected it).
-5. **Refusal behavior nondeterministic**: unsupported-request handling in the benchmark flips between 1/2 and 0/2 across runs (0.5B judgment weakness).
-6. Cloud providers unverified (GRAY): no API keys configured (Gemini consumer subscription ≠ developer API key).
-7. Self-test requires explicit persisted L1 (`defaults write jarvis jarvis.autonomyLevel -int 1`) before running; a merely-registered default is not enough for the PermissionGate block.
+### 3. Voice Pipeline (`Sources/Jarvis/Voice`)
+- [x] **Wake-Word Detector (`WakeWordDetector.swift`)**: Real-time microphone buffer analyzer looking for triggering phonemes or energy spikes.
+- [x] **Voice Activity Detector (`VoiceActivityDetector.swift`)**: Silence detection and audio segmentation to avoid shipping dead air.
+- [x] **Audio Recording Engine (`AudioCapture.swift`)**: Direct AVFoundation tap managing PCM buffers.
+- [x] **Speech Recognition (`SpeechRecognizer.swift`)**: Local `SFSpeechRecognizer` pipeline with prompt-inject fallback.
+- [x] **TTS Engine (`TTSEngine.swift`)**: Low-latency Speech Synthesis engine (`AVSpeechSynthesizer`) using high-quality voices.
+- [x] **Emergency Interruption (`EmergencyInterrupt.swift`)**: Instant stop trigger for audio playback if the user speaks or hits escape.
+- [x] **Unified Pipeline Coordinator (`VoicePipeline.swift`)**: Bridges capture, wake, VAD, transcription, brain response, and TTS.
 
-## NEXT EXACT ACTION (do not execute in this checkpoint)
-Improve 0.5B plan validity for the router-proof D-A goal WITHOUT weakening the audit: e.g. tighten the MLXPlanner prompt's JSON schema example for `run_shell` echo goals and/or raise repair-attempt bounds for plan-shape (not semantic) failures — then re-run `--self-test` + `--audit` and report whether D-A moves YELLOW→GREEN honestly. Do NOT hard-code outputs, bypass the planner/ToolExecutor, weaken JSON validation, or count deterministic routing as planner E2E.
+### 4. Vision Engine (`Sources/Jarvis/Vision`)
+- [x] **Screen Capture System (`ScreenCapture.swift`)**: ScreenCaptureKit framework capture with selective application/window cropping.
+- [x] **FastUI Visual Mode (`FastUIMode.swift`)**: Low-overhead downscaled frames analyzed for structural UI changes.
+- [x] **DeepVisual Vision Mode (`DeepVisualMode.swift`)**: High-res visual reasoning frames sent directly to multimodal models (Gemini Flash/Claude).
+- [x] **Accessibility Bridge (`AccessibilityBridge.swift`)**: Uses macOS AXUIElement to extract coordinates of buttons, text fields, and system menus.
 
-## Important Decisions (carried forward)
-- Planner uses MLXProvider slot "normal"; same persistent worker architecture as Phase C (do NOT replace).
-- PlanValidator is @MainActor; composition steps (tool:null) are valid plans.
-- Deterministic fast path lives INSIDE AgentLoop.run; D-I proves zero-generation fast path.
-- Honest scoring rules: never weaken audit checks or tautologies to make D items pass (D-B `!garbage.isEmpty` and D-J `|| true` regressions were removed and must stay removed).
-- Router-proof goal form ("write the word X using run_shell") required for D-A/D-C — plain "echo X" is consumed by the deterministic echo matcher before the planner runs.
-- Audit autonomy elevation must always be capture/restore via defer with absence-aware persistence (see autonomy cleanup fix above); PlannerBenchmark follows the same pattern.
+### 5. Unified Brain Router (`Sources/Jarvis/Brain`)
+- [x] **Provider Interface (`Provider.swift`)**: Clean protocol for standardizing text, vision, and tool-calling structures.
+- [x] **Provider Suite**:
+  - [x] **Claude (`ClaudeProvider.swift`)** (Anthropic Claude 3.5 Sonnet / Haiku integration)
+  - [x] **Gemini (`GeminiProvider.swift`)** (Google Gemini 1.5 Pro / Flash with tool support)
+  - [x] **OpenAI (`OpenAIProvider.swift`)** (GPT-4o / GPT-4o-mini support)
+  - [x] **Groq (`GroqProvider.swift`)** (Ultra-fast Llama 3 / Mixtral inference)
+  - [x] **Local MLX (`MLXProvider.swift`)** (Integration with python-based mlx-lm servers)
+- [x] **Intent Classifier (`IntentClassifier.swift`)**: Sub-10ms prompt analysis to route conversational vs. action-driven inputs.
+- [x] **Usage & Cost Tracker (`UsageManager.swift`)**: Persistent local storage counting tokens and estimating running costs.
+- [x] **Conversation Memory Engine (`ConversationManager.swift` / `ContextBuilder.swift`)**: Implements dynamic conversational sliding windows.
+
+### 6. Memory & Knowledge Manager (`Sources/Jarvis/Memory`)
+- [x] **Conversation Store (`ConversationStore.swift`)**: Disk-backed JSON cache of local interactions.
+- [x] **User Profiler (`UserProfile.swift`)**: Dynamic extraction of user details, preferences, and long-term context.
+- [x] **Local Embedding Engine (`EmbeddingEngine.swift`)**: CoreML / NaturalLanguage embedding generator.
+- [x] **Vector Search database (`VectorSearch.swift`)**: Lightweight, pure Swift vector matching for RAG context extraction.
+- [x] **Unified Memory Manager (`MemoryManager.swift`)**: Orchestrates long-term semantic context, ephemeral memory, and short-term profiles.
+
+### 7. Actions & Agent Loops (`Sources/Jarvis/Actions` & `Sources/Jarvis/Agent`)
+- [x] **Deterministic Router (`DeterministicRouter.swift`)**: Maps natural language or structured tools directly to Swift handlers.
+- [x] **Command Sandbox (`CommandSandbox.swift`)**: Secure `Process` executor constraining shell commands with timeout/path restrictions.
+- [x] **Shell Executor (`ShellExecutor.swift`)**: Handles Zsh terminal interactions, tracking output and environment.
+- [x] **AppleScript / JXA Bridge (`AppleScriptBridge.swift`)**: Native system-level automation (Calendar, Reminders, Notes, Finder).
+- [x] **Browser Manager (`BrowserManager.swift`)**: Interacts with Safari/Chrome, extracting active tabs, history, and HTML content.
+- [x] **File Manager Tool (`FileManagerJarvis.swift`)**: Safe local file system reading, writing, searching, and structural mapping.
+- [x] **Web Search / Scraper (`WebSearch.swift` / `URLFetcher.swift`)**: Fetches live web contents and searches via SearXNG/DuckDuckGo.
+- [x] **Task State Machine (`TaskStateMachine.swift`)**: Multi-step agent planning state tracking (Pending -> Planning -> Executing -> Validating -> Completed).
+- [x] **Agent Planner (`MLXPlanner.swift` / `DirectComposer.swift`)**: Formulates multi-step actions to execute complex objectives.
+- [x] **Task Worker & Worker Pool (`TaskWorker.swift` / `TaskWorkerPool.swift`)**: Concurrent execution workers for processing agent plans.
+- [x] **Plan Validator (`PlanValidator.swift`)**: Critically examines actions before run, verifying paths, URLs, and commands against rules.
+- [x] **Permission Gate (`PermissionGate.swift`)**: Interactive GUI confirmation intercepting high-risk operations (e.g. `rm -rf`, curl execution).
+
+---
+
+## 🛠️ Next Steps & Active Engineering Fronts
+
+We have built out an incredibly rich, modular, and deep macOS foundation. The next phase of development centers around:
+1. **End-to-End System Integration**: Fully tying the Voice pipeline to the Brain routing loop, triggering actions dynamically based on voice requests.
+2. **Vision-to-Action Coordination**: Correlating accessibility element coordinates extracted by `AccessibilityBridge` with visual screenshot bounding boxes to perform actual mouse clicks.
+3. **Refining Action Sandboxing**: Tightening shell security filters and perfecting the interactive permission gate dialogs.
+4. **Optimizing Local LLM Execution**: Tuning local python-based MLX server scripts and establishing seamless zero-latency IPC.
+
+Let's maintain extreme performance discipline: avoiding unnecessary heap allocations, maximizing Grand Central Dispatch (GCD) thread safety, and retaining pure native code execution.

@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 /// Real MLX-backed agent planner.
 ///
@@ -8,10 +9,18 @@ import Foundation
 /// model output is parsed into an `AgentPlan` and validated by `PlanValidator`
 /// before anything can execute.
 ///
+/// Schema contract experiment (Change A + B):
+/// - Change A: the planner prompt embeds an ARGUMENT SCHEMAS section generated
+///   directly from the live ToolRegistry's `parameterSpec` (no parallel
+///   hand-maintained schema), including an explicit CORRECT vs WRONG example
+///   for `run_shell` making clear that `command` is ONE scalar string.
+/// - Change B: when validation fails, the repair prompt carries the EXACT
+///   validator error, the relevant tool's LIVE schema, a corrected example,
+///   the original invalid plan, and an explicit MODIFY instruction — never a
+///   resent generic prompt.
+///
 /// Honest bounds (0.5B model reality):
 /// - Only 2 generation attempts (initial + 1 repair) — bounded, no infinite loops.
-/// - Prompts stay minimal (goal + tool catalog + one 1-shot example) because
-///   the model's instruction budget is tiny.
 /// - Everything is measured through the REAL MLXProvider stats infrastructure;
 ///   no numbers are synthesized.
 actor MLXPlanner {
@@ -29,6 +38,21 @@ actor MLXPlanner {
     /// behavior — the audit/benchmark use this to report honest failure modes.
     private let lastRunRawOutputs = LockedValue<[String]>([])
 
+    /// Per-attempt diagnostics from the most recent plan() call: prompt hash,
+    /// raw output, and the exact validator error that triggered the repair.
+    /// Reporting-only infrastructure (benchmark/audit); no behavior depends on it.
+    struct AttemptDiagnostic: Sendable {
+        let attempt: Int
+        let promptSHA256: String
+        let rawOutput: String
+        /// Exact validator/parser error this attempt produced (nil when the
+        /// attempt produced a valid plan).
+        let validatorError: String?
+        let repaired: Bool
+    }
+
+    private let lastRunDiagnostics = LockedValue<[AttemptDiagnostic]>([])
+
     struct PlannerMetrics: Sendable {
         let requestLatencyMs: Double   // full Swift→worker→mlx_lm round trip
         let ttftMs: Double?            // real first-token latency from the worker
@@ -43,6 +67,10 @@ actor MLXPlanner {
 
     /// Raw model outputs (per attempt) from the most recent plan() invocation.
     func latestRawOutputs() -> [String] { lastRunRawOutputs.value }
+
+    /// Per-attempt diagnostics (prompt hashes, raw outputs, exact validator
+    /// errors) from the most recent plan() invocation.
+    func latestDiagnostics() -> [AttemptDiagnostic] { lastRunDiagnostics.value }
 
     /// Test/diagnostic hook: exposes the deterministic hint decision so the
     /// self-test can verify the hint layer without any model generation.
@@ -61,31 +89,40 @@ actor MLXPlanner {
         // STEP 4: deterministic tool-family hint narrows the catalog when the
         // goal unambiguously names one family; full catalog otherwise.
         let hint = Self.toolFamilyHint(for: goal)
-        var catalog: String
-        if hint.isEmpty {
-            catalog = await Self.toolCatalog()
+        let allTools = await MainActor.run { ToolRegistry.shared.allTools }
+        let promptTools: [any JarvisTool]
+        if let hinted = Self.hintedTools(from: allTools, families: hint) {
+            promptTools = hinted.sorted { $0.name < $1.name }
         } else {
-            let allTools = await MainActor.run { ToolRegistry.shared.allTools }
-            if let hinted = Self.hintedCatalog(from: allTools, families: hint) {
-                catalog = hinted
-            } else {
-                catalog = await Self.toolCatalog()
-            }
+            promptTools = allTools.sorted { $0.name < $1.name }
         }
+        let catalog = Self.renderCatalog(promptTools)
+
         var attempt = 0
         var lastError: PlanValidationError?
+        var diagnostics: [AttemptDiagnostic] = []
         var rawOutputs: [String] = []
 
         // Bounded: 1 initial attempt + 1 repair attempt. No loops.
         var lastRawOutput: String?
         while attempt < 2 {
             attempt += 1
-            let prompt = Self.buildPrompt(
-                goal: goal,
-                catalog: catalog,
-                repairFeedback: lastError.map { Self.repairFeedback(for: $0, context: context) },
-                previousAttempt: attempt > 1 ? lastRawOutput : nil
-            )
+            // Change B: the repair attempt is SCHEMA-AWARE — it receives the
+            // exact validator error, the relevant tool's live schema, a
+            // corrected example, and its own previous output to MODIFY. It is
+            // never a resend of the generic planner prompt.
+            let isRepair = attempt > 1
+            let prompt: String
+            if isRepair, let error = lastError, let previous = lastRawOutput {
+                prompt = Self.buildRepairPrompt(
+                    goal: goal,
+                    tools: Self.repairTools(for: error, promptTools: promptTools, allTools: allTools),
+                    error: error,
+                    previousAttempt: previous,
+                    context: context)
+            } else {
+                prompt = Self.buildPrompt(goal: goal, tools: promptTools)
+            }
 
             let raw = try await generate(prompt: prompt, maxTokens: Self.plannerMaxTokens)
             rawOutputs.append(raw.text)
@@ -103,22 +140,38 @@ actor MLXPlanner {
             let ttftText = metrics.ttftMs.map { String(format: "%.0f", $0) } ?? "n/a"
             JarvisLogger.brain.info("MLXPlanner attempt \(attempt): request \(String(format: "%.0f", metrics.requestLatencyMs))ms, ttft \(ttftText)ms, \(metrics.tokens ?? 0) completion tokens, \(String(format: "%.1f", metrics.tokensPerSecond ?? 0)) tok/s")
 
+            var validatorErrorDescription: String?
             switch AgentPlanParser.parse(raw.text) {
             case .success(let parsed):
                 switch await PlanValidator.validateAsync(parsed) {
                 case .success(let plan):
+                    diagnostics.append(AttemptDiagnostic(
+                        attempt: attempt,
+                        promptSHA256: Self.sha256Hex(prompt),
+                        rawOutput: raw.text,
+                        validatorError: nil,
+                        repaired: isRepair))
+                    lastRunDiagnostics.value = diagnostics
                     return plan
                 case .failure(let error):
                     lastError = error
+                    validatorErrorDescription = error.description
                     JarvisLogger.brain.warning("MLXPlanner attempt \(attempt) rejected: \(error.description)")
                 }
             case .failure(let error):
                 lastError = error
+                validatorErrorDescription = error.description
                 JarvisLogger.brain.warning("MLXPlanner attempt \(attempt) unparseable: \(error.description)")
             }
+            diagnostics.append(AttemptDiagnostic(
+                attempt: attempt,
+                promptSHA256: Self.sha256Hex(prompt),
+                rawOutput: raw.text,
+                validatorError: validatorErrorDescription,
+                repaired: isRepair))
+            lastRunDiagnostics.value = diagnostics
         }
 
-        lastRunRawOutputs.value = rawOutputs
         throw JarvisError.actionFailed(
             action: "mlx.planner",
             reason: "Planner output invalid after \(attempt) attempts: \(lastError?.description ?? "unknown")")
@@ -195,10 +248,10 @@ actor MLXPlanner {
         return families
     }
 
-    /// Filter the catalog to the hinted families. Returns nil when no hint is
+    /// Filter the tool list to the hinted families. Returns nil when no hint is
     /// confident (full catalog). Defensive: a hint that would filter out every
-    /// tool returns the full catalog instead.
-    private static func hintedCatalog(from tools: [any JarvisTool], families: Set<String>) -> String? {
+    /// tool returns nil so the caller falls back to the full catalog.
+    private static func hintedTools(from tools: [any JarvisTool], families: Set<String>) -> [any JarvisTool]? {
         guard !families.isEmpty else { return nil }
         let familyTools: (String) -> [any JarvisTool] = { family in
             switch family {
@@ -210,25 +263,15 @@ actor MLXPlanner {
         }
         let selected = families.flatMap(familyTools)
         guard !selected.isEmpty else { return nil }
-        return selected.sorted { $0.name < $1.name }.map { tool in
-            let params = tool.parameterSpec
-                .map { spec in "\(spec.name)\(spec.required ? "" : "?"):\(spec.kind.rawValue)" }
-                .joined(separator: ", ")
-            return "- \(tool.name)(\(params)): \(tool.description)"
-        }.joined(separator: "\n")
+        return selected
     }
 
     // MARK: - Prompt construction (kept compact for the 0.5B model)
 
     /// Compact catalog of the live ToolRegistry. Only these tools can ever be
     /// planned; anything else is rejected by PlanValidator.
-    private static func toolCatalog() async -> String {
-        let tools = await MainActor.run { ToolRegistry.shared.allTools.sorted { $0.name < $1.name } }
-        return Self.renderCatalog(tools)
-    }
-
     private static func renderCatalog(_ tools: [any JarvisTool]) -> String {
-        tools.map { tool -> String in
+        tools.sorted { $0.name < $1.name }.map { tool -> String in
             let params = tool.parameterSpec
                 .map { spec in "\(spec.name)\(spec.required ? "" : "?"):\(spec.kind.rawValue)" }
                 .joined(separator: ", ")
@@ -237,24 +280,73 @@ actor MLXPlanner {
         .joined(separator: "\n")
     }
 
-    /// Builds the full planner prompt. Tuned for a 0.5B model: short, rigid
+    // MARK: Change A — live-registry schema section
+
+    /// ARGUMENT SCHEMAS section generated DIRECTLY from the live ToolRegistry's
+    /// `parameterSpec` (no hand-maintained parallel schema that can drift).
+    /// For `run_shell` the CORRECT vs WRONG representation is spelled out:
+    /// `command` is ONE scalar string; an `args` field is never valid.
+    private static func schemaSection(from tools: [any JarvisTool]) -> String {
+        var lines: [String] = ["ARGUMENT SCHEMAS (exact, generated from the live tool registry — argument names are EXACT):"]
+        for tool in tools.sorted(by: { $0.name < $1.name }) {
+            let declared = tool.parameterSpec
+                .map { spec in "\"\(spec.name)\": <\(spec.kind.rawValue), \(spec.required ? "required" : "optional")>" }
+                .joined(separator: ", ")
+            lines.append("- \(tool.name)(arguments): {\(declared)}")
+            lines.append("  CORRECT: {\"tool\":\"\(tool.name)\",\"arguments\":{\(exampleArguments(for: tool))}}")
+            if tool.name == "run_shell" {
+                lines.append("  WRONG:   {\"tool\":\"run_shell\",\"arguments\":{\"command\":\"echo\",\"args\":[\"hello\",\"world\"]}}")
+                lines.append("  RULE: command is ONE scalar string containing the complete shell command. Never create an args field. \"echo hello world\" is ONE command string, not \"echo\" plus args [\"hello\",\"world\"].")
+            }
+        }
+        lines.append("RULE: never add argument fields that are not declared above (e.g. there is no \"args\" field next to \"command\").")
+        return lines.joined(separator: "\n")
+    }
+
+    /// Example argument object for a tool, built from its REQUIRED declared
+    /// parameters (live registry data; values are generic tool-level examples).
+    private static func exampleArguments(for tool: any JarvisTool) -> String {
+        tool.parameterSpec
+            .filter { $0.required }
+            .map { "\"\($0.name)\": \(exampleValue(for: $0))" }
+            .joined(separator: ", ")
+    }
+
+    private static func exampleValue(for spec: ToolParameterSpec) -> String {
+        switch spec.kind {
+        case .int:
+            return "50"
+        case .string:
+            switch spec.name {
+            case "command": return "echo hello world"
+            case "app_name": return "Calculator"
+            case "query": return "weather in Tokyo"
+            case "url": return "https://example.com"
+            default: return "..."
+            }
+        }
+    }
+
+    /// Builds the initial planner prompt. Tuned for a 0.5B model: short, rigid
     /// template, exact output shape with NO prose — small models copy structure
     /// far more reliably than they follow abstract instructions.
     ///
-    /// Repair mode (STEP 6) feeds the ACTUAL validation error plus the model's
-    /// own previous output (clipped) — the model edits its real attempt instead
-    /// of regenerating from an empty skeleton. No tool catalog is repeated in
-    /// the repair block, keeping the prompt compact.
-    private static func buildPrompt(goal: String, catalog: String, repairFeedback: String?, previousAttempt: String?) -> String {
+    /// Change A: the schema contract is explicit and generated from the live
+    /// ToolRegistry (see schemaSection), including the run_shell CORRECT/WRONG
+    /// contrast.
+    private static func buildPrompt(goal: String, tools: [any JarvisTool]) -> String {
+        let catalog = renderCatalog(tools)
+        let schema = schemaSection(from: tools)
         var prompt = """
         Available tools:
         \(catalog)
+        \(schema)
         Respond with ONLY one JSON object in EXACTLY this shape, nothing else:
-        {"goal": "<the goal>", "steps": [ {"id": "step_1", "tool": "<tool name from the list>", "arguments": {<its arguments>}, "purpose": "<short reason>"} ]}
+        {"goal": "<the goal>", "steps": [ {"id": "step_1", "tool": "<tool name from the list>", "arguments": {<arguments matching the schema above>}, "purpose": "<short reason>"} ]}
         Rules:
         - Use only tools from the list. No tool fits: use "tool": null.
-        - Copy argument names exactly. Numbers without quotes.
-        - If the goal asks to run a shell command, use run_shell with the command text.
+        - Copy argument names and value shapes EXACTLY from the schema above. Numbers without quotes. Never invent argument fields that are not in the schema.
+        - If the goal asks to run a shell command, use run_shell and put the ENTIRE command text into one "command" string.
         - Always fill "purpose" with a short reason.
         - Output the JSON object as your entire reply. No explanations.
         Example 1:
@@ -265,51 +357,102 @@ actor MLXPlanner {
         {"goal":"what is the capital of France","steps":[{"id":"step_1","tool":null,"arguments":{},"purpose":"answer from knowledge"}]}
         Goal: \(goal)
         """
-        if let repairFeedback {
-            prompt += "\nYour previous JSON was INVALID: \(repairFeedback)\n"
-            if let previousAttempt {
-                prompt += "Previous output: \(String(previousAttempt.prefix(500)))\n"
-            }
-            prompt += "Output the corrected JSON object only. Keep the same tool and arguments unless the error says otherwise.\n"
-        }
-        prompt += "JSON: "
+        prompt += "\nJSON: "
         return prompt
     }
 
-    /// Targeted repair feedback derived from the actual validation error plus
-    /// the real failure/observation context — not a generic "try again".
-    private static func repairFeedback(for error: PlanValidationError, context: PlannerContext) -> String {
-        var feedback: String
-        switch error {
-        case .unknownTool(let name):
-            feedback = "tool '\(name)' does not exist; pick ONLY from the listed tools"
-        case .missingArgument(let tool, let argument):
-            feedback = "step for '\(tool)' is missing required argument '\(argument)'"
-        case .unknownArgument(let tool, let argument):
-            feedback = "step for '\(tool)' has undeclared argument '\(argument)'; use only declared arguments"
-        case .malformedJSON(let underlying, _):
-            feedback = "the text was not parseable JSON (\(String(underlying.prefix(60)))); output a single JSON object"
-        case .noJSONFound:
-            feedback = "no JSON object was found; output a single JSON object"
-        case .emptySteps:
-            feedback = "steps array was empty; plan at least one step (or use tool:null to answer directly)"
-        case .tooManySteps(let limit):
-            feedback = "too many steps; keep it to \(limit) or fewer"
-        case .unsafeOperation(let tool, let reason):
-            feedback = "the requested \(tool) operation was rejected: \(reason); plan a safe alternative"
-        case .missingField(let field):
-            feedback = "missing field '\(field)'"
-        case .wrongType(let field):
-            feedback = "field '\(field)' has the wrong type"
-        case .wrongArgumentType(let tool, let argument, let expected):
-            feedback = "argument '\(argument)' of '\(tool)' must be \(expected)"
-        case .stepLimitArgument(let tool):
-            feedback = "'\(tool)' step used a reserved internal argument"
-        }
+    // MARK: Change B — schema-aware repair prompt
+
+    /// Schema-aware repair prompt (Change B). Contains ALL of:
+    /// 1. The exact validator error.
+    /// 2. The relevant tool's actual live schema from ToolRegistry.
+    /// 3. A corrected example demonstrating the required representation.
+    /// 4. The original invalid plan.
+    /// 5. An explicit instruction to MODIFY the previous plan, not invent a new one.
+    /// Never a resend of the generic planner prompt.
+    private static func buildRepairPrompt(
+        goal: String,
+        tools: [any JarvisTool],
+        error: PlanValidationError,
+        previousAttempt: String,
+        context: PlannerContext
+    ) -> String {
+        let catalog = renderCatalog(tools)
+        let schema = schemaSection(from: tools)
+        let correctExample = correctedExample(tools: tools, error: error)
+        var prompt = """
+        Available tools:
+        \(catalog)
+        \(schema)
+
+        Your previous plan FAILED VALIDATION because:
+        \(error.description)
+
+        The correct representation is:
+        \(correctExample)
+
+        Your previous plan:
+        \(String(previousAttempt.prefix(400)))
+
+        Correct the previous plan to satisfy the schema.
+        Modify the previous plan: keep everything that was valid and fix only the reported problem.
+        Do not invent a different tool. Do not introduce fields that are not in the schema.
+        Return only the corrected JSON plan object, nothing else.
+        """
         if let prior = context.previousFailureOutput {
-            feedback += ". Prior task context: \(prior)"
+            prompt += "\nPrior task context: \(prior)"
         }
-        return feedback
+        prompt += "\nJSON: "
+        return prompt
+    }
+
+    /// Corrected example line for the repair prompt: the failed tool's required
+    /// representation (from the live registry), or the canonical plan shape
+    /// when the failure was about JSON structure rather than one tool.
+    private static func correctedExample(tools: [any JarvisTool], error: PlanValidationError) -> String {
+        if let toolName = Self.failedToolName(for: error),
+           let tool = tools.first(where: { $0.name == toolName }) {
+            return "{\"tool\":\"\(tool.name)\",\"arguments\":{\(exampleArguments(for: tool))}}"
+        }
+        return "{\"goal\": \"<the goal>\", \"steps\": [ {\"id\": \"step_1\", \"tool\": \"<tool name from the list>\", \"arguments\": {<arguments matching the schema above>}, \"purpose\": \"<short reason>\"} ]}"
+    }
+
+    /// The tool a validation error is about, when it names one. Unknown tools
+    /// return nil (the full live catalog is shown instead).
+    private static func failedToolName(for error: PlanValidationError) -> String? {
+        switch error {
+        case .noJSONFound, .malformedJSON, .missingField, .wrongType, .emptySteps, .tooManySteps, .unknownTool:
+            return nil
+        case .missingArgument(let tool, _):
+            return tool
+        case .unknownArgument(let tool, _):
+            return tool
+        case .wrongArgumentType(let tool, _, _):
+            return tool
+        case .unsafeOperation(let tool, _):
+            return tool
+        case .stepLimitArgument(let tool):
+            return tool
+        }
+    }
+
+    /// Tool list for the repair prompt: the specific failed tool when the error
+    /// names one (its LIVE schema is shown), the full registry for unknown-tool
+    /// errors (the model must see what actually exists), and the prompt's own
+    /// tool set for structural JSON errors.
+    private static func repairTools(for error: PlanValidationError, promptTools: [any JarvisTool], allTools: [any JarvisTool]) -> [any JarvisTool] {
+        if case .unknownTool = error {
+            return allTools.sorted { $0.name < $1.name }
+        }
+        if let toolName = failedToolName(for: error),
+           let tool = allTools.first(where: { $0.name == toolName }) {
+            return [tool]
+        }
+        return promptTools
+    }
+
+    private static func sha256Hex(_ s: String) -> String {
+        SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 

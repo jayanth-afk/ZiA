@@ -37,12 +37,25 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
         synthesizer.isSpeaking || synthesizer.isPaused
     }
 
+    /// Measured latency for immediate barge-in halt from stop() invocation.
+    private(set) var lastBargeInHaltLatencyMs: Double?
+
     // Callbacks
     var onSpeechFinished: (@MainActor @Sendable () -> Void)?
 
     private override init() {
         super.init()
         synthesizer.delegate = self
+
+        // Direct barge-in subscription: user speech onset halts TTS immediately
+        EventBus.shared.subscribe(UserInterruptedEvent.self) { [weak self] _ in
+            self?.stop()
+        }
+
+        // Direct emergency stop subscription: emergency phrase halts TTS immediately
+        EventBus.shared.subscribe(EmergencyStopEvent.self) { [weak self] _ in
+            self?.stop()
+        }
     }
 
     // MARK: - Public API
@@ -70,9 +83,13 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
     /// Stop speech immediately (barge-in / interrupt).
     func stop() {
         guard isSpeaking else { return }
-        currentUtteranceText = nil
-        synthesizer.stopSpeaking(at: .immediate)
-        JarvisLogger.voice.info("TTS stopped immediately")
+        let start = CFAbsoluteTimeGetCurrent()
+        if synthesizer.isSpeaking {
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        lastBargeInHaltLatencyMs = elapsed
+        JarvisLogger.voice.info("TTS stopped immediately in \(String(format: "%.2f", elapsed))ms")
     }
 
     // MARK: - Private Apple TTS
@@ -90,7 +107,7 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
 
         currentUtteranceText = text
         speakDispatchTime = CFAbsoluteTimeGetCurrent()
-        JarvisLogger.voice.info("Speaking: '\(text)'")
+        JarvisLogger.voice.info("Speaking: '\(text, privacy: .public)'")
         synthesizer.speak(utterance)
     }
 
@@ -102,7 +119,7 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
             guard let self, text == self.currentUtteranceText else { return }
             if let dispatch = self.speakDispatchTime {
                 self.lastAudioStartLatencyMs = (CFAbsoluteTimeGetCurrent() - dispatch) * 1000.0
-                JarvisLogger.voice.info("TTS audio started (audio-start latency: \(String(format: "%.1f", self.lastAudioStartLatencyMs ?? 0))ms)")
+                JarvisLogger.voice.info("TTS audio started (audio-start latency: \(String(format: "%.1f", self.lastAudioStartLatencyMs ?? 0), privacy: .public)ms)")
             }
         }
     }

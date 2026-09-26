@@ -1,0 +1,113 @@
+╔══════════════════════════════════════════╗
+║      JARVIS — Self-Test Suite           ║
+╚══════════════════════════════════════════╝
+
+
+─── AppState ───
+  ✓ Initial state is OFF
+  ✓ OFF → SLEEP works
+  ✓ SLEEP → ACTIVE works
+  ✓ ACTIVE → SLEEP works
+  ✓ SLEEP → OFF works
+  ✓ OFF → ACTIVE rejected (invalid)
+  ✓ Same-state is no-op
+  ✓ Network offline update
+  ✓ Network online update
+  ✓ Memory pressure warning
+  ✓ Memory pressure nominal
+
+─── EventBus ───
+  ✓ Publish delivers to subscriber
+  ✓ Multiple subscribers all receive
+  ✓ Event types are isolated
+  ✓ Unsubscribe stops delivery
+  ✓ removeAll clears all handlers
+  ✓ No subscribers does not crash
+
+─── PipelineTimer ───
+  ✓ Report has correct ID
+  ✓ Report has 3 stages
+  ✓ Total time greater than 0
+  ✓ Elapsed between stages greater than 0
+  ✓ Missing stage returns nil
+  ✓ Empty timer has no stages
+  ✓ Summary contains ID
+
+─── Config ───
+  ✓ Wake word has default
+  ✓ Autonomy level in range
+  ✓ Budget has default
+  ✓ Memory reserve has default
+
+─── ResourceManager ───
+  ✓ Total memory detected: 16384MB
+  ✓ Model registered
+  ✓ Model memory tracked
+  ✓ Model unregistered
+  ✓ Model memory freed
+
+─── Phase 2: Audio Permissions & Capture ───
+  ✓ Microphone authorization status returns valid enum state (Authorized)
+  ✓ AudioCapture buffer injection delivers PCM frames to registered tap handlers
+
+─── Phase 2: Voice Activity Detector ───
+  ✓ VAD default threshold is positive
+  ✓ VAD hangover frames > 0
+  ✓ VAD reset clears speaking state
+
+─── Phase 2: Wake Word Detector ───
+  ✓ Wake word detector is active
+  ✓ Detects 'Jarvis' at sentence start
+  ✓ Emits WakeWordDetectedEvent
+  ✓ Ignores sentences without wake word
+  ✓ Detects 'Jarvis' in compound sentence
+  ✓ Wake word detector stopped
+
+─── Phase 2: Apple Speech Recognition ───
+  ✓ Speech recognition authorization status returns valid enum state (Not Determined)
+  ✓ Partial transcript delivered via TranscriptPartialEvent
+  ✓ Final transcript delivered via TranscriptFinalEvent with duration metric
+
+─── Phase 2: Emergency Interrupt & Cancellation ───
+  ✓ Emergency stop production subscribers registered (>= 6)
+  ✓ Detects standalone 'stop'
+  ✓ Emits EmergencyStopEvent
+  ✓ Emergency stop halt latency is sub-50ms (4.83ms)
+  ✓ Case-insensitive emergency detection
+  ✓ Punctuation-tolerant emergency detection
+  ✓ Prefix emergency detection ('jarvis stop')
+  ✓ Does not false-positive on casual usage ('don't stop')
+
+─── Phase 2: TTS Engine & Barge-In ───
+  ✓ TTS is idle initially
+  ✓ TTS stop when idle does not crash
+  ✓ UserInterruptedEvent halts TTS immediately (barge-in)
+
+─── Phase 2: Audio Player ───
+  ✓ AudioPlayer is idle initially
+  ✓ AudioPlayer stop when idle does not crash
+
+─── Phase 2: Voice Pipeline & Decoupling ───
+  ✓ VoicePipeline initially not running before start
+  ✓ VoicePipeline starts cleanly
+  ✓ VoicePipeline status reflects active runtime
+  ✓ VoicePipeline reports microphone authorization truthfully
+  ✓ VoicePipeline reports speech authorization truthfully
+  ✓ Voice interaction loop remains responsive after command handoff
+  ✓ Emergency stop cleans up all in-flight voice background tasks
+
+─── Phase 3: Deterministic Router ───
+  ✓ Matches 'open Safari'
+  ✓ Intent is app.open
+  ✓ Extracts app name 'safari'
+  ✓ Matches quit command
+  ✓ Matches volume set command
+  ✓ Extracts volume level 65
+  ✓ Matches mute command
+  ✓ Matches volume up
+  ✓ Matches time query
+  ✓ Matches date query
+  ✓ Matches lock screen
+  ✓ Matches empty trash
+  ✓ Empty trash is classified destructive
+  ✗ FAIL: PermissionGate blocks d

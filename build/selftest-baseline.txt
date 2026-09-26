@@ -1,0 +1,1 @@
+error: the Swift tools version specification is possibly missing a version specifier; consider using '// swift-tools-version: 6.4' to specify the current Swift toolchain version as the lowest Swift version supported by the project

@@ -48,6 +48,18 @@ enum TaskState: String, Sendable, Codable {
     }
 }
 
+/// Explicit verification outcome for a task step (P1).
+/// Task state records whether a step's result was independently verified —
+/// it is never inferred from state/output text after the fact.
+enum VerificationOutcome: String, Sendable, Codable {
+    /// Tool executed and verification passed (ToolExecutor or AgentLoop check).
+    case passed
+    /// Verification ran and failed — the step did not achieve its outcome.
+    case failed
+    /// No verification applied (e.g. LLM composition step with no tool effect).
+    case notApplicable
+}
+
 /// A discrete step within a compound task.
 struct TaskStep: Identifiable, Sendable, Codable {
     let id: UUID
@@ -58,6 +70,7 @@ struct TaskStep: Identifiable, Sendable, Codable {
     var state: TaskState
     var output: String?
     var error: String?
+    var verification: VerificationOutcome?
 
     init(
         id: UUID = UUID(),
@@ -67,7 +80,8 @@ struct TaskStep: Identifiable, Sendable, Codable {
         arguments: [String: String] = [:],
         state: TaskState = .created,
         output: String? = nil,
-        error: String? = nil
+        error: String? = nil,
+        verification: VerificationOutcome? = nil
     ) {
         self.id = id
         self.stepNumber = stepNumber
@@ -77,6 +91,7 @@ struct TaskStep: Identifiable, Sendable, Codable {
         self.state = state
         self.output = output
         self.error = error
+        self.verification = verification
     }
 }
 
@@ -212,6 +227,59 @@ final class TaskStateMachine: @unchecked Sendable {
         stateHistory[taskId, default: []].append((newState, Date()))
 
         JarvisLogger.actions.info("Task [\(taskId.uuidString.prefix(8))] transitioned: \(oldState.rawValue) -> \(newState.rawValue)")
+        return task
+    }
+
+    /// Record the verification outcome of a specific step (P1: verification
+    /// result is explicit task state, not reconstructed from error text).
+    @discardableResult
+    func markStepVerification(taskId: UUID, stepIndex: Int, outcome: VerificationOutcome) throws -> JarvisTask {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var task = tasks[taskId] else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.markStepVerification", reason: "Task \(taskId) not found")
+        }
+        guard stepIndex >= 0 && stepIndex < task.steps.count else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.markStepVerification", reason: "Invalid step index \(stepIndex)")
+        }
+
+        task.steps[stepIndex].verification = outcome
+        task.updatedAt = Date()
+        tasks[taskId] = task
+        return task
+    }
+
+    /// Record which step the task is currently positioned at (P1).
+    /// Index is clamped to 0...steps.count so a replan-shortened plan stays valid.
+    @discardableResult
+    func setCurrentStepIndex(taskId: UUID, index: Int) throws -> JarvisTask {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var task = tasks[taskId] else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.setCurrentStepIndex", reason: "Task \(taskId) not found")
+        }
+
+        task.currentStepIndex = max(0, min(index, task.steps.count))
+        task.updatedAt = Date()
+        tasks[taskId] = task
+        return task
+    }
+
+    /// Increment the task's retry/replan counter (P1).
+    @discardableResult
+    func incrementRetryCount(taskId: UUID) throws -> JarvisTask {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var task = tasks[taskId] else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.incrementRetryCount", reason: "Task \(taskId) not found")
+        }
+
+        task.retryCount += 1
+        task.updatedAt = Date()
+        tasks[taskId] = task
         return task
     }
 

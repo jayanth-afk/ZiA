@@ -39,8 +39,47 @@ final class AudioCapture: @unchecked Sendable {
         bufferHandlers.removeValue(forKey: id)
     }
 
+    // MARK: - Authorization State
+    enum AuthorizationStatus: String, Sendable, CaseIterable {
+        case authorized = "Authorized"
+        case denied = "Denied"
+        case restricted = "Restricted"
+        case notDetermined = "Not Determined"
+        case unavailable = "Unavailable"
+    }
+
+    /// Synchronously query current microphone authorization status without prompting TCC.
+    var authorizationStatus: AuthorizationStatus {
+        guard Bundle.main.infoDictionary?["NSMicrophoneUsageDescription"] != nil else {
+            return .unavailable
+        }
+        if #available(macOS 14.0, *) {
+            let appPermission = AVAudioApplication.shared.recordPermission
+            if appPermission == .granted {
+                return .authorized
+            } else if appPermission == .denied {
+                return .denied
+            }
+
+            let status = AVCaptureDevice.authorizationStatus(for: .audio)
+            switch status {
+            case .authorized: return .authorized
+            case .denied: return .denied
+            case .restricted: return .restricted
+            case .notDetermined: return .notDetermined
+            @unknown default: return .unavailable
+            }
+        } else {
+            return .authorized
+        }
+    }
+
     /// Request microphone permission.
     func requestPermission() async -> Bool {
+        guard Bundle.main.infoDictionary?["NSMicrophoneUsageDescription"] != nil else {
+            JarvisLogger.voice.warning("Skipping requestPermission: NSMicrophoneUsageDescription not found in bundle Info.plist")
+            return false
+        }
         if #available(macOS 14.0, *) {
             return await AVAudioApplication.requestRecordPermission()
         } else {
@@ -50,6 +89,11 @@ final class AudioCapture: @unchecked Sendable {
                 }
             }
         }
+    }
+
+    /// Inject a synthetic PCM buffer to all registered handlers (used for automated testing and offline verification).
+    nonisolated func injectBuffer(_ buffer: AVAudioPCMBuffer) {
+        distributeBuffer(buffer)
     }
 
     /// Start capturing audio from the default input device.
@@ -84,6 +128,9 @@ final class AudioCapture: @unchecked Sendable {
 
     private nonisolated func makeTapBlock() -> (AVAudioPCMBuffer, AVAudioTime) -> Void {
         return { [weak self] buffer, _ in
+            // VOICE_TRACE: prove mic audio is flowing (first buffer only — no
+            // continuous audio logging for privacy).
+            VoiceTraceState.shared.markAudioReceived(buffer)
             self?.distributeBuffer(buffer)
         }
     }

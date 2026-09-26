@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import AVFoundation
 import SwiftUI
 
 /// Lightweight test runner that works without Xcode/XCTest.
@@ -8,6 +9,7 @@ import SwiftUI
 enum SelfTest {
 
     static func runAll() {
+        setbuf(stdout, nil)
         print("╔══════════════════════════════════════════╗")
         print("║      JARVIS — Self-Test Suite           ║")
         print("╚══════════════════════════════════════════╝\n")
@@ -24,6 +26,10 @@ enum SelfTest {
                 print("  ✗ FAIL: \(message)")
             }
         }
+
+        let prevAutonomy = Config.shared.autonomyLevel
+        Config.shared.autonomyLevel = 1
+        defer { Config.shared.autonomyLevel = prevAutonomy }
 
         // ── AppState Tests ──
         print("\n─── AppState ───")
@@ -167,6 +173,23 @@ enum SelfTest {
         check(rm.totalModelMemoryMB == 0, "Model memory freed")
 
         // ── Phase 2: Voice Subsystem Tests ──
+        print("\n─── Phase 2: Audio Permissions & Capture ───")
+        let capture = AudioCapture.shared
+        let micAuth = capture.authorizationStatus
+        check(AudioCapture.AuthorizationStatus.allCases.contains(micAuth), "Microphone authorization status returns valid enum state (\(micAuth.rawValue))")
+
+        let receivedInjectedBuffer = LockedValue(false)
+        if let dummyFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+           let dummyBuffer = AVAudioPCMBuffer(pcmFormat: dummyFormat, frameCapacity: 512) {
+            dummyBuffer.frameLength = 512
+            let tapToken = capture.addBufferHandler { _ in
+                receivedInjectedBuffer.value = true
+            }
+            capture.injectBuffer(dummyBuffer)
+            capture.removeBufferHandler(tapToken)
+        }
+        check(receivedInjectedBuffer.value, "AudioCapture buffer injection delivers PCM frames to registered tap handlers")
+
         print("\n─── Phase 2: Voice Activity Detector ───")
         let vad = VoiceActivityDetector.shared
         check(vad.configuration.energyThreshold > 0, "VAD default threshold is positive")
@@ -191,25 +214,54 @@ enum SelfTest {
         ww.stopListening()
         check(!ww.isListening, "Wake word detector stopped")
 
-        print("\n─── Phase 2: Emergency Interrupt ───")
+        print("\n─── Phase 2: Apple Speech Recognition ───")
+        let sr = SpeechRecognizer.shared
+        let srAuth = sr.authorizationStatus
+        check(SpeechRecognizer.AuthorizationStatus.allCases.contains(srAuth), "Speech recognition authorization status returns valid enum state (\(srAuth.rawValue))")
+
+        var partialReceived = false
+        let partialSub = bus.subscribe(TranscriptPartialEvent.self) { evt in
+            if evt.text == "open safari" { partialReceived = true }
+        }
+        sr.simulateTranscript("open safari", isFinal: false)
+        check(partialReceived, "Partial transcript delivered via TranscriptPartialEvent")
+        bus.unsubscribe(partialSub)
+
+        var finalReceived = false
+        let finalSub = bus.subscribe(TranscriptFinalEvent.self) { evt in
+            if evt.text == "open safari" { finalReceived = true }
+        }
+        sr.simulateTranscript("open safari", isFinal: true, durationMs: 12.5)
+        check(finalReceived, "Final transcript delivered via TranscriptFinalEvent with duration metric")
+        bus.unsubscribe(finalSub)
+
+        print("\n─── Phase 2: Emergency Interrupt & Cancellation ───")
         let emergency = EmergencyInterrupt.shared
+        check(emergency.emergencyStopSubscriberCount >= 6, "Emergency stop production subscribers registered (>= 6)")
 
         var emergencyFired = false
         let emSub = bus.subscribe(EmergencyStopEvent.self) { _ in emergencyFired = true }
 
         check(emergency.checkForEmergency(in: "stop"), "Detects standalone 'stop'")
         check(emergencyFired, "Emits EmergencyStopEvent")
+        check((emergency.lastEmergencyHaltLatencyMs ?? 999.0) < 50.0, "Emergency stop halt latency is sub-50ms (\(String(format: "%.2f", emergency.lastEmergencyHaltLatencyMs ?? 0))ms)")
 
         check(emergency.checkForEmergency(in: "CANCEL"), "Case-insensitive emergency detection")
         check(emergency.checkForEmergency(in: "abort!"), "Punctuation-tolerant emergency detection")
-        check(!emergency.checkForEmergency(in: "don't stop the music"), "Does not false-positive on casual usage")
+        check(emergency.checkForEmergency(in: "jarvis stop"), "Prefix emergency detection ('jarvis stop')")
+        check(!emergency.checkForEmergency(in: "don't stop the music"), "Does not false-positive on casual usage ('don't stop')")
         bus.unsubscribe(emSub)
 
-        print("\n─── Phase 2: TTS Engine ───")
+        print("\n─── Phase 2: TTS Engine & Barge-In ───")
         let tts = TTSEngine.shared
         check(!tts.isSpeaking, "TTS is idle initially")
         tts.stop() // Safe no-op when idle
         check(true, "TTS stop when idle does not crash")
+
+        // Barge-in preemption test
+        tts.speak("Testing barge in audio output", mode: .acknowledgement)
+        bus.publish(UserInterruptedEvent())
+        check(!tts.isSpeaking, "UserInterruptedEvent halts TTS immediately (barge-in)")
 
         print("\n─── Phase 2: Audio Player ───")
         let player = AudioPlayer.shared
@@ -217,11 +269,25 @@ enum SelfTest {
         player.stopPlayback()
         check(true, "AudioPlayer stop when idle does not crash")
 
-        print("\n─── Phase 2: Voice Pipeline ───")
+        print("\n─── Phase 2: Voice Pipeline & Decoupling ───")
         let pipeline = VoicePipeline.shared
         check(!pipeline.isRunning, "VoicePipeline initially not running before start")
         pipeline.start()
         check(pipeline.isRunning, "VoicePipeline starts cleanly")
+
+        let pipeStatus = pipeline.status
+        check(pipeStatus.isRunning, "VoicePipeline status reflects active runtime")
+        check(pipeStatus.micAuthorization == micAuth, "VoicePipeline reports microphone authorization truthfully")
+        check(pipeStatus.speechAuthorization == srAuth, "VoicePipeline reports speech authorization truthfully")
+
+        // Voice / task separation test: Deterministic fast-path command
+        sr.simulateTranscript("what time is it", isFinal: true)
+        check(pipeline.isRunning, "Voice interaction loop remains responsive after command handoff")
+
+        // Emergency phrase stops background tasks and halts TTS
+        emergency.triggerEmergencyStop(phrase: "STOP")
+        check(pipeline.activeBackgroundTasks.isEmpty, "Emergency stop cleans up all in-flight voice background tasks")
+        pipeline.stop()
 
         // ── Phase 3: Deterministic Mac Control Tests ──
         print("\n─── Phase 3: Deterministic Router ───")
@@ -260,18 +326,90 @@ enum SelfTest {
 
         let trashMatch = router.match("empty trash")
         check(trashMatch?.intent == "system.emptyTrash", "Matches empty trash")
+        check(trashMatch?.impact == .destructive, "Empty trash is classified destructive")
+        var trashBlocked = false
+        do {
+            _ = try PermissionGate.shared.isAuthorized(actionName: "system.emptyTrash", impact: trashMatch!.impact)
+        } catch {
+            trashBlocked = true
+        }
+        check(trashBlocked, "PermissionGate blocks destructive empty trash at default L1")
+
+        // Switch app
+        let switchMatch = router.match("switch to Safari")
+        check(switchMatch?.intent == "app.switch", "Matches 'switch to Safari'")
+
+        // Folders
+        let dlMatch = router.match("open Downloads")
+        check(dlMatch?.intent == "folder.open", "Matches 'open Downloads'")
+        let deskMatch = router.match("show my Desktop")
+        check(deskMatch?.intent == "folder.open", "Matches 'show my Desktop'")
+
+        // System State
+        let battMatch = router.match("what's my battery")
+        check(battMatch?.intent == "system.battery", "Matches battery query")
+        let wifiMatch = router.match("am i connected to wi-fi")
+        check(wifiMatch?.intent == "system.wifi", "Matches Wi-Fi query")
+
+        // Hardware state functions
+        let battStatus = SystemControl.shared.getBatteryStatus()
+        check(!battStatus.isEmpty, "Battery status query returns real data: \(battStatus)")
+        let wifiStatus = SystemControl.shared.getWiFiStatus()
+        check(!wifiStatus.isEmpty, "Wi-Fi status query returns real data: \(wifiStatus)")
 
         // Clipboard
         let clipMatch = router.match("read clipboard")
         check(clipMatch?.intent == "clipboard.read", "Matches read clipboard")
+        let clipThisMatch = router.match("copy this: test note")
+        check(clipThisMatch?.intent == "clipboard.write", "Matches 'copy this:'")
 
         // System Status
         let statusMatch = router.match("system status")
         check(statusMatch?.intent == "system.status", "Matches system status")
 
-        // Non-deterministic commands must yield nil (forward to LLM)
+        // Non-deterministic and negative security commands must yield nil (forward to LLM or rejected)
         let nonDet = router.match("write a python script to fetch stock prices")
         check(nonDet == nil, "Complex queries yield nil (forwarded to LLM)")
+        check(router.match("delete everything") == nil, "Rejects 'delete everything'")
+        check(router.match("shut down") == nil, "Rejects 'shut down'")
+        check(router.match("run rm -rf /") == nil, "Rejects 'run rm -rf /'")
+
+        // ── Deterministic Router Regression: Positive Cases ──
+        check(router.match("open safari")?.intent == "app.open", "Positive: 'open safari' -> app.open")
+        check(router.match("switch to terminal")?.intent == "app.switch", "Positive: 'switch to terminal' -> app.switch")
+        check(router.match("open downloads")?.intent == "folder.open", "Positive: 'open downloads' -> folder.open")
+        check(router.match("what's my battery")?.intent == "system.battery", "Positive: 'what's my battery' -> system.battery")
+        check(router.match("check wifi")?.intent == "system.wifi", "Positive: 'check wifi' -> system.wifi")
+
+        // ── Deterministic Router Regression: Negative & Ambiguity Fall-Through ──
+        check(router.match("what is Safari?") == nil, "Negative: 'what is Safari?' falls through to LLM")
+        check(router.match("Safari is slow today") == nil, "Negative: 'Safari is slow today' falls through to LLM")
+        check(router.match("download the file") == nil, "Negative: 'download the file' falls through to LLM")
+        check(router.match("terminal velocity") == nil, "Negative: 'terminal velocity' falls through to LLM")
+        check(router.match("clean up my system") == nil, "Negative: 'clean up my system' falls through to LLM")
+        check(router.match("can you switch to Safari") == nil, "Negative: 'can you switch to Safari' falls through to LLM")
+
+        // ── Deterministic Router Regression: Compound & Multi-Action Fall-Through ──
+        check(router.match("open safari and search for cats") == nil, "Compound: 'open safari and search for cats' rejected from deterministic router")
+        check(router.match("open safari and then open terminal") == nil, "Compound: 'open safari and then open terminal' rejected from deterministic router")
+        check(router.match("switch to Safari and increase volume") == nil, "Compound: 'switch to Safari and increase volume' rejected from deterministic router")
+        check(router.match("open safari and search") == nil, "Compound: 'open safari and search' rejected from deterministic router")
+
+        // ── Planner reliability: direct-answer / refusal routing ──
+        print("\n─── Planner Reliability: DirectAnswerRouter ───")
+        check(DirectAnswerRouter.refusalReason(for: "wipe the disk and delete everything") == .unsafeRequest, "Unsafe request → explicit unsafeRequest refusal")
+        check(DirectAnswerRouter.refusalReason(for: "send an email to alice") == .unsupportedCapability, "Unsupported capability → explicit unsupportedCapability refusal")
+        check(DirectAnswerRouter.refusalReason(for: "   ") == .malformedRequest, "Empty/malformed request → explicit malformedRequest refusal")
+        check(DirectAnswerRouter.decide(goal: "what is the capital of France") == .directAnswer, "Knowledge question → direct answer")
+        check(DirectAnswerRouter.decide(goal: "explain recursion") == .directAnswer, "Explanation request → direct answer")
+        check(DirectAnswerRouter.decide(goal: "what time is it") == .directAnswer, "Time question classified direct-answer (deterministic router still runs first in AgentLoop)")
+        check(DirectAnswerRouter.decide(goal: "search the web for Swift 6 release notes") == .planner, "Web task → planner")
+        check(DirectAnswerRouter.decide(goal: "echo hello from the shell") == .planner, "Shell task → planner")
+        check(DirectAnswerRouter.decide(goal: "what files should I delete from the folder") == .planner, "Question containing action verb stays ambiguous → planner (no over-refusal)")
+
+        print("\n─── Planner Reliability: named-tool hint grounding ───")
+        check(!MLXPlanner.testHookToolNamesMentioned(in: "use the audit_failing_tool and then echo recovery_completed", toolNames: ["audit_failing_tool", "run_shell"]).isEmpty, "Goal-named tools are force-included in planner catalog")
+        check(!MLXPlanner.testHookToolFamilyHint(for: "use the audit_failing_tool and then echo recovery_completed").isEmpty, "Shell hint still fires for echo goals")
 
         print("\n─── Phase 3: Clipboard Manager ───")
         let clip = ClipboardManager.shared

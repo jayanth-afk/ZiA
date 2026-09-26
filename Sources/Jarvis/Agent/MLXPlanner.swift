@@ -88,15 +88,21 @@ actor MLXPlanner {
     func plan(goal: String, context: PlannerContext) async throws -> AgentPlan {
         // STEP 4: deterministic tool-family hint narrows the catalog when the
         // goal unambiguously names one family; full catalog otherwise.
-        let hint = Self.toolFamilyHint(for: goal)
+        // D-F isolation finding: a family hint alone HIDES registry tools the
+        // goal names explicitly (e.g. "use the audit_failing_tool and then echo…"
+        // triggers the shell hint and hid audit_failing_tool, forcing the model
+        // to hallucinate its schema). Fix: any registry tool whose exact name
+        // appears in the goal is ALWAYS included, hint or not.
+        var hint = Self.toolFamilyHint(for: goal)
         let allTools = await MainActor.run { ToolRegistry.shared.allTools }
+        let forcedNames = Self.toolNamesMentioned(in: goal, tools: allTools)
+        hint.formUnion(forcedNames)
         let promptTools: [any JarvisTool]
         if let hinted = Self.hintedTools(from: allTools, families: hint) {
             promptTools = hinted.sorted { $0.name < $1.name }
         } else {
             promptTools = allTools.sorted { $0.name < $1.name }
         }
-        let catalog = Self.renderCatalog(promptTools)
 
         var attempt = 0
         var lastError: PlanValidationError?
@@ -258,12 +264,36 @@ actor MLXPlanner {
             case "app": return tools.filter { $0.name == "open_app" }
             case "shell": return tools.filter { $0.name == "run_shell" }
             case "web": return tools.filter { ["web_search", "fetch_url", "open_browser"].contains($0.name) }
-            default: return []
+            default: return tools.filter { $0.name == family }
             }
         }
         let selected = families.flatMap(familyTools)
         guard !selected.isEmpty else { return nil }
         return selected
+    }
+
+    /// Registry tools whose exact name appears as a word in the goal. These are
+    /// always included in the prompt catalog regardless of family hints — a
+    /// named tool must never be hidden from the planner. Splitting uses
+    /// whitespace + explicit sentence separators only: underscore is Unicode
+    /// connector punctuation, and shattering on it would break names like
+    /// "audit_failing_tool".
+    private static func toolNamesMentioned(in goal: String, tools: [any JarvisTool]) -> Set<String> {
+        let separators = CharacterSet.whitespaces.union(CharacterSet(charactersIn: ",.?!;:\"'()"))
+        let words = Set(goal.lowercased().components(separatedBy: separators).filter { !$0.isEmpty })
+        var mentioned: Set<String> = []
+        for tool in tools where words.contains(tool.name) {
+            mentioned.insert(tool.name)
+        }
+        return mentioned
+    }
+
+    /// Test/diagnostic hook: exposes the forced-inclusion predicate so the
+    /// self-test can verify named tools are never hidden.
+    nonisolated static func testHookToolNamesMentioned(in goal: String, toolNames: [String]) -> Set<String> {
+        let separators = CharacterSet.whitespaces.union(CharacterSet(charactersIn: ",.?!;:\"'()"))
+        let words = Set(goal.lowercased().components(separatedBy: separators).filter { !$0.isEmpty })
+        return Set(toolNames.filter { words.contains($0) })
     }
 
     // MARK: - Prompt construction (kept compact for the 0.5B model)
@@ -293,10 +323,11 @@ actor MLXPlanner {
                 .map { spec in "\"\(spec.name)\": <\(spec.kind.rawValue), \(spec.required ? "required" : "optional")>" }
                 .joined(separator: ", ")
             lines.append("- \(tool.name)(arguments): {\(declared)}")
-            lines.append("  CORRECT: {\"tool\":\"\(tool.name)\",\"arguments\":{\(exampleArguments(for: tool))}}")
+            lines.append("  CORRECT: {\"tool\": \"\(tool.name)\", \"arguments\": {\(exampleArguments(for: tool))}}")
             if tool.name == "run_shell" {
-                lines.append("  WRONG:   {\"tool\":\"run_shell\",\"arguments\":{\"command\":\"echo\",\"args\":[\"hello\",\"world\"]}}")
-                lines.append("  RULE: command is ONE scalar string containing the complete shell command. Never create an args field. \"echo hello world\" is ONE command string, not \"echo\" plus args [\"hello\",\"world\"].")
+                lines.append("  WRONG:   {\"tool\": \"run_shell\", \"arguments\": {\"command\": \"echo\", \"args\": [\"hello\"]}}")
+                lines.append("  RULE: command is ONE scalar string containing the complete shell command. Never create an args field.")
+                lines.append("  RULE: \"echo hello world\" must be represented as one scalar command string.")
             }
         }
         lines.append("RULE: never add argument fields that are not declared above (e.g. there is no \"args\" field next to \"command\").")
@@ -318,11 +349,12 @@ actor MLXPlanner {
             return "50"
         case .string:
             switch spec.name {
-            case "command": return "echo hello world"
-            case "app_name": return "Calculator"
-            case "query": return "weather in Tokyo"
-            case "url": return "https://example.com"
-            default: return "..."
+            case "command": return "\"echo hello\""
+            case "app_name": return "\"Calculator\""
+            case "query": return "\"weather in Tokyo\""
+            case "url": return "\"https://example.com\""
+            case "browser": return "\"Safari\""
+            default: return "\"...\""
             }
         }
     }
@@ -340,21 +372,29 @@ actor MLXPlanner {
         var prompt = """
         Available tools:
         \(catalog)
+
         \(schema)
+
         Respond with ONLY one JSON object in EXACTLY this shape, nothing else:
         {"goal": "<the goal>", "steps": [ {"id": "step_1", "tool": "<tool name from the list>", "arguments": {<arguments matching the schema above>}, "purpose": "<short reason>"} ]}
+
         Rules:
         - Use only tools from the list. No tool fits: use "tool": null.
         - Copy argument names and value shapes EXACTLY from the schema above. Numbers without quotes. Never invent argument fields that are not in the schema.
         - If the goal asks to run a shell command, use run_shell and put the ENTIRE command text into one "command" string.
+        - command is ONE scalar string containing the complete shell command. Never create an args field.
+        - "echo hello world" must be represented as one scalar command string.
         - Always fill "purpose" with a short reason.
         - Output the JSON object as your entire reply. No explanations.
+
         Example 1:
         Goal: say hello world
         {"goal":"say hello world","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print the text"}]}
+
         Example 2:
         Goal: what is the capital of France
         {"goal":"what is the capital of France","steps":[{"id":"step_1","tool":null,"arguments":{},"purpose":"answer from knowledge"}]}
+
         Goal: \(goal)
         """
         prompt += "\nJSON: "
@@ -368,7 +408,7 @@ actor MLXPlanner {
     /// 2. The relevant tool's actual live schema from ToolRegistry.
     /// 3. A corrected example demonstrating the required representation.
     /// 4. The original invalid plan.
-    /// 5. An explicit instruction to MODIFY the previous plan, not invent a new one.
+    /// 5. An explicit instruction to CORRECT the existing plan rather than regenerate an unrelated plan.
     /// Never a resend of the generic planner prompt.
     private static func buildRepairPrompt(
         goal: String,
@@ -377,27 +417,28 @@ actor MLXPlanner {
         previousAttempt: String,
         context: PlannerContext
     ) -> String {
-        let catalog = renderCatalog(tools)
         let schema = schemaSection(from: tools)
-        let correctExample = correctedExample(tools: tools, error: error)
+        let correctExample = correctedExample(tools: tools, error: error, goal: goal)
         var prompt = """
-        Available tools:
-        \(catalog)
-        \(schema)
+        ORIGINAL GOAL (unchanged — the corrected plan must still accomplish exactly this):
+        \(goal)
 
-        Your previous plan FAILED VALIDATION because:
+        Your previous plan for that goal failed validation because:
         \(error.description)
 
-        The correct representation is:
+        Required schema:
+        \(schema)
+
+        Correct example (SHAPE ONLY — example values like "echo hello" must NEVER appear in the plan; use the user's actual words from the goal):
         \(correctExample)
 
-        Your previous plan:
-        \(String(previousAttempt.prefix(400)))
+        Previous invalid plan:
+        \(String(previousAttempt.prefix(500)))
 
-        Correct the previous plan to satisfy the schema.
-        Modify the previous plan: keep everything that was valid and fix only the reported problem.
-        Do not invent a different tool. Do not introduce fields that are not in the schema.
-        Return only the corrected JSON plan object, nothing else.
+        Correct the previous plan to satisfy the schema. Keep the user's requested content (e.g. the exact word or command text the goal asks for) — change ONLY how it is represented (argument names/shape), never what the user asked for.
+        Do not invent another tool.
+        Do not introduce fields not present in the schema.
+        Return only the corrected plan for the original goal.
         """
         if let prior = context.previousFailureOutput {
             prompt += "\nPrior task context: \(prior)"
@@ -409,12 +450,12 @@ actor MLXPlanner {
     /// Corrected example line for the repair prompt: the failed tool's required
     /// representation (from the live registry), or the canonical plan shape
     /// when the failure was about JSON structure rather than one tool.
-    private static func correctedExample(tools: [any JarvisTool], error: PlanValidationError) -> String {
+    private static func correctedExample(tools: [any JarvisTool], error: PlanValidationError, goal: String) -> String {
         if let toolName = Self.failedToolName(for: error),
            let tool = tools.first(where: { $0.name == toolName }) {
-            return "{\"tool\":\"\(tool.name)\",\"arguments\":{\(exampleArguments(for: tool))}}"
+            return "{\"tool\": \"\(tool.name)\", \"arguments\": {\(exampleArguments(for: tool))}}"
         }
-        return "{\"goal\": \"<the goal>\", \"steps\": [ {\"id\": \"step_1\", \"tool\": \"<tool name from the list>\", \"arguments\": {<arguments matching the schema above>}, \"purpose\": \"<short reason>\"} ]}"
+        return "{\"goal\": \"<goal>\", \"steps\": [{\"id\": \"step_1\", \"tool\": \"<tool name from the list>\", \"arguments\": {<arguments matching the schema above>}, \"purpose\": \"<short reason>\"}]}"
     }
 
     /// The tool a validation error is about, when it names one. Unknown tools

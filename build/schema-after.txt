@@ -1,0 +1,24 @@
+(lldb) target create "/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis"
+Current executable set to '/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis' (arm64).
+(lldb) settings set -- target.run-args  "--schema-experiment"
+(lldb) run
+╔════════════════════════════════════════════════════════════════════════╗
+║   SCHEMA-CONTRACT EXPERIMENT (Change A: explicit prompt schemas +      ║
+║   Change B: schema-aware repair) — evidence per individual run         ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+2026-09-26 12:57:20.752742+0530 Jarvis[32509:4574093] [actions] Registered tool: 'open_app'
+2026-09-26 12:57:20.752919+0530 Jarvis[32509:4574093] [actions] Registered tool: 'set_volume'
+2026-09-26 12:57:20.752928+0530 Jarvis[32509:4574093] [actions] Registered tool: 'run_shell'
+2026-09-26 12:57:20.752957+0530 Jarvis[32509:4574093] [actions] Registered tool: 'web_search'
+2026-09-26 12:57:20.752976+0530 Jarvis[32509:4574093] [actions] Registered tool: 'fetch_url'
+2026-09-26 12:57:20.752982+0530 Jarvis[32509:4574093] [actions] Registered tool: 'open_browser'
+2026-09-26 12:57:20.753227+0530 Jarvis[32509:4574093] [actions] Registered tool: 'audit_failing_tool'
+
+────────────────────── SECTION 3. D-A — D-A ×5 ──────────────────────
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"  (audit D-A router-proof goal (exact user argument must survive))
+
+▶ RUN D-A#1
+2026-09-26 12:57:21.066691+0530 Jarvis[32509:4574119] [brain] AgentLoop: Goal classified as PUBLIC
+2026-09-26 12:57:21.480097+0530 Jarvis[32509:4574120] [actions] Created task [A02FDB53]: 'Autonomous Goal'
+2026-09-26 12:57:21.480192+0530 Jarvis[32509:4574120] [actions] Task [A02FDB53] transitioned: CREATED -> PLANNING

@@ -55,13 +55,16 @@ actor TaskWorker: Identifiable {
 
                     try Task.checkCancellation()
 
-                    // Step verified
+                    // Step verified (ToolExecutor ran execute -> observe -> verify
+                    // and returned; reaching here means verification passed)
                     try stateMachine.updateStep(
                         taskId: task.id,
                         stepIndex: index,
                         state: .completed,
                         output: result.output
                     )
+                    try? stateMachine.markStepVerification(
+                        taskId: task.id, stepIndex: index, outcome: .passed)
                 } else {
                     // Pure thinking / cognitive step
                     try stateMachine.updateStep(

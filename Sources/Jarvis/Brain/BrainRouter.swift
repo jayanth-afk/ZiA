@@ -19,10 +19,12 @@ final class BrainRouter {
         if let match = DeterministicRouter.shared.match(transcript) {
             timer.mark(.deterministicRouterHit)
 
-            // Execute deterministic action
+            // Execute deterministic action (PermissionGate enforced inside
+            // ActionEngine with the match's declared impact)
             let result = try await ActionEngine.shared.execute(
                 intent: match.intent,
                 isDeterministic: true,
+                impact: match.impact,
                 action: match.action
             )
 

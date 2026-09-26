@@ -54,7 +54,12 @@ final class EmergencyInterrupt {
         JarvisLogger.security.info("EmergencyInterrupt production subscribers registered: \(self.emergencyStopSubscriberCount)")
     }
 
-    private init() {}
+    /// Measured latency for emergency stop execution from trigger to event publication.
+    private(set) var lastEmergencyHaltLatencyMs: Double?
+
+    private init() {
+        registerProductionSubscribers()
+    }
 
     // MARK: - Public API
 
@@ -96,7 +101,8 @@ final class EmergencyInterrupt {
 
     /// Explicitly trigger emergency stop.
     func triggerEmergencyStop(phrase: String) {
-        JarvisLogger.security.fault("EMERGENCY STOP TRIGGERED: '\(phrase)'")
+        let start = CFAbsoluteTimeGetCurrent()
+        JarvisLogger.security.fault("EMERGENCY STOP TRIGGERED: '\(phrase, privacy: .public)'")
 
         // 1. Immediately kill all audio output
         TTSEngine.shared.stop()
@@ -112,5 +118,12 @@ final class EmergencyInterrupt {
         if AppState.shared.state == .active {
             AppState.shared.transition(to: .sleep)
         }
+
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        lastEmergencyHaltLatencyMs = elapsed
+        JarvisLogger.security.info("Emergency stop halt completed in \(String(format: "%.2f", elapsed), privacy: .public)ms")
+
+        // 5. Deterministic acknowledgement corresponding to real emergency halt
+        TTSEngine.shared.speak("Stopped.", mode: .acknowledgement)
     }
 }

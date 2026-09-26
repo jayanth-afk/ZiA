@@ -68,7 +68,7 @@ final class VoiceActivityDetector: @unchecked Sendable {
 
             if !isSpeaking && consecutiveSpeechFrames >= configuration.minSpeechFrames {
                 isSpeaking = true
-                JarvisLogger.voice.debug("VAD: Speech started (RMS: \(rms))")
+                JarvisLogger.voice.info("[VOICE_TRACE] VAD speech started (RMS: \(rms))")
                 onSpeechStart?()
             }
         } else {
@@ -77,7 +77,7 @@ final class VoiceActivityDetector: @unchecked Sendable {
 
             if isSpeaking && consecutiveSilenceFrames >= configuration.hangoverFrames {
                 isSpeaking = false
-                JarvisLogger.voice.debug("VAD: Speech ended (RMS: \(rms))")
+                JarvisLogger.voice.info("[VOICE_TRACE] VAD speech ended")
                 onSpeechEnd?()
             }
         }

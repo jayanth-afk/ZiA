@@ -24,6 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Start voice pipeline
         VoicePipeline.shared.start()
 
+        // Request permissions asynchronously if running in app bundle
+        Task { @MainActor in
+            await VoicePipeline.shared.requestPermissionsIfNeeded()
+        }
+
         // Wire HUD and UI event listeners
         eventBus.subscribe(HotkeyPressedEvent.self) { _ in
             FloatingPanel.shared.toggle()

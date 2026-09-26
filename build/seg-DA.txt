@@ -1,0 +1,434 @@
+warning: 'zia': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Workers/mlx_worker.py
+Building for debugging...
+[Planning deferred tasks]
+[1 / 10]
+Build complete! (0.43 secs)
+╔════════════════════════════════════════════════════════════════════════╗
+║   SCHEMA-CONTRACT EXPERIMENT — SEGMENT DA                                    ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+
+────────────────────── SECTION 3. D-A — D-A ×5 ──────────────────────
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"  (audit D-A router-proof goal (exact user argument must survive))
+
+▶ RUN D-A#1
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  first attempt valid: false
+  repair invoked: true
+  exact validator failure that triggered repair: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  repair_changed_output: false  ⚠️ BYTE-IDENTICAL RETRY (repair did not change anything)
+  ── raw planner output ──
+  [attempt 1] prompt sha256: 54c4f71391713e82…
+  [attempt 1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo "jarvis_planner_e2e_verified" | tr '[:upper:]' '[:lower:]'"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+  [attempt 1] validator error: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  [attempt 2] prompt sha256: 7958e36678db7ec6…
+  [attempt 2] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo "jarvis_planner_e2e_verified" | tr '[:upper:]' '[:lower:]'"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+  [attempt 2] validator error: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  ── state machine steps ──
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-A#2
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Step for 'run_shell' declares undeclared argument 'args'
+  first attempt valid: false
+  repair invoked: true
+  exact validator failure that triggered repair: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis
+  repair_changed_output: true
+  ── raw planner output ──
+  [attempt 1] prompt sha256: 54c4f71391713e82…
+  [attempt 1] RAW >>>{"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis_planner_e2e_verified"}},"purpose":"print the text"}]<<<
+  [attempt 1] validator error: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis
+  [attempt 2] prompt sha256: d3c1d1c39eeacecc…
+  [attempt 2] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo",
+        "args": "jarvis_planner_e2e_verified"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+  [attempt 2] validator error: Step for 'run_shell' declares undeclared argument 'args'
+  ── state machine steps ──
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-A#3
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: true
+  first attempt valid: true
+  repair invoked: false
+  ── raw planner output ──
+  [attempt 1] prompt sha256: 54c4f71391713e82…
+  [attempt 1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo \"jarvis_planner_e2e_verified\""
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+  ── state machine steps ──
+  ── response ──
+  >>>jarvis_planner_e2e_verified
+<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SEMANTIC
+
+▶ RUN D-A#4
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  first attempt valid: false
+  repair invoked: true
+  exact validator failure that triggered repair: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  repair_changed_output: true
+  ── raw planner output ──
+  [attempt 1] prompt sha256: 54c4f71391713e82…
+  [attempt 1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+  [attempt 1] validator error: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  [attempt 2] prompt sha256: 35eb348fc930051f…
+  [attempt 2] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "<<<
+  [attempt 2] validator error: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  ── state machine steps ──
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-A#5
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  first attempt valid: false
+  repair invoked: true
+  exact validator failure that triggered repair: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  repair_changed_output: true
+  ── raw planner output ──
+  [attempt 1] prompt sha256: 54c4f71391713e82…
+  [attempt 1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+  [attempt 1] validator error: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  [attempt 2] prompt sha256: 79948f5160044ffe…
+  [attempt 2] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1<<<
+  [attempt 2] validator error: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  ── state machine steps ──
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+────────────────────── 8. PER-DIMENSION SUMMARY ──────────────────────
+  valid plan        : 1/5
+  correct tool      : 0/5
+  correct arguments : 0/5
+  execution         : 0/5
+  verification      : 0/5
+
+────────────────────── REPAIR HONESTY (FOCUS 6) ──────────────────────
+  repairs invoked: 4
+  repair_changed_output=true: 3
+  repair byte-identical retries: 1
+
+────────────────────── FAILURE CLASSES (per run) ──────────────────────
+  SYNTAX      : 4 run(s)
+  SEMANTIC    : 1 run(s)
+  EXECUTION   : 0 run(s)
+  VERIFICATION: 0 run(s)
+  PASS        : 0 run(s)
+
+(END OF EXPERIMENT PROTOCOL — evidence above is per individual run)

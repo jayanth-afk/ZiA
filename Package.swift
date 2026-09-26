@@ -1,3 +1,4 @@
+// swift-tools-version: 6.0
 // swift-tensor:disabled
 import PackageDescription
 
@@ -10,13 +11,18 @@ let package = Package(
         .executable(name: "Jarvis", targets: ["Jarvis"])
     ],
     dependencies: [
-        // No external SwiftPM dependencies allowed to keep compile times ultra-fast,
-        // relying strictly on macOS native frameworks (AppKit, AVFoundation, ScreenCaptureKit, Speech, LocalAuthentication, Security, etc.)
+        // Global hotkey registration
+        .package(url: "https://github.com/soffes/HotKey", from: "0.2.1"),
+        // Keychain access for API key storage
+        .package(url: "https://github.com/kishikawakatsumi/KeychainAccess", from: "4.2.2"),
     ],
     targets: [
         .executableTarget(
             name: "Jarvis",
-            dependencies: [],
+            dependencies: [
+                "HotKey",
+                "KeychainAccess",
+            ],
             path: "Sources/Jarvis",
             resources: [
                 // If any resources are needed in the future
@@ -26,6 +32,14 @@ let package = Package(
                 .enableUpcomingFeature("ConciseMagicFile"),
                 .enableUpcomingFeature("ForwardTrailingClosures"),
                 .enableUpcomingFeature("ExistentialAny")
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-sectcreate",
+                    "-Xlinker", "__TEXT",
+                    "-Xlinker", "__info_plist",
+                    "-Xlinker", "Jarvis.app/Contents/Info.plist"
+                ])
             ]
         ),
         .testTarget(

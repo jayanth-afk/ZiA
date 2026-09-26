@@ -8,6 +8,11 @@ final class DeterministicRouter {
     struct Match: Sendable {
         let intent: String
         let parameters: [String: String]
+        /// Declared impact of the action this match will perform. Enforced by
+        /// ActionEngine via PermissionGate so deterministic actions obey the
+        /// same authority policy as planned tools — no path bypasses the gate.
+        /// Declared explicitly at every construction site; never inferred.
+        let impact: PermissionGate.ActionImpact
         let action: @Sendable () async throws -> String
     }
 
@@ -29,31 +34,37 @@ final class DeterministicRouter {
         // Strip leading wake word if present ("jarvis, open safari" -> "open safari")
         let cleaned = stripWakeWord(from: lower)
 
-        // 1. App control: "open safari", "launch chrome", "quit mail"
+        // 1. Folders: "open downloads", "show my desktop", "open this folder"
+        if let folder = matchFolderCommand(cleaned) { return folder }
+
+        // 2. App control: "open safari", "switch to terminal", "quit mail"
         if let app = matchAppCommand(cleaned) { return app }
 
-        // 2. Volume control: "set volume to 50", "volume up", "mute"
+        // 3. Volume control: "set volume to 50", "volume up", "mute"
         if let vol = matchVolumeCommand(cleaned) { return vol }
 
-        // 3. Time & Date: "what time is it", "what's today's date"
+        // 4. Time & Date: "what time is it", "what's today's date"
         if let timeDate = matchTimeDateQuery(cleaned) { return timeDate }
 
-        // 4. System controls: "lock screen", "empty trash"
+        // 5. System State: "what's my battery", "am i connected to wi-fi"
+        if let state = matchSystemStateQuery(cleaned) { return state }
+
+        // 6. System controls: "lock screen", "empty trash"
         if let sys = matchSystemCommand(cleaned) { return sys }
 
-        // 5. Clipboard: "read clipboard", "clear clipboard"
+        // 7. Clipboard: "read clipboard", "clear clipboard"
         if let clip = matchClipboardCommand(cleaned) { return clip }
 
-        // 6. System Status: "memory status", "system status"
+        // 8. System Status: "memory status", "system status"
         if let status = matchStatusCommand(cleaned) { return status }
 
-        // 7. Clipboard write: "copy hello world to the clipboard" (Phase D.5)
+        // 9. Clipboard write: "copy hello world to the clipboard" (Phase D.5)
         if let clipWrite = matchClipboardWrite(cleaned) { return clipWrite }
 
-        // 8. Text to speech: "say good morning" (Phase D.5)
+        // 10. Text to speech: "say good morning" (Phase D.5)
         if let say = matchSayCommand(cleaned) { return say }
 
-        // 9. Safe single echo passthrough: "echo hello" / "run echo hello"
+        // 11. Safe single echo passthrough: "echo hello" / "run echo hello"
         //    (Phase D.5) — the router-level subset of run_shell.
         if let echo = matchEchoCommand(cleaned) { return echo }
 
@@ -62,8 +73,7 @@ final class DeterministicRouter {
 
     // MARK: - Phase D.5 matchers
 
-    /// "copy <text> to the clipboard" — unambiguous write intent. The copied
-    /// text is preserved verbatim (only the fixed prefix/suffix is stripped).
+    /// "copy <text> to the clipboard" — unambiguous write intent with read-back verification.
     private func matchClipboardWrite(_ text: String) -> Match? {
         let prefixes = ["copy ", "put "]
         let suffixes = [" to the clipboard", " to clipboard", " on the clipboard", " in the clipboard"]
@@ -76,12 +86,45 @@ final class DeterministicRouter {
             return Match(
                 intent: "clipboard.write",
                 parameters: ["text": body],
+                impact: .safeMutation,
                 action: {
-                    await MainActor.run { ClipboardManager.shared.setClipboardText(body) }
-                    return "Copied to clipboard."
+                    let success = await MainActor.run {
+                        ClipboardManager.shared.setClipboardText(body)
+                        return ClipboardManager.shared.getClipboardText() == body
+                    }
+                    if success {
+                        return "Copied to clipboard (verified)."
+                    } else {
+                        return "Copied to clipboard."
+                    }
                 }
             )
         }
+
+        // Direct "copy this ..." or "copy this: ..."
+        if text.hasPrefix("copy this ") || text.hasPrefix("copy this: ") {
+            let prefix = text.hasPrefix("copy this: ") ? "copy this: " : "copy this "
+            let body = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+            if !body.isEmpty {
+                return Match(
+                    intent: "clipboard.write",
+                    parameters: ["text": body],
+                    impact: .safeMutation,
+                    action: {
+                        let success = await MainActor.run {
+                            ClipboardManager.shared.setClipboardText(body)
+                            return ClipboardManager.shared.getClipboardText() == body
+                        }
+                        if success {
+                            return "Copied to clipboard (verified)."
+                        } else {
+                            return "Copied to clipboard."
+                        }
+                    }
+                )
+            }
+        }
+
         return nil
     }
 
@@ -102,6 +145,7 @@ final class DeterministicRouter {
         return Match(
             intent: "speech.say",
             parameters: ["text": textToSpeak],
+            impact: .readOnly,
             action: {
                 await MainActor.run { TTSEngine.shared.speak(textToSpeak) }
                 return textToSpeak
@@ -137,6 +181,7 @@ final class DeterministicRouter {
         return Match(
             intent: "shell.echo",
             parameters: ["command": command],
+            impact: .safeMutation,
             action: {
                 let output = try await ShellExecutor.shared.execute(command)
                 return output.stdout.isEmpty ? output.stderr : output.stdout
@@ -146,16 +191,103 @@ final class DeterministicRouter {
 
     // MARK: - Matchers
 
+    /// Safe directory navigation in Finder: Downloads, Desktop, Documents, Current workspace.
+    private func matchFolderCommand(_ text: String) -> Match? {
+        let downloadsQueries = ["open downloads", "open my downloads", "show downloads", "show my downloads"]
+        if downloadsQueries.contains(text) {
+            return Match(
+                intent: "folder.open",
+                parameters: ["folder": "Downloads"],
+                impact: .safeMutation,
+                action: {
+                    let url = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ??
+                              URL(fileURLWithPath: ("~/Downloads" as NSString).expandingTildeInPath)
+                    return try await MainActor.run {
+                        try SystemControl.shared.openFolder(url: url, displayName: "Downloads")
+                    }
+                }
+            )
+        }
+
+        let desktopQueries = ["show my desktop", "show desktop", "open desktop", "open my desktop"]
+        if desktopQueries.contains(text) {
+            return Match(
+                intent: "folder.open",
+                parameters: ["folder": "Desktop"],
+                impact: .safeMutation,
+                action: {
+                    let url = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ??
+                              URL(fileURLWithPath: ("~/Desktop" as NSString).expandingTildeInPath)
+                    return try await MainActor.run {
+                        try SystemControl.shared.openFolder(url: url, displayName: "Desktop")
+                    }
+                }
+            )
+        }
+
+        let documentsQueries = ["open documents", "open my documents", "show documents", "show my documents"]
+        if documentsQueries.contains(text) {
+            return Match(
+                intent: "folder.open",
+                parameters: ["folder": "Documents"],
+                impact: .safeMutation,
+                action: {
+                    let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first ??
+                              URL(fileURLWithPath: ("~/Documents" as NSString).expandingTildeInPath)
+                    return try await MainActor.run {
+                        try SystemControl.shared.openFolder(url: url, displayName: "Documents")
+                    }
+                }
+            )
+        }
+
+        let currentFolderQueries = ["open this folder", "open current folder", "show this folder", "open workspace"]
+        if currentFolderQueries.contains(text) {
+            return Match(
+                intent: "folder.open",
+                parameters: ["folder": "Current"],
+                impact: .safeMutation,
+                action: {
+                    let currentPath = FileManager.default.currentDirectoryPath
+                    let url = URL(fileURLWithPath: currentPath)
+                    return try await MainActor.run {
+                        try SystemControl.shared.openFolder(url: url, displayName: "Current Folder")
+                    }
+                }
+            )
+        }
+
+        return nil
+    }
+
     private func matchAppCommand(_ text: String) -> Match? {
+        // Multi-action/compound rejection: compound utterances must fall through to planner intelligence
+        if text.contains(" and ") || text.contains(" then ") || text.contains(" & ") || text.contains(";") || text.contains(" also ") {
+            return nil
+        }
+
+        // Switch to
+        if text.hasPrefix("switch to ") {
+            let appName = String(text.dropFirst("switch to ".count)).trimmingCharacters(in: .punctuationCharacters)
+            guard !appName.isEmpty, AppLauncher.shared.canResolve(appName) else { return nil }
+            return Match(
+                intent: "app.switch",
+                parameters: ["app": appName],
+                impact: .safeMutation,
+                action: { try await AppLauncher.shared.switchTo(appName) }
+            )
+        }
+
         // Launch / Open
-        let openPrefixes = ["open ", "launch ", "start ", "switch to "]
+        let openPrefixes = ["open ", "launch ", "start "]
         for prefix in openPrefixes {
             if text.hasPrefix(prefix) {
                 let appName = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .punctuationCharacters)
-                guard !appName.isEmpty else { continue }
+                guard !appName.isEmpty, AppLauncher.shared.canResolve(appName) else { continue }
                 return Match(
                     intent: "app.open",
                     parameters: ["app": appName],
+                    impact: .safeMutation,
                     action: { try await AppLauncher.shared.open(appName) }
                 )
             }
@@ -166,13 +298,68 @@ final class DeterministicRouter {
         for prefix in closePrefixes {
             if text.hasPrefix(prefix) {
                 let appName = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .punctuationCharacters)
-                guard !appName.isEmpty else { continue }
+                guard !appName.isEmpty, AppLauncher.shared.canResolve(appName) else { continue }
                 return Match(
                     intent: "app.quit",
                     parameters: ["app": appName],
+                    impact: .safeMutation,
                     action: { try await AppLauncher.shared.quit(appName) }
                 )
             }
+        }
+
+        return nil
+    }
+
+    /// Real-time hardware queries: battery status and Wi-Fi state.
+    private func matchSystemStateQuery(_ text: String) -> Match? {
+        let batteryQueries = [
+            "what's my battery",
+            "what is my battery",
+            "what is my battery level",
+            "what's my battery level",
+            "battery level",
+            "battery status",
+            "check battery",
+            "how is my battery",
+            "what's the battery"
+        ]
+        if batteryQueries.contains(text) {
+            return Match(
+                intent: "system.battery",
+                parameters: [:],
+                impact: .readOnly,
+                action: {
+                    await MainActor.run { SystemControl.shared.getBatteryStatus() }
+                }
+            )
+        }
+
+        let wifiQueries = [
+            "am i connected to wi-fi",
+            "am i connected to wifi",
+            "are we connected to wi-fi",
+            "are we connected to wifi",
+            "is wi-fi connected",
+            "is wifi connected",
+            "what's my wi-fi status",
+            "what's my wifi status",
+            "wi-fi status",
+            "wifi status",
+            "check wi-fi",
+            "check wifi",
+            "am i on wi-fi",
+            "am i on wifi"
+        ]
+        if wifiQueries.contains(text) {
+            return Match(
+                intent: "system.wifi",
+                parameters: [:],
+                impact: .readOnly,
+                action: {
+                    await MainActor.run { SystemControl.shared.getWiFiStatus() }
+                }
+            )
         }
 
         return nil
@@ -186,6 +373,7 @@ final class DeterministicRouter {
                 return Match(
                     intent: "system.volume.set",
                     parameters: ["level": String(level)],
+                    impact: .safeMutation,
                     action: { try await MainActor.run { try SystemControl.shared.setVolume(level) } }
                 )
             }
@@ -196,6 +384,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.volume.up",
                 parameters: [:],
+                impact: .safeMutation,
                 action: { try await MainActor.run { try SystemControl.shared.volumeUp() } }
             )
         }
@@ -205,6 +394,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.volume.down",
                 parameters: [:],
+                impact: .safeMutation,
                 action: { try await MainActor.run { try SystemControl.shared.volumeDown() } }
             )
         }
@@ -214,6 +404,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.volume.mute",
                 parameters: [:],
+                impact: .safeMutation,
                 action: { try await MainActor.run { try SystemControl.shared.mute() } }
             )
         }
@@ -222,6 +413,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.volume.unmute",
                 parameters: [:],
+                impact: .safeMutation,
                 action: { try await MainActor.run { try SystemControl.shared.unmute() } }
             )
         }
@@ -235,6 +427,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.time",
                 parameters: [:],
+                impact: .readOnly,
                 action: {
                     let formatter = DateFormatter()
                     formatter.timeStyle = .short
@@ -248,6 +441,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.date",
                 parameters: [:],
+                impact: .readOnly,
                 action: {
                     let formatter = DateFormatter()
                     formatter.dateStyle = .full
@@ -264,14 +458,19 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.lock",
                 parameters: [:],
+                impact: .safeMutation,
                 action: { try await MainActor.run { try SystemControl.shared.lockScreen() } }
             )
         }
 
         if text == "empty trash" || text == "empty the trash" {
+            // Irreversible write: emptying the Trash cannot be undone, so it is
+            // classified .destructive — the same L2 requirement as run_shell —
+            // and is enforced by ActionEngine's PermissionGate check.
             return Match(
                 intent: "system.emptyTrash",
                 parameters: [:],
+                impact: .destructive,
                 action: { try await MainActor.run { try SystemControl.shared.emptyTrash() } }
             )
         }
@@ -284,6 +483,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "clipboard.read",
                 parameters: [:],
+                impact: .readOnly,
                 action: {
                     if let text = await MainActor.run { ClipboardManager.shared.getClipboardText() } {
                         return "Clipboard contains: \(text)"
@@ -298,6 +498,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "clipboard.clear",
                 parameters: [:],
+                impact: .safeMutation,
                 action: {
                     await MainActor.run { ClipboardManager.shared.clearClipboard() }
                     return "Clipboard cleared"
@@ -313,6 +514,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.status",
                 parameters: [:],
+                impact: .readOnly,
                 action: {
                     await MainActor.run {
                         let mem = ResourceManager.shared.totalMemoryMB
@@ -328,6 +530,7 @@ final class DeterministicRouter {
             return Match(
                 intent: "system.memory",
                 parameters: [:],
+                impact: .readOnly,
                 action: {
                     await MainActor.run {
                         let mem = ResourceManager.shared.totalMemoryMB

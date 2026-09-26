@@ -1,0 +1,253 @@
+Another instance of SwiftPM (PID: 28690) is already running using '/Users/jayanthpranaykonada/Zia/.build', waiting until that process has finished execution...warning: 'zia': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Workers/mlx_worker.py
+Building for debugging...
+[5 / 22] KeychainAccess
+[7 / 43] HotKey
+[8 / 64]
+[15 / 64]
+[16 / 64]
+[22 / 64]
+[23 / 64]
+[26 / 64]
+[28 / 64]
+[38 / 64]
+[39 / 64]
+[45 / 59]
+[49 / 59]
+[50 / 59]
+[51 / 59] HotKey
+warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+[54 / 57] Jarvis-product
+warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Agent/TaskWorker.swift:10:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+  [0;36m8 |[0;0m     private(set) var currentTaskId: UUID?
+  [0;36m9 |[0;0m     private(set) var isBusy: Bool = false
+ [0;36m10 |[0;0m     private var executionTask: Task<Void, Error>?
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m11 |[0;0m 
+ [0;36m12 |[0;0m     init(id: UUID = UUID()) {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/ClaudeProvider.swift:29:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m27 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m28 |[0;0m         stream: Bool
+ [0;36m29 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m30 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m31 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/GeminiProvider.swift:27:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m25 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m26 |[0;0m         stream: Bool
+ [0;36m27 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m28 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m29 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/GroqProvider.swift:26:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m24 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m25 |[0;0m         stream: Bool
+ [0;36m26 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m27 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m28 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:212:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m210 |[0;0m         tools: [ToolDefinition]?,
+[0;36m211 |[0;0m         stream: Bool
+[0;36m212 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m213 |[0;0m         complete(messages: messages, tools: tools, stream: stream, options: [:])
+[0;36m214 |[0;0m     }
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:221:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m219 |[0;0m         stream: Bool,
+[0;36m220 |[0;0m         options: [String: any Sendable]
+[0;36m221 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m222 |[0;0m         // Per-request token budget (planner requests need more headroom than
+[0;36m223 |[0;0m         // the 256-token default; small direct requests can be tighter).
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:390:65: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m388 |[0;0m     private let lock = NSLock()
+[0;36m389 |[0;0m     private var requestID = 0
+[0;36m390 |[0;0m     private var pending: [Int: CheckedContinuation<WorkerReply, Error>] = [:]
+    [0;36m|[0;0m                                                                 `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m391 |[0;0m     private let readQueue = DispatchQueue(label: "jarvis.mlxworker.read")
+[0;36m392 |[0;0m     private var buffer = Data()
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/OpenAIProvider.swift:29:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m27 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m28 |[0;0m         stream: Bool
+ [0;36m29 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m30 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m31 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/Provider.swift:68:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m66 |[0;0m         tools: [ToolDefinition]?,
+[0;36m67 |[0;0m         stream: Bool
+[0;36m68 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error>
+   [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m69 |[0;0m 
+[0;36m70 |[0;0m     /// Optional per-request overrides (e.g. ["max_tokens": 384]). Default
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/Provider.swift:78:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m76 |[0;0m         stream: Bool,
+[0;36m77 |[0;0m         options: [String: any Sendable]
+[0;36m78 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error>
+   [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m79 |[0;0m }
+[0;36m80 |[0;0m 
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/Provider.swift:87:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m85 |[0;0m         stream: Bool,
+[0;36m86 |[0;0m         options: [String: any Sendable]
+[0;36m87 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+   [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m88 |[0;0m         complete(messages: messages, tools: tools, stream: stream)
+[0;36m89 |[0;0m     }
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/Errors.swift:34:55: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m32 |[0;0m 
+[0;36m33 |[0;0m     // MARK: - Memory
+[0;36m34 |[0;0m     case databaseError(operation: String, underlying: Error)
+   [0;36m|[0;0m                                                       `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m35 |[0;0m     case embeddingFailed(reason: String)
+[0;36m36 |[0;0m 
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/ResourceManager.swift:54:33: [1;33mwarning: [1;39muse of protocol 'DispatchSourceMemoryPressure' as a type must be written 'any DispatchSourceMemoryPressure'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m52 |[0;0m     // MARK: - Private
+ [0;36m53 |[0;0m 
+ [0;36m54 |[0;0m     private var pressureSource: DispatchSourceMemoryPressure?
+    [0;36m|[0;0m                                 `- [1;33mwarning: [1;39muse of protocol 'DispatchSourceMemoryPressure' as a type must be written 'any DispatchSourceMemoryPressure'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m55 |[0;0m     private var pollingTimer: Timer?
+ [0;36m56 |[0;0m 
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Voice/SpeechRecognizer.swift:306:87: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m304 |[0;0m     }
+[0;36m305 |[0;0m 
+[0;36m306 |[0;0m     private func handleRecognitionResult(_ result: SFSpeechRecognitionResult?, error: Error?) {
+    [0;36m|[0;0m                                                                                       `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m307 |[0;0m         if let error = error {
+[0;36m308 |[0;0m             // Error code 216 is recognition cancelled; ignore it cleanly
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+[56 / 58] Jarvis-product
+Build complete! (22.97 secs)
+╔══════════════════════════════════════════╗
+║      JARVIS — Self-Test Suite           ║
+╚══════════════════════════════════════════╝
+
+
+─── AppState ───
+  ✓ Initial state is OFF
+  ✓ OFF → SLEEP works
+  ✓ SLEEP → ACTIVE works
+  ✓ ACTIVE → SLEEP works
+  ✓ SLEEP → OFF works
+  ✓ OFF → ACTIVE rejected (invalid)
+  ✓ Same-state is no-op
+  ✓ Network offline update
+  ✓ Network online update
+  ✓ Memory pressure warning
+  ✓ Memory pressure nominal
+
+─── EventBus ───
+  ✓ Publish delivers to subscriber
+  ✓ Multiple subscribers all receive
+  ✓ Event types are isolated
+  ✓ Unsubscribe stops delivery
+  ✓ removeAll clears all handlers
+  ✓ No subscribers does not crash
+
+─── PipelineTimer ───
+  ✓ Report has correct ID
+  ✓ Report has 3 stages
+  ✓ Total time greater than 0
+  ✓ Elapsed between stages greater than 0
+  ✓ Missing stage returns nil
+  ✓ Empty timer has no stages
+  ✓ Summary contains ID
+
+─── Config ───
+  ✓ Wake word has default
+  ✓ Autonomy level in range
+  ✓ Budget has default
+  ✓ Memory reserve has default
+
+─── ResourceManager ───
+  ✓ Total memory detected: 16384MB
+  ✓ Model registered
+  ✓ Model memory tracked
+  ✓ Model unregistered
+  ✓ Model memory freed
+
+─── Phase 2: Audio Permissions & Capture ───
+  ✓ Microphone authorization status returns valid enum state (Authorized)
+  ✓ AudioCapture buffer injection delivers PCM frames to registered tap handlers
+
+─── Phase 2: Voice Activity Detector ───
+  ✓ VAD default threshold is positive
+  ✓ VAD hangover frames > 0
+  ✓ VAD reset clears speaking state
+
+─── Phase 2: Wake Word Detector ───
+  ✓ Wake word detector is active
+  ✓ Detects 'Jarvis' at sentence start
+  ✓ Emits WakeWordDetectedEvent
+  ✓ Ignores sentences without wake word
+  ✓ Detects 'Jarvis' in compound sentence
+  ✓ Wake word detector stopped
+
+─── Phase 2: Apple Speech Recognition ───
+  ✓ Speech recognition authorization status returns valid enum state (Not Determined)
+  ✓ Partial transcript delivered via TranscriptPartialEvent
+  ✓ Final transcript delivered via TranscriptFinalEvent with duration metric
+
+─── Phase 2: Emergency Interrupt & Cancellation ───
+  ✓ Emergency stop production subscribers registered (>= 6)
+  ✓ Detects standalone 'stop'
+  ✓ Emits EmergencyStopEvent
+  ✗ FAIL: Emergency stop halt latency is sub-50ms (61.24ms)
+  ✓ Case-insensitive emergency detection
+  ✓ Punctuation-tolerant emergency detection
+  ✓ Prefix emergency detection ('jarvis stop')
+  ✓ Does not false-positive on casual usage ('don't stop')
+
+─── Phase 2: TTS Engine & Barge-In ───
+  ✓ TTS is idle initially
+  ✓ TTS stop when idle does not crash
+  ✓ UserInterruptedEvent halts TTS immediately (barge-in)
+
+─── Phase 2: Audio Player ───
+  ✓ AudioPlayer is idle initially
+  ✓ AudioPlayer stop when idle does not crash
+
+─── Phase 2: Voice Pipeline & Decoupling ───
+  ✓ VoicePipeline initially not running before start
+  ✓ VoicePipeline starts cleanly
+  ✓ VoicePipeline status reflects active runtime
+  ✓ VoicePipeline reports microphone authorization truthfully
+  ✓ VoicePipeline reports speech authorization truthfully
+  ✓ Voice interaction loop remains responsive after command handoff
+  ✓ Emergency stop cleans up all in-flight voice background tasks
+
+─── Phase 3: Deterministic Router ───
+  ✓ Matches 'open Safari'
+  ✓ Intent is app.open
+  ✓ Extracts app name 'safari'
+  ✓ Matches quit command
+  ✓ Matches volume set command
+  ✓ Extracts volume level 65
+  ✓ Matches mute command
+  ✓ Matches volume up
+  ✓ Matches time query
+  ✓ Matches date query
+  ✓ Matches lock screen
+  ✓ Matches empty trash
+  ✓ Empty trash is classified destructive
+  ✗ FAIL: PermissionGate b

@@ -73,15 +73,48 @@ actor AgentLoop {
         // reach the MLX planner.
         if let match = await MainActor.run(body: { DeterministicRouter.shared.match(goal) }) {
             JarvisLogger.brain.info("AgentLoop: deterministic fast path hit for '\(goal)'")
+            // The declared impact is enforced inside ActionEngine via the
+            // PermissionGate — the fast path obeys the same authority policy
+            // as planned tool execution.
             let output = try await ActionEngine.shared.execute(
                 intent: match.intent,
                 isDeterministic: true,
+                impact: match.impact,
                 action: match.action)
             lastReplanCount.value = 0
             lastPlannerMetrics.value = nil
             return output
         }
-        // 3. PLAN via the real local MLX model (structured, validated, bounded).
+        // 3. DIRECT-ANSWER / REFUSAL ROUTE: narrow deterministic decision before
+        // the planner. Obvious conversational/knowledge requests get a real
+        // direct answer from the local model without planning. Unsupported or
+        // unsafe requests are EXPLICITLY refused (typed, auditable) instead of
+        // accidentally becoming a valid unrelated tool call. Genuine tool tasks
+        // and ambiguous goals fall forward to the planner unchanged.
+        switch DirectAnswerRouter.decide(goal: goal) {
+        case .refusal(let reason):
+            JarvisLogger.brain.info("AgentLoop: explicit refusal (\(reason.rawValue)) for goal '\(goal, privacy: .public)'")
+            lastReplanCount.value = 0
+            lastPlannerMetrics.value = nil
+            return reason.userFacingMessage
+        case .directAnswer:
+            JarvisLogger.brain.info("AgentLoop: direct-answer route for '\(goal, privacy: .public)'")
+            do {
+                let answer = try await DirectComposer().composeAnswer(goal: goal, observations: [])
+                lastReplanCount.value = 0
+                lastPlannerMetrics.value = nil
+                return answer
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Direct answer failed → fall forward to the planner (never fake).
+                JarvisLogger.brain.warning("Direct-answer composition failed (\(error.localizedDescription)); falling forward to planner")
+            }
+        case .planner:
+            break
+        }
+
+        // 4. PLAN via the real local MLX model (structured, validated, bounded).
         let stateMachine = TaskStateMachine.shared
         let task = stateMachine.createTask(title: "Autonomous Goal", goal: goal)
         try stateMachine.transition(taskId: task.id, to: .planning)
@@ -111,6 +144,7 @@ actor AgentLoop {
             }
 
             let step = plan.steps[stepIndex]
+            try? stateMachine.setCurrentStepIndex(taskId: task.id, index: stepIndex)
 
             do {
                 // Cooperative cancellation points: task cancellation (user or
@@ -147,11 +181,15 @@ actor AgentLoop {
                     // VERIFY at the outcome level, beyond ToolExecutor's
                     // expected.success check: empty/failed output fails the step.
                     if !result.success || result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        _ = try? stateMachine.markStepVerification(
+                            taskId: task.id, stepIndex: stepIndex, outcome: .failed)
                         throw JarvisError.verificationFailed(
                             action: toolName,
                             expected: "meaningful output",
                             actual: result.output)
                     }
+                    _ = try? stateMachine.markStepVerification(
+                        taskId: task.id, stepIndex: stepIndex, outcome: .passed)
 
                     try stateMachine.updateStep(
                         taskId: task.id,
@@ -181,6 +219,8 @@ actor AgentLoop {
                         stepIndex: stepIndex,
                         state: .completed,
                         output: completedOutputs.last)
+                    _ = try? stateMachine.markStepVerification(
+                        taskId: task.id, stepIndex: stepIndex, outcome: .notApplicable)
                     stepIndex += 1
                 }
 
@@ -196,6 +236,7 @@ actor AgentLoop {
                 try stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
                 try stateMachine.transition(taskId: task.id, to: .recovering)
                 try stateMachine.transition(taskId: task.id, to: .replanning)
+                try? stateMachine.incrementRetryCount(taskId: task.id)
 
                 // REPLAN with real failure context (not a blind repeat): the
                 // planner sees the actual error and prior observations.
@@ -257,6 +298,7 @@ actor AgentLoop {
             try stateMachine.transition(taskId: taskId, to: .failed, error: "Planner failed: \(error.localizedDescription)")
             try stateMachine.transition(taskId: taskId, to: .recovering)
             try stateMachine.transition(taskId: taskId, to: .replanning)
+            try? stateMachine.incrementRetryCount(taskId: taskId)
             do {
                 let retryPlan = try await MLXPlanner.shared.plan(goal: goal, context: context)
                 if let metrics = await MLXPlanner.shared.latestMetrics() {

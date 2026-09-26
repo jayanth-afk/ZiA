@@ -11,6 +11,19 @@ struct JarvisApp: App {
             exit(0)
         }
 
+        // Handle --physical-test flag for live Mac control physical demonstration
+        if CommandLine.arguments.contains("--physical-test") {
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                await PhysicalDemonstration.runAll()
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(0)
+        }
+
         // Handle --planner-probe "<goal>" — dump raw planner generations for one goal (diagnostics)
         if let probeIdx = CommandLine.arguments.firstIndex(of: "--planner-probe"),
            CommandLine.arguments.count > probeIdx + 1 {
@@ -41,10 +54,14 @@ struct JarvisApp: App {
 
         // Handle --schema-experiment flag: Change A+B schema-contract
         // experiment protocol (reporting-only; same production path as the audit).
+        // Optional segment argument: DA | DF | DIRECT | CONTROLS — runs just
+        // that segment so each fits a single terminal invocation.
         if CommandLine.arguments.contains("--schema-experiment") {
+            let segIdx = CommandLine.arguments.firstIndex(of: "--schema-experiment")!
+            let segment = CommandLine.arguments.count > segIdx + 1 ? CommandLine.arguments[segIdx + 1] : nil
             let semaphore = DispatchSemaphore(value: 0)
             Task { @MainActor in
-                await SchemaExperiment.runProtocol()
+                if let segment { await SchemaExperiment.runSegment(segment) } else { await SchemaExperiment.runProtocol() }
                 semaphore.signal()
             }
             while semaphore.wait(timeout: .now() + 0.1) == .timedOut {

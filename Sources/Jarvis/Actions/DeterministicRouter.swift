@@ -169,6 +169,16 @@ final class DeterministicRouter {
         guard let echoText = body?.trimmingCharacters(in: .whitespaces), !echoText.isEmpty else {
             return nil
         }
+        // Conservative-routing guard: a compound/sequential echo body is NOT an
+        // unambiguous single action ("echo a, then b", "echo a and then b",
+        // "echo a, b, c"). The fast path must never swallow a multi-step request
+        // merely because it can mechanically parse the leading words — fall
+        // through to the planner instead. When uncertain: return nil.
+        // (Chain operators ; & | are already rejected by the forbidden set.)
+        let compoundMarkers = [",", " then ", " and ", " also "]
+        if compoundMarkers.contains(where: { echoText.contains($0) }) {
+            return nil
+        }
         // Refuse anything beyond a plain single echo: no metacharacters, no
         // quotes, no flags. This keeps the deterministic subset strictly safe;
         // complex shell requests still go through the planner + full sandbox.

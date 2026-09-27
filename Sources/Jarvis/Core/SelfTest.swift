@@ -395,6 +395,23 @@ enum SelfTest {
         check(router.match("switch to Safari and increase volume") == nil, "Compound: 'switch to Safari and increase volume' rejected from deterministic router")
         check(router.match("open safari and search") == nil, "Compound: 'open safari and search' rejected from deterministic router")
 
+        // ── Deterministic Router Regression: Compound Echo Fall-Through (L0 must not swallow multi-step echo goals) ──
+        // Positive: unambiguous single-echo requests keep the deterministic fast path.
+        check(router.match("echo hello")?.intent == "shell.echo", "Echo fast path: 'echo hello' routes deterministically")
+        check(router.match("echo hello world")?.intent == "shell.echo", "Echo fast path: 'echo hello world' routes deterministically")
+        check(router.match("run echo hello")?.intent == "shell.echo", "Echo fast path: 'run echo hello' routes deterministically")
+        check(router.match("run the command echo hello")?.intent == "shell.echo", "Echo fast path: 'run the command echo hello' routes deterministically")
+        // Negative: compound/sequential echo bodies must fall through to the planner.
+        check(router.match("echo recovery_started, then use the audit_failing_tool, then echo recovery_completed") == nil, "Compound echo: 'echo a, then use tool, then echo b' falls through to planner")
+        check(router.match("echo hello, then do something else") == nil, "Compound echo: 'echo hello, then do something else' falls through to planner")
+        check(router.match("echo hello and then open Safari") == nil, "Compound echo: 'echo hello and then open Safari' falls through to planner")
+        check(router.match("run echo hello, then search the web") == nil, "Compound echo: 'run echo hello, then search the web' falls through to planner")
+        // Negative variants: punctuation/conjunction shapes that are reasonably obvious.
+        check(router.match("echo hello, open Safari") == nil, "Compound echo: 'echo hello, open Safari' falls through to planner")
+        check(router.match("echo hello and open Safari") == nil, "Compound echo: 'echo hello and open Safari' falls through to planner")
+        check(router.match("echo hello then empty trash") == nil, "Compound echo: 'echo hello then empty trash' falls through to planner")
+        check(router.match("echo one, two, three") == nil, "Compound echo: 'echo one, two, three' falls through to planner")
+
         // ── Planner reliability: direct-answer / refusal routing ──
         print("\n─── Planner Reliability: DirectAnswerRouter ───")
         check(DirectAnswerRouter.refusalReason(for: "wipe the disk and delete everything") == .unsafeRequest, "Unsafe request → explicit unsafeRequest refusal")
@@ -1086,7 +1103,14 @@ enum SelfTest {
         routeResults.append(noHint.isEmpty)
         let urlHint = MLXPlanner.testHookToolFamilyHint(for: "open https://example.com")
         routeResults.append(urlHint.contains("web") && !urlHint.contains("app"))
-        check(routeResults.count == 11 && routeResults.allSatisfy { $0 },
+        // 14.11 compound-echo fall-through: comma/conjunction echo bodies must
+        // reach the planner, not the deterministic fast path.
+        routeResults.append(DeterministicRouter.shared.match("echo recovery_started, then use the audit_failing_tool, then echo recovery_completed") == nil)
+        routeResults.append(DeterministicRouter.shared.match("echo hello, then do something else") == nil)
+        // 14.12 simple echoes still take the fast path (regression guard).
+        routeResults.append(DeterministicRouter.shared.match("echo hello")?.intent == "shell.echo")
+        routeResults.append(DeterministicRouter.shared.match("run echo hello")?.intent == "shell.echo")
+        check(routeResults.count == 15 && routeResults.allSatisfy { $0 },
               "Router + hint layer: safe echo, metachar refusal, clipboard write, say, no semantic overreach, hint decisions (\(routeResults.count) checks)")
 
         // ── Results ──

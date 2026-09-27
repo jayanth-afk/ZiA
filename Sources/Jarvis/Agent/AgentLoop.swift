@@ -116,6 +116,9 @@ actor AgentLoop {
 
         // 4. PLAN via the real local MLX model (structured, validated, bounded).
         let stateMachine = TaskStateMachine.shared
+        // Evidence ledger: the harness (or a self-contained run) owns the scope;
+        // MLXPlanner.plan(goal:context:taskID:) attributes every attempt of THIS
+        // run (initial + all replan cycles) to one runID + taskID.
         let task = stateMachine.createTask(title: "Autonomous Goal", goal: goal)
         try stateMachine.transition(taskId: task.id, to: .planning)
 
@@ -278,7 +281,7 @@ actor AgentLoop {
         stateMachine: TaskStateMachine
     ) async throws -> AgentPlan {
         do {
-            let plan = try await MLXPlanner.shared.plan(goal: goal, context: context)
+            let plan = try await MLXPlanner.shared.plan(goal: goal, context: context, taskID: taskId)
             if let metrics = await MLXPlanner.shared.latestMetrics() {
                 lastPlannerMetrics.value = metrics
             }
@@ -300,7 +303,7 @@ actor AgentLoop {
             try stateMachine.transition(taskId: taskId, to: .replanning)
             try? stateMachine.incrementRetryCount(taskId: taskId)
             do {
-                let retryPlan = try await MLXPlanner.shared.plan(goal: goal, context: context)
+                let retryPlan = try await MLXPlanner.shared.plan(goal: goal, context: context, taskID: taskId)
                 if let metrics = await MLXPlanner.shared.latestMetrics() {
                     lastPlannerMetrics.value = metrics
                 }

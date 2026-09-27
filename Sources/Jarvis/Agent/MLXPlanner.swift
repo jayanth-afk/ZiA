@@ -53,6 +53,77 @@ actor MLXPlanner {
 
     private let lastRunDiagnostics = LockedValue<[AttemptDiagnostic]>([])
 
+    // MARK: Evidence ledger (instrumentation/evidence-integrity pass)
+
+    /// Append-only, fully-attributed record of EVERY generation attempt.
+    /// Unlike latestDiagnostics()/latestRawOutputs() (which are overwritten by
+    /// each plan() call and therefore lose the initial planning cycle when a
+    /// replan happens), the ledger preserves the COMPLETE per-run attempt
+    /// history. Reporting-only: no agent behavior depends on it.
+    struct PlannerAttemptRecord: Sendable {
+        /// Scope opened by beginLedgerRun(); groups all cycles of one agent run.
+        let runID: UUID
+        /// Task that owns this planning call (stamped by AgentLoop).
+        let taskID: UUID?
+        /// One plan() invocation = one planning cycle (up to 2 attempts inside).
+        let cycleID: UUID
+        /// 0 = initial planning, 1..n = replan cycles, counted per run.
+        let cycleIndex: Int
+        /// 1 = initial attempt within the cycle, 2 = schema-aware repair.
+        let attempt: Int
+        let isRepair: Bool
+        let promptSHA256: String
+        let rawOutput: String
+        /// nil = the attempt produced a fully validated plan.
+        let validatorError: String?
+        /// True when the attempt failed at the PARSE stage (no JSON extracted)
+        /// as opposed to the schema/semantic validation stage.
+        let parseStageFailed: Bool
+        /// Compact honest summary of the parsed+validated plan (success only).
+        let parsedPlanSummary: String?
+        /// Exact per-step tool names compiled into the AgentPlan (success only).
+        let compiledStepTools: [String?]?
+        /// Exact per-step argument dictionaries compiled into the AgentPlan
+        /// (success only) — what the executor receives.
+        let compiledStepArgs: [[String: String]]?
+        let requestLatencyMs: Double?
+    }
+
+    private let attemptLedger = LockedValue<[PlannerAttemptRecord]>([])
+    private let activeLedgerRunID = LockedValue<UUID?>(nil)
+    private let cycleCounters = LockedValue<[UUID: Int]>([:])
+
+    /// Open a new ledger run scope: every plan() call until endLedgerRun() is
+    /// attributed to the returned runID. Synchronous (nonisolated) on purpose:
+    /// a detached endLedgerRun() Task could otherwise close a LATER run's scope
+    /// (observed as misattributed evidence). The evidence harness is the single
+    /// scope owner; nested code never opens or closes scopes.
+    nonisolated func beginLedgerRun() -> UUID {
+        let id = UUID()
+        activeLedgerRunID.value = id
+        var counters = cycleCounters.value
+        counters[id] = 0
+        cycleCounters.value = counters
+        return id
+    }
+
+    /// Close the active ledger scope. Synchronous for the same reason.
+    nonisolated func endLedgerRun() {
+        activeLedgerRunID.value = nil
+    }
+
+    /// The currently open ledger scope ID (nil when none is open). Read-only
+    /// introspection for attribution consumers.
+    func activeLedgerScopeID() -> UUID? { activeLedgerRunID.value }
+
+    /// Complete attempt history for one run, in generation order.
+    func ledgerRecords(runID: UUID) -> [PlannerAttemptRecord] {
+        attemptLedger.value.filter { $0.runID == runID }
+    }
+
+    /// Whole ledger (diagnostics dump support).
+    func allLedgerRecords() -> [PlannerAttemptRecord] { attemptLedger.value }
+
     struct PlannerMetrics: Sendable {
         let requestLatencyMs: Double   // full Swift→worker→mlx_lm round trip
         let ttftMs: Double?            // real first-token latency from the worker
@@ -85,7 +156,24 @@ actor MLXPlanner {
 
     /// Plan a goal with the local MLX model. Throws on invalid plans after
     /// the bounded repair attempt; never invents a plan itself.
-    func plan(goal: String, context: PlannerContext) async throws -> AgentPlan {
+    func plan(goal: String, context: PlannerContext, taskID: UUID? = nil) async throws -> AgentPlan {
+        // Ledger attribution: one plan() invocation = one planning cycle, under
+        // the scope opened by the harness (self-contained runID when none is
+        // open, e.g. production runs). The ledger layer itself registers the
+        // run→task attribution so evidence consumers never need "latest task"
+        // heuristics.
+        let ledgerRunID = activeLedgerRunID.value ?? UUID()
+        if let taskID {
+            TaskStateMachine.shared.registerRunAttribution(runID: ledgerRunID, taskID: taskID)
+        }
+        let cycleID = UUID()
+        let cycleIndex: Int = {
+            var counters = cycleCounters.value
+            let index = counters[ledgerRunID] ?? 0
+            counters[ledgerRunID] = index + 1
+            cycleCounters.value = counters
+            return index
+        }()
         // STEP 4: deterministic tool-family hint narrows the catalog when the
         // goal unambiguously names one family; full catalog otherwise.
         // D-F isolation finding: a family hint alone HIDES registry tools the
@@ -157,17 +245,40 @@ actor MLXPlanner {
                         rawOutput: raw.text,
                         validatorError: nil,
                         repaired: isRepair))
+                    appendLedgerRecord(
+                        runID: ledgerRunID, taskID: taskID, cycleID: cycleID,
+                        cycleIndex: cycleIndex, attempt: attempt, isRepair: isRepair,
+                        prompt: prompt, rawOutput: raw.text, validatorError: nil,
+                        parseStageFailed: false,
+                        parsedPlanSummary: Self.summarizePlan(plan),
+                        compiledTools: plan.steps.map { $0.toolName },
+                        compiledArgs: plan.steps.map { $0.arguments },
+                        latencyMs: raw.metrics.requestLatencyMs)
                     lastRunDiagnostics.value = diagnostics
                     return plan
                 case .failure(let error):
                     lastError = error
                     validatorErrorDescription = error.description
                     JarvisLogger.brain.warning("MLXPlanner attempt \(attempt) rejected: \(error.description)")
+                    appendLedgerRecord(
+                        runID: ledgerRunID, taskID: taskID, cycleID: cycleID,
+                        cycleIndex: cycleIndex, attempt: attempt, isRepair: isRepair,
+                        prompt: prompt, rawOutput: raw.text, validatorError: error.description,
+                        parseStageFailed: false, parsedPlanSummary: nil,
+                        compiledTools: nil, compiledArgs: nil,
+                        latencyMs: raw.metrics.requestLatencyMs)
                 }
             case .failure(let error):
                 lastError = error
                 validatorErrorDescription = error.description
                 JarvisLogger.brain.warning("MLXPlanner attempt \(attempt) unparseable: \(error.description)")
+                appendLedgerRecord(
+                    runID: ledgerRunID, taskID: taskID, cycleID: cycleID,
+                    cycleIndex: cycleIndex, attempt: attempt, isRepair: isRepair,
+                    prompt: prompt, rawOutput: raw.text, validatorError: error.description,
+                    parseStageFailed: true, parsedPlanSummary: nil,
+                    compiledTools: nil, compiledArgs: nil,
+                    latencyMs: raw.metrics.requestLatencyMs)
             }
             diagnostics.append(AttemptDiagnostic(
                 attempt: attempt,
@@ -181,6 +292,41 @@ actor MLXPlanner {
         throw JarvisError.actionFailed(
             action: "mlx.planner",
             reason: "Planner output invalid after \(attempt) attempts: \(lastError?.description ?? "unknown")")
+    }
+
+    // MARK: - Evidence ledger helpers
+
+    private func appendLedgerRecord(
+        runID: UUID, taskID: UUID?, cycleID: UUID, cycleIndex: Int,
+        attempt: Int, isRepair: Bool, prompt: String, rawOutput: String,
+        validatorError: String?, parseStageFailed: Bool,
+        parsedPlanSummary: String?, compiledTools: [String?]?, compiledArgs: [[String: String]]?,
+        latencyMs: Double?
+    ) {
+        var ledger = attemptLedger.value
+        ledger.append(PlannerAttemptRecord(
+            runID: runID, taskID: taskID, cycleID: cycleID, cycleIndex: cycleIndex,
+            attempt: attempt, isRepair: isRepair,
+            promptSHA256: Self.sha256Hex(prompt), rawOutput: rawOutput,
+            validatorError: validatorError, parseStageFailed: parseStageFailed,
+            parsedPlanSummary: parsedPlanSummary,
+            compiledStepTools: compiledTools, compiledStepArgs: compiledArgs,
+            requestLatencyMs: latencyMs))
+        // Soft bound for long-lived processes; CLI evidence runs never hit it.
+        if ledger.count > 1000 { ledger.removeFirst(ledger.count - 1000) }
+        attemptLedger.value = ledger
+    }
+
+    /// Compact honest summary of a validated plan (for the evidence ledger).
+    private static func summarizePlan(_ plan: AgentPlan) -> String {
+        let steps = plan.steps.map { step -> String in
+            let tool = step.toolName ?? "null(composition)"
+            let args = step.arguments.isEmpty
+                ? "{}"
+                : step.arguments.map { "\($0.key)=\"\($0.value)\"" }.sorted().joined(separator: ", ")
+            return "\(tool){\(args)}"
+        }
+        return "goal=\"\(plan.goal)\" steps=[\(steps.joined(separator: " | "))]"
     }
 
     // MARK: - Generation

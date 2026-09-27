@@ -156,8 +156,51 @@ final class TaskStateMachine: @unchecked Sendable {
     private let lock = NSLock()
     private var tasks: [UUID: JarvisTask] = [:]
     private var stateHistory: [UUID: [(TaskState, Date)]] = [:]
+    // Evidence-integrity pass: explicit run→task attribution. The harness uses
+    // this INSTEAD of "latest task matching the goal" heuristics, which misattribute
+    // evidence when several tasks share a goal string.
+    private var runAttribution: [UUID: UUID] = [:]  // ledgerRunID -> taskID
+    // Evidence-integrity pass: every setSteps() snapshot is preserved (indexed by
+    // planning cycle) so a replan NEVER overwrites the evidence of earlier plans.
+    private var stepsHistory: [UUID: [(cycle: Int, steps: [TaskStep], at: Date)]] = [:]
 
     private init() {}
+
+    // MARK: - Evidence attribution (instrumentation pass)
+
+    /// Map a planner ledger runID to the task it belongs to. One agent run =
+    /// one runID + one taskID, regardless of how many replan cycles occur.
+    func registerRunAttribution(runID: UUID, taskID: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        runAttribution[runID] = taskID
+    }
+
+    /// The task ID attributed to a planner ledger runID (nil if unattributed).
+    func taskID(forRunID runID: UUID) -> UUID? {
+        lock.lock()
+        defer { lock.unlock() }
+        return runAttribution[runID]
+    }
+
+    /// ALL tasks whose goal matches, in creation order (oldest first). Evidence
+    /// consumers index this list explicitly (e.g. tasks[runIndex]) — they never
+    /// rely on an implicit "last" match.
+    func tasks(matchingGoal goal: String) -> [JarvisTask] {
+        lock.lock()
+        defer { lock.unlock() }
+        return tasks.values
+            .filter { $0.goal == goal }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    /// Preserved plan snapshots for a task: index 0 = initial planning,
+    /// 1..n = successive replans. A replan appends; it never replaces history.
+    func stepsHistory(for taskId: UUID) -> [(cycle: Int, steps: [TaskStep], at: Date)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return stepsHistory[taskId] ?? []
+    }
 
     // MARK: - Task Management
 
@@ -310,7 +353,9 @@ final class TaskStateMachine: @unchecked Sendable {
         return task
     }
 
-    /// Update task steps (used during planning/replanning).
+    /// Update task steps (used during planning/replanning). Every snapshot is
+    /// appended to the task's steps history (cycle 0 = initial plan) so replans
+    /// preserve — never overwrite — earlier planning evidence.
     @discardableResult
     func setSteps(taskId: UUID, steps: [TaskStep]) throws -> JarvisTask {
         lock.lock()
@@ -323,6 +368,9 @@ final class TaskStateMachine: @unchecked Sendable {
         task.steps = steps
         task.updatedAt = Date()
         tasks[taskId] = task
+
+        let cycle = stepsHistory[taskId]?.count ?? 0
+        stepsHistory[taskId, default: []].append((cycle: cycle, steps: steps, at: Date()))
 
         return task
     }

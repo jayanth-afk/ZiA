@@ -133,10 +133,14 @@ enum SchemaExperiment {
                     if r.dimensions[key] == true { allDimensions[key]!.pass += 1 }
                 }
                 failureClasses[r.failureClass, default: (0, 0)].total += 1
+                // FOCUS 6 honesty, per planning cycle: a cycle with 2 attempts
+                // counts one repair; changed vs byte-identical from raw outputs.
                 if r.repairInvoked {
-                    repairStats.invoked += 1
-                    if r.repairChangedOutput == true { repairStats.changed += 1 }
-                    if r.repairChangedOutput == false { repairStats.byteIdentical += 1 }
+                    for cycle in r.repairCycles {
+                        repairStats.invoked += 1
+                        if cycle.changed { repairStats.changed += 1 }
+                        else { repairStats.byteIdentical += 1 }
+                    }
                 }
             }
         }
@@ -149,21 +153,37 @@ enum SchemaExperiment {
     struct RunEvidence {
         let spec: Spec
         let index: Int
-        // Per attempt: (prompt hash, raw output, exact validator error)
-        let attempts: [(promptSHA: String, raw: String, validatorError: String?)]
+        /// Evidence-integrity pass: this run's ledger scope ID (groups all
+        /// planning cycles of exactly this run).
+        let ledgerRunID: UUID
+        /// Fully-attributed per-attempt records from the append-only ledger —
+        /// ALL cycles (initial + replans), never overwritten.
+        let attempts: [MLXPlanner.PlannerAttemptRecord]
+        /// Task attributed to this run via the explicit run→task registry.
+        let taskID: UUID?
+        let task: JarvisTask?
+        /// Preserved plan snapshots per planning cycle (0 = initial plan).
+        let planSnapshots: [(cycle: Int, steps: [TaskStep], at: Date)]
         let completed: Bool
         let response: String
         let finalError: String?
         let taskSteps: [(tool: String?, state: String, output: String?, error: String?, args: [String: String])]
-        /// FOCUS 6: repair honesty measurements.
+        /// FOCUS 6: repair honesty per planning cycle.
         let repairInvoked: Bool
-        /// nil = repair not invoked; true/false = repair output differed from original.
-        let repairChangedOutput: Bool?
+        let repairCycles: [(cycleIndex: Int, changed: Bool)]
+        /// D-A argument-preservation chain: raw → compiled → executed → stdout.
+        let argumentChain: [(stage: String, detail: String)]
         let dimensions: [String: Bool]
         let failureClass: String
     }
 
     private static func runOne(_ spec: Spec) async -> RunEvidence {
+        // Evidence attribution: open THIS run's ledger scope first. AgentLoop
+        // does NOT open/close scopes; every planning cycle of this run (initial
+        // + all replans) is attributed to exactly one runID.
+        let ledgerRunID = MLXPlanner.shared.beginLedgerRun()
+        defer { MLXPlanner.shared.endLedgerRun() }
+
         var completed = false
         var response = ""
         var finalError: String?
@@ -174,21 +194,58 @@ enum SchemaExperiment {
             finalError = error.localizedDescription
         }
 
-        // Raw planner outputs per attempt (from the LAST plan() call of this run).
-        let diagnostics = await MLXPlanner.shared.latestDiagnostics()
-        let attempts = diagnostics.map { (promptSHA: $0.promptSHA256, raw: $0.rawOutput, validatorError: $0.validatorError) }
+        // Per-run attempt history from the append-only ledger: ALL cycles — a
+        // replan can no longer overwrite the initial cycle's raw evidence.
+        let attempts = await MLXPlanner.shared.ledgerRecords(runID: ledgerRunID)
 
-        // The LAST task created for this goal is this run's state-machine record.
-        let task = TaskStateMachine.shared.allTasks.last { $0.goal == spec.goal }
+        // Task attribution via the explicit run→task registry. NO "latest
+        // matching task" heuristic anywhere.
+        let taskID = TaskStateMachine.shared.taskID(forRunID: ledgerRunID)
+        let task = taskID.flatMap { TaskStateMachine.shared.getTask(id: $0) }
+        let planSnapshots = taskID.map { TaskStateMachine.shared.stepsHistory(for: $0) } ?? []
+
         let steps: [(tool: String?, state: String, output: String?, error: String?, args: [String: String])] = (task?.steps ?? []).map {
             (tool: $0.toolName, state: $0.state.rawValue, output: $0.output, error: $0.error, args: $0.arguments)
         }
 
-        // FOCUS 6: repair honesty — did the repair attempt change the output?
-        let repairInvoked = attempts.count > 1
-        let repairChangedOutput: Bool? = repairInvoked
-            ? (attempts.count < 2 ? nil : attempts[0].raw != attempts[1].raw)
-            : nil
+        // FOCUS 6 repair honesty, per planning CYCLE (one plan() call = one
+        // cycle with up to 2 attempts).
+        var cycleIDs: [UUID] = []
+        for a in attempts where !cycleIDs.contains(a.cycleID) { cycleIDs.append(a.cycleID) }
+        var repairCycles: [(cycleIndex: Int, changed: Bool)] = []
+        for cycleID in cycleIDs {
+            let cycleAttempts = attempts.filter { $0.cycleID == cycleID }
+            if cycleAttempts.count > 1 {
+                repairCycles.append((cycleIndex: cycleAttempts[0].cycleIndex,
+                                     changed: cycleAttempts[0].rawOutput != cycleAttempts[1].rawOutput))
+            }
+        }
+        let repairInvoked = !repairCycles.isEmpty
+
+        // D-A argument-preservation chain: raw model output → compiled plan →
+        // executed arguments → stdout, token checked at EVERY stage.
+        var argumentChain: [(stage: String, detail: String)] = []
+        if let token = requiredShellToken(for: spec.goal) {
+            for cycleID in cycleIDs {
+                for a in attempts.filter({ $0.cycleID == cycleID }) {
+                    argumentChain.append((stage: "raw cycle\(a.cycleIndex).attempt\(a.attempt)\(a.isRepair ? "(repair)" : "")",
+                                          detail: "tokenPresent=\(a.rawOutput.contains(token))"))
+                }
+                if let compiled = attempts.first(where: { $0.cycleID == cycleID && $0.compiledStepArgs != nil }) {
+                    let commands = (compiled.compiledStepArgs ?? []).compactMap { $0["command"] }
+                    let joined = commands.isEmpty ? "<none>" : commands.joined(separator: " && ")
+                    argumentChain.append((stage: "compiled cycle\(compiled.cycleIndex)",
+                                          detail: "command=\(joined) tokenPresent=\(joined.contains(token))"))
+                }
+            }
+            if let exec = steps.first(where: { $0.tool == "run_shell" && $0.state == "COMPLETED" }) {
+                let cmd = exec.args["command"] ?? "<none>"
+                argumentChain.append((stage: "executed",
+                                      detail: "command=\(cmd) tokenPresent=\(cmd.contains(token))"))
+                argumentChain.append((stage: "stdout",
+                                      detail: "output=\((exec.output ?? "").trimmingCharacters(in: .whitespacesAndNewlines)) tokenPresent=\((exec.output ?? "").contains(token))"))
+            }
+        }
 
         // ── Dimensions (honest, behavior-level) ──
         let planValid = completed && finalError == nil
@@ -243,9 +300,11 @@ enum SchemaExperiment {
         }
 
         return RunEvidence(
-            spec: spec, index: 0, attempts: attempts, completed: completed,
-            response: response, finalError: finalError, taskSteps: steps,
-            repairInvoked: repairInvoked, repairChangedOutput: repairChangedOutput,
+            spec: spec, index: 0, ledgerRunID: ledgerRunID, attempts: attempts,
+            taskID: taskID, task: task, planSnapshots: planSnapshots,
+            completed: completed, response: response, finalError: finalError,
+            taskSteps: steps, repairInvoked: repairInvoked, repairCycles: repairCycles,
+            argumentChain: argumentChain,
             dimensions: dimensions, failureClass: classify(dimensions: dimensions))
     }
 
@@ -323,22 +382,43 @@ enum SchemaExperiment {
     private static func printRun(_ r: RunEvidence) {
         print("  goal: \"\(r.spec.goal)\"")
         print("  completed: \(r.completed)\(r.finalError.map { " | final error: \($0)" } ?? "")")
-        print("  first attempt valid: \(r.attempts.first?.validatorError == nil && !(r.attempts.first?.raw.isEmpty ?? true))")
-        print("  repair invoked: \(r.repairInvoked)")
-        if r.repairInvoked {
-            print("  exact validator failure that triggered repair: \(r.attempts.first?.validatorError ?? "n/a")")
-            print("  repair_changed_output: \(r.repairChangedOutput == true)\(r.repairChangedOutput == false ? "  ⚠️ BYTE-IDENTICAL RETRY (repair did not change anything)" : "")")
+        print("  runID: \(r.ledgerRunID.uuidString.prefix(8))  taskID: \(r.taskID.map { String($0.uuidString.prefix(8)) } ?? "none")")
+        print("  ── planner attempt history (all cycles, attributed) ──")
+        if r.attempts.isEmpty { print("    <no planner calls>") }
+        for a in r.attempts {
+            let label = "cycle\(a.cycleIndex) attempt\(a.attempt)\(a.isRepair ? "(repair)" : "")"
+            print("    [\(label)] prompt sha256: \(a.promptSHA256.prefix(16))…")
+            print("    [\(label)] RAW >>>\(a.rawOutput)<<<")
+            if let err = a.validatorError {
+                print("    [\(label)] result: \(a.parseStageFailed ? "PARSE-FAIL" : "VALIDATION-FAIL") — \(err)")
+            } else {
+                print("    [\(label)] result: VALID — parsed plan: \(a.parsedPlanSummary ?? "?")")
+            }
         }
-        print("  ── raw planner output ──")
-        for (i, a) in r.attempts.enumerated() {
-            print("  [attempt \(i + 1)] prompt sha256: \(a.promptSHA.prefix(16))…")
-            print("  [attempt \(i + 1)] RAW >>>\(a.raw)<<<")
-            if let err = a.validatorError { print("  [attempt \(i + 1)] validator error: \(err)") }
+        for cycle in r.repairCycles {
+            let flag = cycle.changed ? "changed" : "⚠️ BYTE-IDENTICAL RETRY (repair did not change anything)"
+            print("    repair cycle\(cycle.cycleIndex): repair_changed_output=\(cycle.changed) (\(flag))")
         }
-        print("  ── state machine steps ──")
+        if let task = r.task {
+            let history = TaskStateMachine.shared.getHistory(taskId: task.id).map { $0.0.rawValue }
+            print("  ── task phases ──")
+            print("    state history: \(history.joined(separator: " → "))")
+            print("    final task state: \(task.state.rawValue)\(task.error.map { " error='\(String($0.prefix(120)))'" } ?? "")")
+            for snap in r.planSnapshots {
+                let names = snap.steps.compactMap { $0.toolName ?? "null" }.joined(separator: ", ")
+                print("    plan snapshot cycle\(snap.cycle): [\(names)]")
+            }
+        }
+        print("  ── executed steps (current task record) ──")
         for s in r.taskSteps {
             let args = s.args.isEmpty ? "" : " args=\(s.args)"
             print("    tool=\(s.tool ?? "null(composition)") state=\(s.state) output='\(String((s.output ?? "").prefix(80)))'\(args)\(s.error.map { " error='\(String($0.prefix(80)))'" } ?? "")")
+        }
+        if !r.argumentChain.isEmpty {
+            print("  ── argument-preservation chain ──")
+            for stage in r.argumentChain {
+                print("    \(stage.stage): \(stage.detail)")
+            }
         }
         print("  ── response ──")
         print("  >>>\(r.response.prefix(400))<<<")

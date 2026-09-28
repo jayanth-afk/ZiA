@@ -36,7 +36,6 @@ struct AXElementInfo: Sendable, Identifiable {
         self.children = children
     }
 }
-
 /// Bridges macOS Accessibility (AXUIElement) APIs for Fast UI inspection and deterministic UI interaction.
 /// Rule: Always try Accessibility API first before falling back to Vision models.
 @MainActor
@@ -51,12 +50,15 @@ final class AccessibilityBridge {
     var mockElementTree: AXElementInfo? = nil
     var mockActionHandler: ((_ label: String, _ action: String) -> (success: Bool, message: String))? = nil
     var mockValueHandler: ((_ label: String?, _ value: String) -> (success: Bool, message: String))? = nil
+    /// A read-back hook: nil is an unavailable observation, not an empty value.
+    var mockValueReader: ((_ label: String?) -> String?)? = nil
 
     func resetMocks() {
         mockTrusted = nil
         mockElementTree = nil
         mockActionHandler = nil
         mockValueHandler = nil
+        mockValueReader = nil
     }
 
     // MARK: - Permissions
@@ -93,6 +95,62 @@ final class AccessibilityBridge {
         let appElement = AXUIElementCreateApplication(pid)
 
         return parseElement(appElement, depth: 0, maxDepth: maxDepth)
+    }
+
+    // MARK: - Deterministic UI observation
+
+    /// Resolves a fresh element at observation time. AX element handles are deliberately
+    /// never retained across actions because applications may invalidate them.
+    func findElement(matchingLabel label: String, inApp app: NSRunningApplication? = nil) -> AXElementInfo? {
+        if let mock = mockElementTree { return findInMockTree(root: mock, matching: label) }
+        guard isTrusted, let targetApp = app ?? NSWorkspace.shared.frontmostApplication else { return nil }
+        let root = AXUIElementCreateApplication(targetApp.processIdentifier)
+        guard let element = findAXUIElement(in: root, matching: label, depth: 0, maxDepth: 4) else { return nil }
+        return parseElement(element, depth: 0, maxDepth: 0)
+    }
+
+    /// Reads an AX value from a freshly resolved target, returning unavailable rather
+    /// than guessing when either the element or its value cannot be observed.
+    func readElementValue(matchingLabel label: String?, inApp app: NSRunningApplication? = nil) -> (value: String?, isAvailable: Bool) {
+        if let reader = mockValueReader { return (reader(label), true) }
+        if let mock = mockElementTree {
+            guard let element = findEditableInMockTree(root: mock, matching: label) else { return (nil, false) }
+            return (element.value, true)
+        }
+        guard isTrusted, let targetApp = app ?? NSWorkspace.shared.frontmostApplication else { return (nil, false) }
+        let root = AXUIElementCreateApplication(targetApp.processIdentifier)
+        let element: AXUIElement?
+        if let label, !label.isEmpty {
+            element = findAXUIElement(in: root, matching: label, depth: 0, maxDepth: 4)
+        } else {
+            var focused: AnyObject?
+            element = AXUIElementCopyAttributeValue(root, kAXFocusedUIElementAttribute as CFString, &focused) == .success ? focused as! AXUIElement? : nil
+        }
+        guard let element else { return (nil, false) }
+        var value: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &value) == .success else { return (nil, false) }
+        return (value as? String, true)
+    }
+
+    func elementExists(matchingLabel label: String, inApp app: NSRunningApplication? = nil) -> (exists: Bool, isAvailable: Bool) {
+        guard isTrusted || mockElementTree != nil else { return (false, false) }
+        return (findElement(matchingLabel: label, inApp: app) != nil, true)
+    }
+
+    func isElementFocused(matchingLabel label: String, inApp app: NSRunningApplication? = nil) -> (focused: Bool, isAvailable: Bool) {
+        if mockElementTree != nil { return (false, false) } // mocks must explicitly model focus, never infer it.
+        guard isTrusted, let targetApp = app ?? NSWorkspace.shared.frontmostApplication else { return (false, false) }
+        var focused: AnyObject?
+        let root = AXUIElementCreateApplication(targetApp.processIdentifier)
+        guard AXUIElementCopyAttributeValue(root, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let focused else { return (false, false) }
+        let element = focused as! AXUIElement
+        var title: AnyObject?
+        var description: AnyObject?
+        _ = AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &title)
+        _ = AXUIElementCopyAttributeValue(element, kAXDescriptionAttribute as CFString, &description)
+        let needle = label.lowercased()
+        return ((title as? String)?.lowercased().contains(needle) == true || (description as? String)?.lowercased().contains(needle) == true, true)
     }
 
     // MARK: - Deterministic UI Actions

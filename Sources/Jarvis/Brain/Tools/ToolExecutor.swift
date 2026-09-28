@@ -23,28 +23,30 @@ final class ToolExecutor {
         timer.mark(.actionStart)
 
         // 2. Execute
-        let expected = try await tool.execute(arguments: arguments)
+        var expected = try await tool.execute(arguments: arguments)
         timer.mark(.actionExecuted)
 
         // 3. Observe
-        let observed = try await tool.observe()
+        let observed = try await tool.observe(expected: expected)
         timer.mark(.actionObserved)
 
         // 4. Verify
-        let isVerified = tool.verify(expected: expected, observed: observed)
+        let verification = tool.verifyDetailed(expected: expected, observed: observed)
+        expected.verification = verification
         timer.mark(.actionVerified)
 
-        guard isVerified else {
-            JarvisLogger.actions.error("Verification failed for tool '\(toolName)'")
+        guard verification.isSuccess else {
+            let reasonStr = verification.reason ?? observed.observations.description
+            JarvisLogger.actions.error("Verification failed for tool '\(toolName)': [\(verification.outcome.rawValue)] \(reasonStr)")
             throw JarvisError.verificationFailed(
                 action: toolName,
-                expected: expected.output,
-                actual: observed.observations.description
+                expected: verification.expectedState ?? expected.output,
+                actual: verification.observedState ?? "[\(verification.outcome.rawValue)] \(reasonStr)"
             )
         }
 
         let elapsed = timer.elapsed(from: .actionStart, to: .actionVerified) ?? 0
-        JarvisLogger.actions.info("Tool '\(toolName)' executed and verified in \(String(format: "%.1f", elapsed))ms")
+        JarvisLogger.actions.info("Tool '\(toolName)' executed and verified [\(verification.outcome.rawValue)] in \(String(format: "%.1f", elapsed))ms")
 
         return expected
     }

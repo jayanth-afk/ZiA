@@ -8,6 +8,24 @@
 
 ---
 
+## 32. MILESTONE 4A: DETERMINISTIC POST-ACTION VERIFICATION
+
+**Implemented and verified in the root checkout on 2026-09-29.** The tool pipeline is now `execute → metadata-aware observe → verify → task-state propagation`; action success alone never marks a task step verified.
+
+- `VerificationOutcome` has five explicit states: `passed`, `failed`, `inconclusive`, `unavailable`, and `notApplicable`. Only `passed` is verified or referenceable.
+- `ToolVerificationResult` records the expected state, observed state, and reason. `ToolExecutor` propagates this evidence and fails closed for every non-passed outcome.
+- `OpenAppTool` compares the requested application to native `NSWorkspace` frontmost-app observation.
+- `SetTextTool` performs fresh AX target resolution and exact post-mutation value read-back. A missing AX observation is `unavailable`.
+- `ClickElementTool` requires an observed deterministic postcondition (frontmost app, element existence/disappearance, or focus); a bare AXPress is `inconclusive`.
+- `RunShellTool` supports declared `expected_file`, `expected_file_non_empty`, and `expected_directory` postconditions using the bounded one-shot `FileSystemObserver`.
+- AX observations re-resolve elements after actions to avoid stale element handles. No OCR, screenshot, or model inference is used as verification evidence.
+
+**Regression evidence:** `swift build` completed and `.build/debug/Jarvis --self-test` reported **544 passed, 0 failed**. Phase 19 includes adversarial mismatched app/text/filesystem cases plus downstream ReferenceResolver rejection. The filesystem coverage uses a controlled temporary file. Actual browser frontmost state was observed as `Brave Browser`; no arbitrary UI mutation was performed outside controlled test paths.
+
+Known environment limitation: `swift test` remains unavailable under the Command Line Tools-only environment; the in-process `SelfTest` executable is the canonical suite.
+
+---
+
 ## Table of Contents
 1. [Section 1 — Project Identity](#section-1--project-identity)
 2. [Section 2 — Frozen Architectural Principles](#section-2--frozen-architectural-principles)
@@ -1382,4 +1400,3 @@ struct EscalationContext: Sendable {
   15. `Cloud escalation permitted for PUBLIC data level` [VERIFIED]
 
 ---
-

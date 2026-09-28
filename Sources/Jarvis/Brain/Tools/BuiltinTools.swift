@@ -368,3 +368,132 @@ struct OpenBrowserTool: JarvisTool {
             : .failed("Observed active-tab URL differs from navigation target", expected: target, observed: actual)
     }
 }
+
+// MARK: - Bounded Browser DOM Tools
+
+struct InspectBrowserPageTool: JarvisTool {
+    let name = "inspect_browser_page"
+    let description = "Reads a bounded DOM summary and visible links from an active Safari or Chrome tab"
+    let impact: PermissionGate.ActionImpact = .readOnly
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "browser", kind: .string, required: true, description: "Safari or Google Chrome")
+    ]
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let browserText = arguments["browser"] as? String,
+              let browser = BrowserType(rawValue: browserText), browser == .safari || browser == .chrome else {
+            throw JarvisError.actionFailed(action: name, reason: "Choose Safari or Google Chrome")
+        }
+        let page = try await BrowserManager.shared.inspectActivePage(browser: browser)
+        return ToolResult(success: true, output: page, sideEffects: ["browser_page_observed"], metadata: ["browser": browser.rawValue])
+    }
+
+    func observe() async throws -> ObservationResult {
+        .unavailable(reason: "Page observation requires a selected browser")
+    }
+
+    func observe(expected: ToolResult) async throws -> ObservationResult {
+        guard let raw = expected.metadata["browser"], let browser = BrowserType(rawValue: raw),
+              let tab = try await BrowserManager.shared.getActiveTabInfo(browser: browser) else {
+            return .unavailable(reason: "Could not observe the active browser tab")
+        }
+        return ObservationResult(observations: ["url": tab.url, "title": tab.title])
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else { return .failed("Page inspection failed") }
+        guard observed.isAvailable else { return .unavailable(observed.reason ?? "Page state unavailable") }
+        guard let data = expected.output.data(using: .utf8),
+              let page = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              page["url"] as? String == observed.observations["url"] else {
+            return .failed("DOM snapshot is malformed or belongs to a different active URL")
+        }
+        return .passed(expected: "active browser page inspected", observed: observed.observations["url"])
+    }
+}
+
+struct ExtractBrowserTextTool: JarvisTool {
+    let name = "extract_browser_text"
+    let description = "Extracts visible text from exactly one CSS-selected element in Safari or Chrome"
+    let impact: PermissionGate.ActionImpact = .readOnly
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "browser", kind: .string, required: true, description: "Safari or Google Chrome"),
+        ToolParameterSpec(name: "selector", kind: .string, required: true, description: "CSS selector matching exactly one element")
+    ]
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let raw = arguments["browser"] as? String, let browser = BrowserType(rawValue: raw), browser == .safari || browser == .chrome,
+              let selector = arguments["selector"] as? String else {
+            throw JarvisError.actionFailed(action: name, reason: "A supported browser and CSS selector are required")
+        }
+        let output = try await BrowserManager.shared.extractText(selector: selector, browser: browser)
+        return ToolResult(success: true, output: output, sideEffects: ["browser_dom_text_observed"], metadata: ["browser": browser.rawValue])
+    }
+
+    func observe() async throws -> ObservationResult { .unavailable(reason: "Page observation requires execution metadata") }
+
+    func observe(expected: ToolResult) async throws -> ObservationResult {
+        guard let raw = expected.metadata["browser"], let browser = BrowserType(rawValue: raw),
+              let tab = try await BrowserManager.shared.getActiveTabInfo(browser: browser) else {
+            return .unavailable(reason: "Could not observe the active browser tab")
+        }
+        return ObservationResult(observations: ["url": tab.url])
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else { return .failed("DOM text extraction failed") }
+        guard observed.isAvailable else { return .unavailable(observed.reason ?? "Page state unavailable") }
+        guard observed.observations["url"] != nil else { return .inconclusive("Active page URL was not observed") }
+        guard let data = expected.output.data(using: .utf8),
+              let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              result["error"] == nil, result["text"] is String else {
+            return .failed("Selector did not resolve to one extractable DOM element", expected: "one matching element", observed: expected.output)
+        }
+        return .passed(expected: "one selector result", observed: "DOM text returned from active page")
+    }
+}
+
+struct ClickBrowserLinkTool: JarvisTool {
+    let name = "click_browser_link"
+    let description = "Clicks one uniquely selected anchor link and verifies the active tab navigated to its declared destination"
+    let impact: PermissionGate.ActionImpact = .safeMutation
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "browser", kind: .string, required: true, description: "Safari or Google Chrome"),
+        ToolParameterSpec(name: "selector", kind: .string, required: true, description: "CSS selector matching exactly one link"),
+        ToolParameterSpec(name: "expected_url_contains", kind: .string, required: true, description: "Required URL fragment that must match the link destination before clicking")
+    ]
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let raw = arguments["browser"] as? String, let browser = BrowserType(rawValue: raw), browser == .safari || browser == .chrome,
+              let selector = arguments["selector"] as? String,
+              let expectedFragment = arguments["expected_url_contains"] as? String, !expectedFragment.isEmpty,
+              let initialTab = try await BrowserManager.shared.getActiveTabInfo(browser: browser) else {
+            throw JarvisError.actionFailed(action: name, reason: "Browser, selector, URL expectation, or active tab is missing")
+        }
+        let destination = try await BrowserManager.shared.clickLink(selector: selector, browser: browser, expectedDestinationContains: expectedFragment)
+        _ = try await BrowserManager.shared.waitForNavigation(browser: browser, from: initialTab.url, to: destination)
+        return ToolResult(success: true, output: "Clicked link to \(destination)", sideEffects: ["browser_link_clicked"], metadata: ["browser": browser.rawValue, "initialURL": initialTab.url, "destinationURL": destination, "expectedURLFragment": expectedFragment])
+    }
+
+    func observe() async throws -> ObservationResult { .unavailable(reason: "Navigation verification requires execution metadata") }
+
+    func observe(expected: ToolResult) async throws -> ObservationResult {
+        guard let raw = expected.metadata["browser"], let browser = BrowserType(rawValue: raw),
+              let tab = try await BrowserManager.shared.getActiveTabInfo(browser: browser) else {
+            return .unavailable(reason: "Could not observe the active browser tab")
+        }
+        return ObservationResult(observations: ["url": tab.url])
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else { return .failed("Browser link click failed") }
+        guard observed.isAvailable else { return .unavailable(observed.reason ?? "Browser navigation observation unavailable") }
+        guard let initial = expected.metadata["initialURL"], let destination = expected.metadata["destinationURL"],
+              let fragment = expected.metadata["expectedURLFragment"], let actual = observed.observations["url"] else {
+            return .inconclusive("Link destination or active tab state is missing")
+        }
+        guard actual != initial else { return .failed("Active tab did not navigate after link click", expected: destination, observed: actual) }
+        guard actual.contains(fragment) else { return .failed("Active tab URL does not satisfy the declared destination", expected: fragment, observed: actual) }
+        return .passed(reason: "Observed active tab reached the selected link destination", expected: destination, observed: actual)
+    }
+}

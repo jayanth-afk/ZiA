@@ -24,6 +24,10 @@
 
 `OpenBrowserTool` now records the requested URL/browser and verifies Safari or Chrome navigation through active-tab observation. Default, Arc, and Brave browser tab inspection remains explicitly `unavailable` rather than being treated as successful navigation.
 
+Bounded DOM tools are now registered: `inspect_browser_page` returns a capped title/URL/text/link snapshot, `extract_browser_text` requires exactly one selector match, and `click_browser_link` only clicks a unique anchor after its href satisfies a declared URL fragment. It then verifies the active tab moved from its initial URL and reached the expected fragment. It cannot submit forms or click arbitrary buttons. Regression checks cover matching/mismatched page snapshots, ambiguous extraction, navigation, and unavailable observation. Latest complete run: **557 passed, 0 failed** (one immediately preceding run had a timing-only emergency-stop latency flake, then a clean full pass).
+
+Physical browser limitation: Safari active-tab URL observation succeeded, but Safari DOM JavaScript is blocked until the user enables “Allow JavaScript from Apple Events” in Safari Settings → Developer. Chrome’s active tab was on a sign-in page; its DOM was not inspected. Browser DOM behavior therefore has offline regression evidence but no physical DOM pass yet.
+
 The `write_file` tool provides bounded UTF-8 file creation and verifies exact read-back. `FileManagerJarvis` resolves canonical parent paths before writes/deletes so path-prefix lookalikes do not cause false blocks and symlink traversal into protected system directories is denied. Tests exercise a controlled `~/Library/Caches` file and a symlink to `/System`. Latest suite: **550 passed, 0 failed** after these additions.
 
 Known environment limitation: `swift test` remains unavailable under the Command Line Tools-only environment; the in-process `SelfTest` executable is the canonical suite.

@@ -174,6 +174,106 @@ public actor BrowserManager {
         return try await AppleScriptBridge.shared.execute(appleScript, timeoutSeconds: 4.0)
     }
 
+    /// Observe a bounded, read-only summary of the active page DOM.
+    public func inspectActivePage(browser: BrowserType) async throws -> String {
+        guard browser == .safari || browser == .chrome else {
+            throw JarvisError.actionFailed(action: "inspectBrowser", reason: "DOM observation is supported only for Safari and Chrome")
+        }
+        let script = """
+        (() => JSON.stringify({
+          title: document.title || "",
+          url: location.href,
+          text: (document.body?.innerText || "").slice(0, 12000),
+          links: Array.from(document.querySelectorAll("a[href]")).slice(0, 80).map(a => ({text: (a.innerText || a.getAttribute("aria-label") || "").trim().slice(0, 200), href: a.href.slice(0, 2048)}))
+        }))()
+        """
+        return try await executeJavaScript(script: script, browser: browser)
+    }
+
+    /// Return text from exactly one CSS-selected element. The selector is JSON-escaped
+    /// before entering JavaScript and the returned text is bounded to 8 KB.
+    public func extractText(selector: String, browser: BrowserType) async throws -> String {
+        guard browser == .safari || browser == .chrome else {
+            throw JarvisError.actionFailed(action: "extractBrowserText", reason: "DOM extraction is supported only for Safari and Chrome")
+        }
+        guard !selector.isEmpty, selector.count <= 512,
+              let selectorData = try? JSONSerialization.data(withJSONObject: [selector]),
+              let selectorJSON = String(data: selectorData, encoding: .utf8) else {
+            throw JarvisError.actionFailed(action: "extractBrowserText", reason: "Invalid or oversized CSS selector")
+        }
+        let quotedSelector = String(selectorJSON.dropFirst().dropLast())
+        let script = """
+        (() => {
+          const matches = document.querySelectorAll(\(quotedSelector));
+          if (matches.length !== 1) return JSON.stringify({error: "selector must match exactly one element", count: matches.length});
+          const e = matches[0];
+          return JSON.stringify({text: (e.innerText || e.textContent || "").trim().slice(0, 8000)});
+        })()
+        """
+        return try await executeJavaScript(script: script, browser: browser)
+    }
+
+    /// Click a uniquely identified link only; arbitrary buttons and form controls
+    /// are intentionally outside this bounded navigation primitive.
+    public func clickLink(selector: String, browser: BrowserType, expectedDestinationContains: String) async throws -> String {
+        guard browser == .safari || browser == .chrome else {
+            throw JarvisError.actionFailed(action: "clickBrowserLink", reason: "DOM interaction is supported only for Safari and Chrome")
+        }
+        guard !selector.isEmpty, selector.count <= 512,
+              !expectedDestinationContains.isEmpty, expectedDestinationContains.count <= 2048,
+              let data = try? JSONSerialization.data(withJSONObject: [selector]),
+              let encoded = String(data: data, encoding: .utf8),
+              let expectedData = try? JSONSerialization.data(withJSONObject: [expectedDestinationContains]),
+              let expectedEncoded = String(data: expectedData, encoding: .utf8) else {
+            throw JarvisError.actionFailed(action: "clickBrowserLink", reason: "Invalid or oversized CSS selector or URL expectation")
+        }
+        let quotedSelector = String(encoded.dropFirst().dropLast())
+        let quotedExpectation = String(expectedEncoded.dropFirst().dropLast())
+        let script = """
+        (() => {
+          const matches = document.querySelectorAll(\(quotedSelector));
+          if (matches.length !== 1) return JSON.stringify({clicked: false, error: "selector must match exactly one element", count: matches.length});
+          const e = matches[0];
+          if (!(e instanceof HTMLAnchorElement) || !e.href) return JSON.stringify({clicked: false, error: "target is not a navigable link"});
+          const destination = e.href;
+          if (!destination.includes(\(quotedExpectation))) return JSON.stringify({clicked: false, error: "link destination does not match expectation", destination});
+          e.click();
+          return JSON.stringify({clicked: true, destination});
+        })()
+        """
+        let result = try await executeJavaScript(script: script, browser: browser)
+        guard let data = result.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["clicked"] as? Bool == true,
+              let destination = object["destination"] as? String else {
+            let reason = (try? JSONSerialization.jsonObject(with: Data(result.utf8)) as? [String: Any])?["error"] as? String ?? "Link click was not accepted"
+            throw JarvisError.actionFailed(action: "clickBrowserLink", reason: reason)
+        }
+        return destination
+    }
+
+    /// Wait briefly for an already-requested navigation, observing real tab state.
+    public func waitForNavigation(browser: BrowserType, from initialURL: String, to destination: String, timeout: TimeInterval = 4) async throws -> BrowserTabInfo? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            try Task.checkCancellation()
+            if let tab = try await getActiveTabInfo(browser: browser), tab.url != initialURL,
+               Self.urlsEquivalent(tab.url, destination) {
+                return tab
+            }
+            try await Task.sleep(nanoseconds: 200_000_000)
+        }
+        return try await getActiveTabInfo(browser: browser)
+    }
+
+    private nonisolated static func urlsEquivalent(_ lhs: String, _ rhs: String) -> Bool {
+        func normalized(_ value: String) -> String {
+            guard value.hasSuffix("/") else { return value }
+            return String(value.dropLast())
+        }
+        return normalized(lhs) == normalized(rhs)
+    }
+
     /// Closes the active tab in the designated browser.
     public func closeActiveTab(browser: BrowserType = .safari) async throws -> Bool {
         let script: String

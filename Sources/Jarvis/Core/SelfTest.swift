@@ -2596,6 +2596,25 @@ enum SelfTest {
         check(browserMismatch.outcome == .failed, "TEST G.0.2: Browser navigation rejects a mismatched observed URL")
         check(browserUnavailable.outcome == .unavailable, "TEST G.0.3: Browser navigation reports unavailable observation honestly")
 
+        let inspectBrowserTool = InspectBrowserPageTool()
+        let inspectExpected = ToolResult(success: true, output: "{\"title\":\"Example\",\"url\":\"https://example.com\",\"text\":\"page\",\"links\":[]}", metadata: ["browser": BrowserType.safari.rawValue])
+        let inspectValid = inspectBrowserTool.verifyDetailed(expected: inspectExpected, observed: ObservationResult(observations: ["url": "https://example.com"], isAvailable: true))
+        let inspectMismatch = inspectBrowserTool.verifyDetailed(expected: inspectExpected, observed: ObservationResult(observations: ["url": "https://other.example"], isAvailable: true))
+        check(inspectValid.outcome == .passed, "TEST G.0.4: Browser page snapshot must be valid DOM JSON for the observed URL")
+        check(inspectMismatch.outcome == .failed, "TEST G.0.5: Browser page snapshot rejects stale or mismatched URL state")
+
+        let extractBrowserTool = ExtractBrowserTextTool()
+        let extractGood = ToolResult(success: true, output: "{\"text\":\"visible text\"}")
+        let extractBad = ToolResult(success: true, output: "{\"error\":\"selector must match exactly one element\",\"count\":2}")
+        check(extractBrowserTool.verifyDetailed(expected: extractGood, observed: ObservationResult(observations: ["url": "https://example.com"], isAvailable: true)).outcome == .passed, "TEST G.0.6: Browser extraction verifies one observed DOM text result")
+        check(extractBrowserTool.verifyDetailed(expected: extractBad, observed: ObservationResult(observations: ["url": "https://example.com"], isAvailable: true)).outcome == .failed, "TEST G.0.7: Browser extraction rejects ambiguous selectors")
+
+        let browserClickTool = ClickBrowserLinkTool()
+        let browserClickExpected = ToolResult(success: true, output: "Clicked", metadata: ["initialURL": "https://example.com", "destinationURL": "https://example.com/about", "expectedURLFragment": "/about"])
+        check(browserClickTool.verifyDetailed(expected: browserClickExpected, observed: ObservationResult(observations: ["url": "https://example.com/about"], isAvailable: true)).outcome == .passed, "TEST G.0.8: Browser link click passes after observed navigation")
+        check(browserClickTool.verifyDetailed(expected: browserClickExpected, observed: ObservationResult(observations: ["url": "https://example.com"], isAvailable: true)).outcome == .failed, "TEST G.0.9: Browser link click fails when the active page did not navigate")
+        check(browserClickTool.verifyDetailed(expected: browserClickExpected, observed: .unavailable(reason: "Browser automation permission denied")).outcome == .unavailable, "TEST G.0.10: Browser link click preserves unavailable AX/automation state")
+
         // 19.7b Filesystem observations are one-shot, typed state rather than
         // process-return-code evidence. Use a controlled temporary path only.
         let verificationTemp = FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-verification-\(UUID().uuidString)")

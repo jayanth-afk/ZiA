@@ -17,16 +17,55 @@ struct OpenAppTool: JarvisTool {
         }
 
         let output = try await AppLauncher.shared.open(appName)
-        return ToolResult(success: true, output: output, sideEffects: ["app_launched"])
+        return ToolResult(
+            success: true,
+            output: output,
+            sideEffects: ["app_launched"],
+            metadata: ["targetApp": appName]
+        )
     }
 
     func observe() async throws -> ObservationResult {
-        let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName ?? "none"
-        return ObservationResult(observations: ["frontmostApp": frontmost])
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else {
+            return ObservationResult.unavailable(reason: "Cannot observe system application state (no frontmost application)")
+        }
+        let frontmost = frontApp.localizedName ?? "none"
+        let bundleId = frontApp.bundleIdentifier ?? ""
+        return ObservationResult(
+            observations: ["frontmostApp": frontmost, "bundleId": bundleId],
+            isAvailable: true
+        )
     }
 
-    func verify(expected: ToolResult, observed: ObservationResult) -> Bool {
-        return expected.success
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            return .failed("App launch failed during execution", expected: expected.metadata["targetApp"], observed: "execution failure")
+        }
+        guard observed.isAvailable else {
+            return .unavailable(observed.reason ?? "Cannot observe system application state", expected: expected.metadata["targetApp"], observed: "unavailable")
+        }
+        guard let targetApp = expected.metadata["targetApp"], !targetApp.isEmpty else {
+            return .inconclusive("No target application specified for verification", expected: nil, observed: observed.observations["frontmostApp"])
+        }
+        guard let frontmost = observed.observations["frontmostApp"], !frontmost.isEmpty, frontmost != "none" else {
+            return .failed("No frontmost application detected after launch", expected: targetApp, observed: "none")
+        }
+
+        let targetLower = targetApp.lowercased()
+        let frontmostLower = frontmost.lowercased()
+        if frontmostLower == targetLower || frontmostLower.contains(targetLower) || targetLower.contains(frontmostLower) {
+            return .passed(
+                reason: "Observed frontmost application matches target application",
+                expected: targetApp,
+                observed: frontmost
+            )
+        } else {
+            return .failed(
+                "Expected frontmost application '\(targetApp)', but observed '\(frontmost)'",
+                expected: targetApp,
+                observed: frontmost
+            )
+        }
     }
 }
 
@@ -46,16 +85,45 @@ struct SetVolumeTool: JarvisTool {
         }
 
         let output = try await SystemControl.shared.setVolume(level)
-        return ToolResult(success: true, output: output, sideEffects: ["volume_changed"])
+        return ToolResult(
+            success: true,
+            output: output,
+            sideEffects: ["volume_changed"],
+            metadata: ["targetLevel": String(level)]
+        )
     }
 
     func observe() async throws -> ObservationResult {
         let currentVol = await SystemControl.shared.getVolume()
-        return ObservationResult(observations: ["volume": String(currentVol)])
+        return ObservationResult(observations: ["volume": String(currentVol)], isAvailable: true)
     }
 
-    func verify(expected: ToolResult, observed: ObservationResult) -> Bool {
-        return expected.success && (Int(observed.observations["volume"] ?? "") != nil)
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            return .failed("Volume adjustment failed during execution", expected: expected.metadata["targetLevel"], observed: "execution failure")
+        }
+        guard observed.isAvailable else {
+            return .unavailable("Cannot observe system volume", expected: expected.metadata["targetLevel"], observed: "unavailable")
+        }
+        guard let volStr = observed.observations["volume"], let vol = Int(volStr) else {
+            return .failed("Observed volume is missing or invalid", expected: expected.metadata["targetLevel"], observed: observed.observations["volume"])
+        }
+        if let targetLevelStr = expected.metadata["targetLevel"], let targetLevel = Int(targetLevelStr) {
+            if abs(vol - targetLevel) <= 2 {
+                return .passed(
+                    reason: "Observed volume satisfies expected volume level within tolerance",
+                    expected: "\(targetLevel)%",
+                    observed: "\(vol)%"
+                )
+            } else {
+                return .failed(
+                    "Expected volume \(targetLevel)%, but observed \(vol)%",
+                    expected: "\(targetLevel)%",
+                    observed: "\(vol)%"
+                )
+            }
+        }
+        return .passed(expected: "valid volume", observed: "\(vol)%")
     }
 }
 
@@ -66,22 +134,120 @@ struct RunShellTool: JarvisTool {
     let description = "Executes a sandboxed shell command on macOS"
     let impact: PermissionGate.ActionImpact = .destructive
     let parameterSpec: [ToolParameterSpec] = [
-        ToolParameterSpec(name: "command", kind: .string, required: true, description: "Shell command to run; must pass the security sandbox")
+        ToolParameterSpec(name: "command", kind: .string, required: true, description: "Shell command to run; must pass the security sandbox"),
+        ToolParameterSpec(name: "expected_file", kind: .string, required: false, description: "Optional file path expected to exist after command execution"),
+        ToolParameterSpec(name: "expected_file_non_empty", kind: .string, required: false, description: "Optional assertion that expected file has non-zero size ('true')"),
+        ToolParameterSpec(name: "expected_directory", kind: .string, required: false, description: "Optional directory path expected to exist after command execution")
     ]
+
+    private static let lastExpectedPath = LockedValue<String?>("")
 
     func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
         guard let command = arguments["command"] as? String else {
             throw JarvisError.actionFailed(action: name, reason: "Missing argument 'command'")
         }
 
+        var meta: [String: String] = ["command": command]
+        if let expectedFile = arguments["expected_file"] as? String {
+            meta["expectedFile"] = expectedFile
+            Self.lastExpectedPath.value = expectedFile
+        }
+        if let expectedNonEmpty = arguments["expected_file_non_empty"] as? String {
+            meta["expectedNonEmpty"] = expectedNonEmpty
+        }
+        if let expectedDir = arguments["expected_directory"] as? String {
+            meta["expectedDirectory"] = expectedDir
+            Self.lastExpectedPath.value = expectedDir
+        }
+
         let output = try await ShellExecutor.shared.execute(command)
         let success = output.exitCode == 0
+        meta["exitCode"] = String(output.exitCode)
         let combined = output.stdout.isEmpty ? output.stderr : output.stdout
-        return ToolResult(success: success, output: combined, sideEffects: ["process_executed"])
+        return ToolResult(
+            success: success,
+            output: combined,
+            sideEffects: ["process_executed"],
+            metadata: meta
+        )
     }
 
     func observe() async throws -> ObservationResult {
-        return ObservationResult(observations: ["status": "completed"])
+        var obs: [String: String] = ["status": "completed"]
+        if let path = Self.lastExpectedPath.value, !path.isEmpty {
+            let fileState = FileSystemObserver.shared.observe(path: path)
+            obs["targetPath"] = path
+            obs["fileExists"] = String(fileState.exists)
+            obs["isRegularFile"] = String(fileState.isRegularFile)
+            obs["isDirectory"] = String(fileState.isDirectory)
+            obs["fileSize"] = String(fileState.fileSize ?? 0)
+        }
+        return ObservationResult(observations: obs, isAvailable: true)
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            let code = expected.metadata["exitCode"] ?? "unknown"
+            return .failed(
+                "Shell process failed with exit code \(code)",
+                expected: "exit code 0",
+                observed: "exit code \(code)"
+            )
+        }
+        guard observed.isAvailable else {
+            return .unavailable(
+                "Observation mechanism unavailable",
+                expected: "process completion",
+                observed: "unavailable"
+            )
+        }
+
+        // Side-effect verification 1: expected_file existence and non-empty
+        if let expectedFile = expected.metadata["expectedFile"], !expectedFile.isEmpty {
+            let fileState = FileSystemObserver.shared.observe(path: expectedFile)
+            if !fileState.exists {
+                return .failed(
+                    "Expected file does not exist after command: \(expectedFile)",
+                    expected: "file exists at \(expectedFile)",
+                    observed: "missing"
+                )
+            }
+            if expected.metadata["expectedNonEmpty"] == "true" && (fileState.fileSize ?? 0) == 0 {
+                return .failed(
+                    "Expected file '\(expectedFile)' to be non-empty, but observed 0 bytes",
+                    expected: "file size > 0",
+                    observed: "0 bytes"
+                )
+            }
+            return .passed(
+                reason: "Expected file verified on disk: \(expectedFile)",
+                expected: "file exists (\(expectedFile))",
+                observed: "present (\(fileState.fileSize ?? 0) bytes)"
+            )
+        }
+
+        // Side-effect verification 2: expected_directory existence
+        if let expectedDir = expected.metadata["expectedDirectory"], !expectedDir.isEmpty {
+            let dirState = FileSystemObserver.shared.observe(path: expectedDir)
+            if !dirState.isDirectory {
+                return .failed(
+                    "Expected directory does not exist after command: \(expectedDir)",
+                    expected: "directory at \(expectedDir)",
+                    observed: dirState.exists ? "not a directory" : "missing"
+                )
+            }
+            return .passed(
+                reason: "Expected directory verified on disk: \(expectedDir)",
+                expected: "directory at \(expectedDir)",
+                observed: "present"
+            )
+        }
+
+        return .passed(
+            reason: "Shell command executed and exited with status 0",
+            expected: "exit code 0",
+            observed: "exit code 0"
+        )
     }
 }
 

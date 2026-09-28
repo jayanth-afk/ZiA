@@ -52,12 +52,21 @@ enum TaskState: String, Sendable, Codable {
 /// Task state records whether a step's result was independently verified —
 /// it is never inferred from state/output text after the fact.
 enum VerificationOutcome: String, Sendable, Codable {
-    /// Tool executed and verification passed (ToolExecutor or AgentLoop check).
+    /// Tool executed and verification passed (observed state deterministically satisfies expected postcondition).
     case passed
-    /// Verification ran and failed — the step did not achieve its outcome.
+    /// Verification ran and failed — observed state deterministically contradicts expected postcondition.
     case failed
+    /// The system cannot establish whether the expected postcondition is true (cannot convert to passed).
+    case inconclusive
+    /// The required observation mechanism is unavailable (cannot convert to passed).
+    case unavailable
     /// No verification applied (e.g. LLM composition step with no tool effect).
     case notApplicable
+
+    /// Returns true ONLY if the outcome deterministically passed.
+    var isVerified: Bool {
+        return self == .passed
+    }
 }
 
 /// A discrete step within a compound task.

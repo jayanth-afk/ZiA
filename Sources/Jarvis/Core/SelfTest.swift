@@ -2438,6 +2438,301 @@ enum SelfTest {
         check(test13AuthorityPlanValidation, "Tier B plans strictly validated against PlanValidator (Intelligence != Authority)")
         check(test14CloudAllowedForPublic, "Cloud escalation permitted for PUBLIC data level")
 
+        print("\n─── Phase 19: Milestone 4A Concrete Deterministic Observation & Verification ───")
+
+        let p19MockElement = AXElementInfo(
+            role: "AXTextField",
+            title: "UsernameField",
+            value: "alice",
+            elementDescription: "UsernameField",
+            frame: CGRect(x: 10, y: 20, width: 100, height: 30),
+            isEnabled: true,
+            actions: ["AXPress"],
+            children: []
+        )
+        AccessibilityBridge.shared.mockElementTree = p19MockElement
+        AccessibilityBridge.shared.mockTrusted = true
+
+        // 19.1 AccessibilityBridge element inspection
+        let foundElem = AccessibilityBridge.shared.findElement(matchingLabel: "UsernameField")
+        check(foundElem?.title == "UsernameField" && foundElem?.role == "AXTextField",
+              "AccessibilityBridge.findElement locates labeled element deterministically")
+
+        let notFoundElem = AccessibilityBridge.shared.findElement(matchingLabel: "NonExistent")
+        check(notFoundElem == nil,
+              "AccessibilityBridge.findElement returns nil for missing element")
+
+        // 19.2 Reading element value
+        let valResult = AccessibilityBridge.shared.readElementValue(matchingLabel: "UsernameField")
+        check(valResult.isAvailable && valResult.value == "alice",
+              "AccessibilityBridge.readElementValue returns exact value with availability true")
+
+        let missingVal = AccessibilityBridge.shared.readElementValue(matchingLabel: "NonExistent")
+        check(!missingVal.isAvailable && missingVal.value == nil,
+              "AccessibilityBridge.readElementValue returns isAvailable false for missing element")
+
+        // 19.3 Reading element enabled & role
+        let enabledResult = AccessibilityBridge.shared.readElementEnabled(matchingLabel: "UsernameField")
+        let roleResult = AccessibilityBridge.shared.readElementRole(matchingLabel: "UsernameField")
+        check(enabledResult.isAvailable && enabledResult.isEnabled && roleResult.isAvailable && roleResult.role == "AXTextField",
+              "AccessibilityBridge reads enabled status and role deterministically")
+
+        // 19.4 Reading element frame & focus
+        let frameResult = AccessibilityBridge.shared.readElementFrame(matchingLabel: "UsernameField")
+        let exists = AccessibilityBridge.shared.elementExists(matchingLabel: "UsernameField")
+        let notExists = AccessibilityBridge.shared.elementExists(matchingLabel: "GhostElement")
+        let isFocused = AccessibilityBridge.shared.isElementFocused(matchingLabel: "UsernameField")
+        check(frameResult.isAvailable && frameResult.frame?.width == 100 && exists && !notExists && isFocused,
+              "AccessibilityBridge reads frame, existence, and focus deterministically")
+
+        // 19.5 Whole UI state observation without vision
+        let uiObs = AccessibilityBridge.shared.observeCurrentUIState()
+        check(uiObs.isAvailable && uiObs.observations["elementCount"] == "1",
+              "AccessibilityBridge.observeCurrentUIState produces structured deterministic observation")
+
+        var p19SetTextSuccess = false
+        var p19SetTextFailObserved = false
+        var p19SetTextUnavailable = false
+        var p19ExecutorBlockedVerificationFail = false
+        var p19ClickPassed = false
+        var p19ClickFailed = false
+        var p19ClickInconclusive = false
+        var p19ShellPass = false
+        var p19ShellMissingFail = false
+
+        let p19Sem = DispatchSemaphore(value: 0)
+        Task {
+            let sideEffectFile = "/tmp/jarvis_shell_test_\(UUID().uuidString).txt"
+            let missingExpectedFile = "/tmp/jarvis_missing_\(UUID().uuidString).txt"
+            let setTextTool = SetTextTool()
+
+            // 19.6 SetTextTool: Positive verification (exact match -> .passed)
+            do {
+                _ = try await setTextTool.execute(arguments: ["element_label": "UsernameField", "text": "alice"])
+                let obs = try await setTextTool.observe()
+                let verify = setTextTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "Set text 'alice' on element 'UsernameField'", metadata: ["targetElement": "UsernameField", "expectedValue": "alice"]),
+                    observed: obs
+                )
+                if verify.outcome == .passed && verify.isSuccess {
+                    p19SetTextSuccess = true
+                }
+            } catch {}
+
+            // 19.7 SetTextTool: Negative verification (wrong value -> .failed)
+            do {
+                _ = try await setTextTool.execute(arguments: ["element_label": "UsernameField", "text": "bob"])
+                let obs = try await setTextTool.observe() // Reads mockElement which has "alice"
+                let verify = setTextTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "Set text 'bob' on element 'UsernameField'", metadata: ["targetElement": "UsernameField", "expectedValue": "bob"]),
+                    observed: obs
+                )
+                if verify.outcome == .failed && !verify.isSuccess && verify.observedState == "alice" {
+                    p19SetTextFailObserved = true
+                }
+            } catch {}
+
+            // 19.8 SetTextTool: Target unavailable -> .unavailable (NEVER success)
+            do {
+                _ = try await setTextTool.execute(arguments: ["element_label": "MissingField", "text": "test"])
+                let obs = try await setTextTool.observe()
+                let verify = setTextTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "Set text", metadata: ["targetElement": "MissingField", "expectedValue": "test"]),
+                    observed: obs
+                )
+                if verify.outcome == .unavailable && !verify.isSuccess {
+                    p19SetTextUnavailable = true
+                }
+            } catch {}
+
+            // 19.9 ToolExecutor rejects failed verification even if execution returned success
+            do {
+                let executor = ToolExecutor(registry: ToolRegistry.shared)
+                _ = try await executor.execute(
+                    toolName: "set_text",
+                    arguments: ["element_label": "UsernameField", "text": "bob"],
+                    environmentContext: nil
+                )
+            } catch JarvisError.verificationFailed(let tool, let outcome, _) {
+                if tool == "set_text" && outcome == "failed" {
+                    p19ExecutorBlockedVerificationFail = true
+                }
+            } catch {}
+
+            // 19.10 ClickElementTool: Postcondition verified (.passed)
+            let clickTool = ClickElementTool()
+            do {
+                _ = try await clickTool.execute(arguments: ["element_label": "UsernameField", "expected_element_exists": "UsernameField"])
+                let obs = try await clickTool.observe()
+                let verify = clickTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "Clicked", metadata: ["expected_element_exists": "UsernameField", "has_postcondition": "true"]),
+                    observed: obs
+                )
+                if verify.outcome == .passed && verify.isSuccess {
+                    p19ClickPassed = true
+                }
+            } catch {}
+
+            // 19.11 ClickElementTool: Postcondition violated (.failed)
+            do {
+                _ = try await clickTool.execute(arguments: ["element_label": "UsernameField", "expected_element_exists": "DisappearedElement"])
+                let obs = try await clickTool.observe()
+                let verify = clickTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "Clicked", metadata: ["expected_element_exists": "DisappearedElement", "has_postcondition": "true"]),
+                    observed: obs
+                )
+                if verify.outcome == .failed && !verify.isSuccess {
+                    p19ClickFailed = true
+                }
+            } catch {}
+
+            // 19.12 ClickElementTool: No postcondition declared -> .inconclusive (NEVER verified success)
+            do {
+                _ = try await clickTool.execute(arguments: ["element_label": "UsernameField"])
+                let obs = try await clickTool.observe()
+                let verify = clickTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "Clicked", metadata: [:]),
+                    observed: obs
+                )
+                if verify.outcome == .inconclusive && !verify.isSuccess {
+                    p19ClickInconclusive = true
+                }
+            } catch {}
+
+            // 19.14 RunShellTool with expected_file side-effect verification (PASS)
+            let shellTool = RunShellTool()
+            do {
+                _ = try await shellTool.execute(arguments: ["command": "echo 'verified side effect' > \(sideEffectFile)", "expected_file": sideEffectFile])
+                let obs = try await shellTool.observe()
+                let verify = shellTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "", metadata: ["expected_file": sideEffectFile]),
+                    observed: obs
+                )
+                if verify.outcome == .passed && verify.isSuccess {
+                    p19ShellPass = true
+                }
+            } catch {}
+
+            // 19.15 RunShellTool: Exit code 0 BUT expected_file missing -> .failed
+            do {
+                _ = try await shellTool.execute(arguments: ["command": "echo 'no file created'", "expected_file": missingExpectedFile])
+                let obs = try await shellTool.observe()
+                let verify = shellTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "", metadata: ["expected_file": missingExpectedFile]),
+                    observed: obs
+                )
+                if verify.outcome == .failed && !verify.isSuccess {
+                    p19ShellMissingFail = true
+                }
+            } catch {}
+
+            try? FileManager.default.removeItem(atPath: sideEffectFile)
+            p19Sem.signal()
+        }
+
+        while p19Sem.wait(timeout: .now() + 0.05) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        check(p19SetTextSuccess, "SetTextTool verification succeeds (.passed) when observed value matches expected")
+        check(p19SetTextFailObserved, "SetTextTool verification fails (.failed) when observed value does not match expected")
+        check(p19SetTextUnavailable, "SetTextTool returns .unavailable when target element cannot be observed")
+        check(p19ExecutorBlockedVerificationFail, "ToolExecutor gates execution on verification failure (Evidence Before Green)")
+        check(p19ClickPassed, "ClickElementTool verifies postcondition (.passed) when expected element exists")
+        check(p19ClickFailed, "ClickElementTool fails verification (.failed) when expected postcondition is violated")
+        check(p19ClickInconclusive, "ClickElementTool returns .inconclusive when no postcondition is declared")
+
+        // Clean up mock tree
+        AccessibilityBridge.shared.resetMocks()
+
+        // 19.13 FileSystemObserver primitives
+        let tempFilePath = "/tmp/jarvis_selftest_fs_\(UUID().uuidString).txt"
+        let testFileContent = "Deterministic File Content 42"
+        FileManager.default.createFile(atPath: tempFilePath, contents: testFileContent.data(using: .utf8), attributes: nil)
+
+        let fileObs = FileSystemObserver.shared.observe(path: tempFilePath)
+        let containsExpected = FileSystemObserver.shared.fileContains(path: tempFilePath, substring: "Content 42")
+        let containsWrong = FileSystemObserver.shared.fileContains(path: tempFilePath, substring: "NonExistentSubstring")
+        let missingFileObs = FileSystemObserver.shared.observe(path: "/tmp/non_existent_\(UUID().uuidString).txt")
+
+        try? FileManager.default.removeItem(atPath: tempFilePath)
+
+        check(fileObs.exists && fileObs.isRegularFile && !fileObs.isDirectory && (fileObs.fileSize ?? 0) > 0 &&
+              containsExpected && !containsWrong && !missingFileObs.exists,
+              "FileSystemObserver deterministically inspects file existence, type, size, and content")
+
+        check(p19ShellPass, "RunShellTool verifies declared expected_file postcondition (.passed)")
+        check(p19ShellMissingFail, "RunShellTool verification fails (.failed) when exit 0 but expected_file missing")
+
+        // 19.16 OpenAppTool verification (positive match & negative mismatch)
+        let p19OpenApp = OpenAppTool()
+        let openObsMatch = ObservationResult(
+            observations: ["frontmostApp": "Finder"],
+            isAvailable: true
+        )
+        let verifyAppMatch: ToolVerificationResult = p19OpenApp.verifyDetailed(
+            expected: ToolResult(success: true, output: "", metadata: ["targetApp": "Finder"]),
+            observed: openObsMatch
+        )
+        let verifyAppMismatch: ToolVerificationResult = p19OpenApp.verifyDetailed(
+            expected: ToolResult(success: true, output: "", metadata: ["targetApp": "Safari"]),
+            observed: openObsMatch
+        )
+        check(verifyAppMatch.outcome == .passed && verifyAppMismatch.outcome == .failed,
+              "OpenAppTool verifies frontmost application (match -> passed, mismatch -> failed)")
+
+        // 19.17 Structured ToolVerificationResult quality
+        let sampleVerification = ToolVerificationResult(
+            outcome: .passed,
+            reason: "Target matched",
+            expectedState: "app: Finder",
+            observedState: "frontmost: Finder"
+        )
+        check(sampleVerification.expectedState == "app: Finder" &&
+              sampleVerification.observedState == "frontmost: Finder" &&
+              sampleVerification.reason == "Target matched" &&
+              sampleVerification.outcome == .passed,
+              "ToolVerificationResult retains structured expected and observed states")
+
+        // 19.18 ReferenceResolver refuses to consume unverified step outputs
+        let verifiedRec = StepResolutionRecord(stepNumber: 1, toolName: "run_shell", rawOutput: "token_123", verification: .passed)
+        let failedRec = StepResolutionRecord(stepNumber: 2, toolName: "run_shell", rawOutput: "token_456", verification: .failed)
+        let inconRec = StepResolutionRecord(stepNumber: 3, toolName: "click_element", rawOutput: "clicked", verification: .inconclusive)
+        let unavailRec = StepResolutionRecord(stepNumber: 4, toolName: "set_text", rawOutput: "set", verification: .unavailable)
+
+        let targetStep1 = ReferenceTarget.stepOutput(stepNumber: 1, field: nil)
+        let targetStep2 = ReferenceTarget.stepOutput(stepNumber: 2, field: nil)
+        let targetStep3 = ReferenceTarget.stepOutput(stepNumber: 3, field: nil)
+        let targetStep4 = ReferenceTarget.stepOutput(stepNumber: 4, field: nil)
+
+        let records: [Int: StepResolutionRecord] = [1: verifiedRec, 2: failedRec, 3: inconRec, 4: unavailRec]
+
+        let resolved1 = try? ReferenceResolver.resolveTarget(target: targetStep1, currentStepNumber: 5, resolutionRecords: records, environmentContext: nil)
+        var blockedFailed = false
+        var blockedIncon = false
+        var blockedUnavail = false
+
+        do {
+            _ = try ReferenceResolver.resolveTarget(target: targetStep2, currentStepNumber: 5, resolutionRecords: records, environmentContext: nil)
+        } catch ReferenceResolutionError.unverifiedStep {
+            blockedFailed = true
+        } catch {}
+
+        do {
+            _ = try ReferenceResolver.resolveTarget(target: targetStep3, currentStepNumber: 5, resolutionRecords: records, environmentContext: nil)
+        } catch ReferenceResolutionError.unverifiedStep {
+            blockedIncon = true
+        } catch {}
+
+        do {
+            _ = try ReferenceResolver.resolveTarget(target: targetStep4, currentStepNumber: 5, resolutionRecords: records, environmentContext: nil)
+        } catch ReferenceResolutionError.unverifiedStep {
+            blockedUnavail = true
+        } catch {}
+
+        check(resolved1 == "token_123" && blockedFailed && blockedIncon && blockedUnavail,
+              "ReferenceResolver strictly permits .passed and refuses .failed, .inconclusive, .unavailable")
+
         // ── Results ──
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

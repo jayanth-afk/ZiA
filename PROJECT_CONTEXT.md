@@ -24,6 +24,8 @@
 
 `OpenBrowserTool` now records the requested URL/browser and verifies Safari or Chrome navigation through active-tab observation. Default, Arc, and Brave browser tab inspection remains explicitly `unavailable` rather than being treated as successful navigation.
 
+The `write_file` tool provides bounded UTF-8 file creation and verifies exact read-back. `FileManagerJarvis` resolves canonical parent paths before writes/deletes so path-prefix lookalikes do not cause false blocks and symlink traversal into protected system directories is denied. Tests exercise a controlled `~/Library/Caches` file and a symlink to `/System`. Latest suite: **550 passed, 0 failed** after these additions.
+
 Known environment limitation: `swift test` remains unavailable under the Command Line Tools-only environment; the in-process `SelfTest` executable is the canonical suite.
 
 ---

@@ -490,6 +490,35 @@ enum SelfTest {
         } catch {}
         check(blockedCaught, "Security sandbox blocks writing to /System")
 
+        var protectedPrefixAllowed = false
+        do {
+            _ = try fm.validatedWritablePath("/Systematic/jarvis-test.txt")
+            protectedPrefixAllowed = true
+        } catch {}
+        check(protectedPrefixAllowed, "File path safety matches protected path components, not string prefixes")
+
+        let safeFilePath = fm.resolvePath("~/Library/Caches/jarvis-write-\(UUID().uuidString).txt")
+        var safeWriteVerified = false
+        do {
+            _ = try fm.writeFile(at: safeFilePath, content: "exact file content")
+            safeWriteVerified = try fm.readFile(at: safeFilePath) == "exact file content"
+            _ = try fm.deleteFile(at: safeFilePath)
+        } catch {}
+        check(safeWriteVerified, "File write and read-back work in a controlled user cache path")
+
+        let symlinkPath = fm.resolvePath("~/Library/Caches/jarvis-write-link-\(UUID().uuidString)")
+        do {
+            try FileManager.default.createSymbolicLink(atPath: symlinkPath, withDestinationPath: "/System")
+            var symlinkBlocked = false
+            do { _ = try fm.validatedWritablePath(symlinkPath + "/jarvis-test.txt") }
+            catch JarvisError.commandBlocked { symlinkBlocked = true }
+            catch {}
+            check(symlinkBlocked, "File sandbox blocks symlink traversal into protected system paths")
+            try? FileManager.default.removeItem(atPath: symlinkPath)
+        } catch {
+            check(false, "File sandbox blocks symlink traversal into protected system paths")
+        }
+
         let homeListing = try? fm.listDirectory(at: "~")
         check(homeListing != nil && !homeListing!.isEmpty, "Lists home directory successfully")
 

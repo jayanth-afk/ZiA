@@ -102,11 +102,32 @@ final class FileManagerJarvis {
     }
 
     private func validateSafePath(_ resolvedPath: String, operation: String) throws {
-        for prefix in blockedSystemPrefixes {
-            if resolvedPath.hasPrefix(prefix) {
-                JarvisLogger.security.fault("Blocked unsafe file operation \(operation) on \(resolvedPath)")
-                throw JarvisError.commandBlocked(command: operation, reason: "Modifying system path '\(prefix)' is forbidden")
-            }
+        let standardized = URL(fileURLWithPath: resolvedPath).standardizedFileURL
+        // Resolve the existing parent separately. Foundation does not reliably
+        // resolve a symlink when the final destination leaf does not exist yet.
+        let canonical: String
+        if fileManager.fileExists(atPath: standardized.path) {
+            canonical = standardized.resolvingSymlinksInPath().path
+        } else {
+            let parent = standardized.deletingLastPathComponent().resolvingSymlinksInPath()
+            canonical = parent.appendingPathComponent(standardized.lastPathComponent).standardizedFileURL.path
         }
+        guard let protectedRoot = blockedSystemPrefixes.first(where: { root in
+            canonical == root || canonical.hasPrefix(root.hasSuffix("/") ? root : root + "/")
+        }) else { return }
+
+        JarvisLogger.security.fault("Blocked unsafe file operation \(operation) on \(canonical)")
+        throw JarvisError.commandBlocked(
+            command: operation,
+            reason: "Modifying protected system path '\(protectedRoot)' is forbidden"
+        )
+    }
+
+    /// Used by deterministic tests and callers that need a normalized path
+    /// after the same symlink-aware safety check as writes and deletes.
+    func validatedWritablePath(_ path: String, operation: String = "writeFile") throws -> String {
+        let resolved = resolvePath(path)
+        try validateSafePath(resolved, operation: operation)
+        return URL(fileURLWithPath: resolved).standardizedFileURL.resolvingSymlinksInPath().path
     }
 }

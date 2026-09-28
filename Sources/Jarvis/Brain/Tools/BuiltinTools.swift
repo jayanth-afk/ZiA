@@ -17,16 +17,40 @@ struct OpenAppTool: JarvisTool {
         }
 
         let output = try await AppLauncher.shared.open(appName)
-        return ToolResult(success: true, output: output, sideEffects: ["app_launched"])
+        return ToolResult(
+            success: true,
+            output: output,
+            sideEffects: ["app_launched"],
+            metadata: ["targetApp": appName]
+        )
     }
 
     func observe() async throws -> ObservationResult {
         let frontmost = NSWorkspace.shared.frontmostApplication?.localizedName ?? "none"
-        return ObservationResult(observations: ["frontmostApp": frontmost])
+        return ObservationResult(observations: ["frontmostApp": frontmost], isAvailable: true)
     }
 
-    func verify(expected: ToolResult, observed: ObservationResult) -> Bool {
-        return expected.success
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            return .failed("App launch failed during execution")
+        }
+        guard observed.isAvailable else {
+            return .unavailable(observed.reason ?? "Cannot observe system application state")
+        }
+        guard let targetApp = expected.metadata["targetApp"], !targetApp.isEmpty else {
+            return .inconclusive("No target application specified for verification")
+        }
+        guard let frontmost = observed.observations["frontmostApp"], !frontmost.isEmpty, frontmost != "none" else {
+            return .failed("No frontmost application detected after launch")
+        }
+
+        let targetLower = targetApp.lowercased()
+        let frontmostLower = frontmost.lowercased()
+        if frontmostLower == targetLower || frontmostLower.contains(targetLower) || targetLower.contains(frontmostLower) {
+            return .passed
+        } else {
+            return .failed("Expected frontmost application '\(targetApp)', but observed '\(frontmost)'")
+        }
     }
 }
 
@@ -46,16 +70,37 @@ struct SetVolumeTool: JarvisTool {
         }
 
         let output = try await SystemControl.shared.setVolume(level)
-        return ToolResult(success: true, output: output, sideEffects: ["volume_changed"])
+        return ToolResult(
+            success: true,
+            output: output,
+            sideEffects: ["volume_changed"],
+            metadata: ["targetLevel": String(level)]
+        )
     }
 
     func observe() async throws -> ObservationResult {
         let currentVol = await SystemControl.shared.getVolume()
-        return ObservationResult(observations: ["volume": String(currentVol)])
+        return ObservationResult(observations: ["volume": String(currentVol)], isAvailable: true)
     }
 
-    func verify(expected: ToolResult, observed: ObservationResult) -> Bool {
-        return expected.success && (Int(observed.observations["volume"] ?? "") != nil)
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            return .failed("Volume adjustment failed")
+        }
+        guard observed.isAvailable else {
+            return .unavailable("Cannot observe system volume")
+        }
+        guard let volStr = observed.observations["volume"], let vol = Int(volStr) else {
+            return .failed("Observed volume is missing or invalid")
+        }
+        if let targetLevelStr = expected.metadata["targetLevel"], let targetLevel = Int(targetLevelStr) {
+            if abs(vol - targetLevel) <= 2 {
+                return .passed
+            } else {
+                return .failed("Expected volume \(targetLevel)%, but observed \(vol)%")
+            }
+        }
+        return .passed
     }
 }
 
@@ -66,7 +111,8 @@ struct RunShellTool: JarvisTool {
     let description = "Executes a sandboxed shell command on macOS"
     let impact: PermissionGate.ActionImpact = .destructive
     let parameterSpec: [ToolParameterSpec] = [
-        ToolParameterSpec(name: "command", kind: .string, required: true, description: "Shell command to run; must pass the security sandbox")
+        ToolParameterSpec(name: "command", kind: .string, required: true, description: "Shell command to run; must pass the security sandbox"),
+        ToolParameterSpec(name: "expected_file", kind: .string, required: false, description: "Optional file path expected to exist after command execution")
     ]
 
     func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
@@ -74,14 +120,44 @@ struct RunShellTool: JarvisTool {
             throw JarvisError.actionFailed(action: name, reason: "Missing argument 'command'")
         }
 
+        var meta: [String: String] = ["command": command]
+        if let expectedFile = arguments["expected_file"] as? String {
+            meta["expectedFile"] = expectedFile
+        }
+
         let output = try await ShellExecutor.shared.execute(command)
         let success = output.exitCode == 0
+        meta["exitCode"] = String(output.exitCode)
         let combined = output.stdout.isEmpty ? output.stderr : output.stdout
-        return ToolResult(success: success, output: combined, sideEffects: ["process_executed"])
+        return ToolResult(
+            success: success,
+            output: combined,
+            sideEffects: ["process_executed"],
+            metadata: meta
+        )
     }
 
     func observe() async throws -> ObservationResult {
-        return ObservationResult(observations: ["status": "completed"])
+        return ObservationResult(observations: ["status": "completed"], isAvailable: true)
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            let code = expected.metadata["exitCode"] ?? "unknown"
+            return .failed("Shell process failed with exit code \(code)")
+        }
+        guard observed.isAvailable else {
+            return .unavailable("Observation mechanism unavailable")
+        }
+        if let expectedFile = expected.metadata["expectedFile"], !expectedFile.isEmpty {
+            let exists = FileManager.default.fileExists(atPath: expectedFile)
+            if exists {
+                return .passed
+            } else {
+                return .failed("Expected file does not exist after command: \(expectedFile)")
+            }
+        }
+        return .passed
     }
 }
 

@@ -84,18 +84,48 @@ struct ClickElementTool: JarvisTool {
             return try FastUIMode.shared.clickElement(matching: label)
         }
 
-        return ToolResult(success: true, output: output, sideEffects: ["ui_element_clicked"])
+        var meta: [String: String] = ["elementLabel": label]
+        if let expectedApp = arguments["expected_app"] as? String {
+            meta["expected_app"] = expectedApp
+        }
+        if let hasPostcondition = arguments["has_postcondition"] as? String {
+            meta["has_postcondition"] = hasPostcondition
+        }
+
+        return ToolResult(
+            success: true,
+            output: output,
+            sideEffects: ["ui_element_clicked"],
+            metadata: meta
+        )
     }
 
     func observe() async throws -> ObservationResult {
         let frontmost = await MainActor.run {
             NSWorkspace.shared.frontmostApplication?.localizedName ?? "none"
         }
-        return ObservationResult(observations: ["frontmostApp": frontmost])
+        return ObservationResult(observations: ["frontmostApp": frontmost], isAvailable: true)
     }
 
-    func verify(expected: ToolResult, observed: ObservationResult) -> Bool {
-        return expected.success
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            return .failed("Click execution failed")
+        }
+        guard observed.isAvailable else {
+            return .unavailable(observed.reason ?? "UI observation unavailable")
+        }
+        if let expectedApp = expected.metadata["expected_app"], !expectedApp.isEmpty {
+            let frontmost = observed.observations["frontmostApp"] ?? ""
+            if frontmost.lowercased().contains(expectedApp.lowercased()) {
+                return .passed
+            } else {
+                return .failed("Expected frontmost application '\(expectedApp)' after click, but observed '\(frontmost)'")
+            }
+        }
+        if expected.metadata["has_postcondition"] == "true" {
+            return .passed
+        }
+        return .inconclusive("Click executed; no deterministic postcondition specified to verify state mutation")
     }
 }
 
@@ -120,17 +150,38 @@ struct SetTextTool: JarvisTool {
             return try FastUIMode.shared.setText(text, onElement: elementLabel)
         }
 
-        return ToolResult(success: true, output: output, sideEffects: ["ui_text_entered"])
+        var meta: [String: String] = ["expectedValue": text]
+        if let label = elementLabel { meta["elementLabel"] = label }
+
+        return ToolResult(
+            success: true,
+            output: output,
+            sideEffects: ["ui_text_entered"],
+            metadata: meta
+        )
     }
 
     func observe() async throws -> ObservationResult {
         let frontmost = await MainActor.run {
             NSWorkspace.shared.frontmostApplication?.localizedName ?? "none"
         }
-        return ObservationResult(observations: ["frontmostApp": frontmost])
+        return ObservationResult(observations: ["frontmostApp": frontmost], isAvailable: true)
     }
 
-    func verify(expected: ToolResult, observed: ObservationResult) -> Bool {
-        return expected.success
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            return .failed("set_text execution failed")
+        }
+        guard observed.isAvailable else {
+            return .unavailable(observed.reason ?? "UI observation unavailable")
+        }
+        if let expectedVal = expected.metadata["expectedValue"], let observedVal = observed.observations["currentValue"] {
+            if observedVal == expectedVal {
+                return .passed
+            } else {
+                return .failed("Expected field value '\(expectedVal)', but observed '\(observedVal)'")
+            }
+        }
+        return .passed
     }
 }

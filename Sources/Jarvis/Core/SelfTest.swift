@@ -2438,6 +2438,168 @@ enum SelfTest {
         check(test13AuthorityPlanValidation, "Tier B plans strictly validated against PlanValidator (Intelligence != Authority)")
         check(test14CloudAllowedForPublic, "Cloud escalation permitted for PUBLIC data level")
 
+        // ── Phase 19: Milestone 4A — High-Reliability Deterministic Verification ──
+        print("\n─── Phase 19: Milestone 4A — High-Reliability Deterministic Verification ───")
+
+        // 19.1 TEST A: False positive rejection (expected.success == true, but observation contradicts)
+        struct MockContradictoryTool: JarvisTool {
+            let name = "mock_contradictory"
+            let description = "Tool that succeeds in execution but fails observation verification"
+            let impact: PermissionGate.ActionImpact = .safeMutation
+            func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+                return ToolResult(success: true, output: "Execution returned success", sideEffects: [])
+            }
+            func observe() async throws -> ObservationResult {
+                return ObservationResult(observations: ["error": "Observed fatal process crash"], isAvailable: true)
+            }
+        }
+        let mockTool = MockContradictoryTool()
+        let falseGreenExpected = ToolResult(success: true, output: "Execution returned success")
+        let errorObservation = ObservationResult(observations: ["error": "Observed fatal process crash"], isAvailable: true)
+        let falseGreenVerification = mockTool.verifyDetailed(expected: falseGreenExpected, observed: errorObservation)
+        check(!falseGreenVerification.isSuccess && falseGreenVerification.outcome == .failed, "TEST A: False positive rejected when observation detects error despite expected.success == true")
+
+        // 19.2 TEST B: OpenApp verification mismatch (expected Safari, observed Finder)
+        let phase19OpenAppTool = OpenAppTool()
+        let openAppExpectedSafari = ToolResult(
+            success: true,
+            output: "Launched Safari",
+            sideEffects: ["app_launched"],
+            metadata: ["targetApp": "Safari"]
+        )
+        let openAppObservedFinder = ObservationResult(
+            observations: ["frontmostApp": "Finder"],
+            isAvailable: true
+        )
+        let openAppMismatchResult = phase19OpenAppTool.verifyDetailed(
+            expected: openAppExpectedSafari,
+            observed: openAppObservedFinder
+        )
+        check(!openAppMismatchResult.isSuccess && openAppMismatchResult.outcome == VerificationOutcome.failed, "TEST B: OpenApp fails verification when observed frontmost app contradicts expected app")
+
+        // 19.3 TEST C: OpenApp verification success (expected Safari, observed Safari)
+        let openAppObservedSafari = ObservationResult(
+            observations: ["frontmostApp": "Safari"],
+            isAvailable: true
+        )
+        let openAppMatchResult = phase19OpenAppTool.verifyDetailed(
+            expected: openAppExpectedSafari,
+            observed: openAppObservedSafari
+        )
+        check(openAppMatchResult.isSuccess && openAppMatchResult.outcome == VerificationOutcome.passed, "TEST C: OpenApp passes verification when observed frontmost matches expected app")
+
+        // 19.4 TEST D: Inconclusive / Unavailable observations never pass
+        let openAppUnavailableResult = phase19OpenAppTool.verifyDetailed(
+            expected: openAppExpectedSafari,
+            observed: ObservationResult.unavailable
+        )
+        check(!openAppUnavailableResult.isSuccess && openAppUnavailableResult.outcome == VerificationOutcome.unavailable, "TEST D.1: ObservationResult.unavailable produces .unavailable outcome and does not pass")
+
+        let phase19ClickTool = ClickElementTool()
+        let clickExpected = ToolResult(
+            success: true,
+            output: "Clicked Submit",
+            sideEffects: ["ui_element_clicked"],
+            metadata: ["elementLabel": "Submit"]
+        )
+        let clickObserved = ObservationResult(
+            observations: ["frontmostApp": "Safari"],
+            isAvailable: true
+        )
+        let clickInconclusiveResult = phase19ClickTool.verifyDetailed(
+            expected: clickExpected,
+            observed: clickObserved
+        )
+        check(!clickInconclusiveResult.isSuccess && clickInconclusiveResult.outcome == VerificationOutcome.inconclusive, "TEST D.2: Action without deterministic postcondition produces .inconclusive and does not pass")
+
+        // 19.5 TEST E: Accessibility text mismatch (expected 'hello', observed 'world')
+        let phase19SetTextTool = SetTextTool()
+        let setTextExpected = ToolResult(
+            success: true,
+            output: "Entered text hello",
+            sideEffects: ["ui_text_entered"],
+            metadata: ["expectedValue": "hello"]
+        )
+        let setTextObservedMismatch = ObservationResult(
+            observations: ["currentValue": "world"],
+            isAvailable: true
+        )
+        let setTextMismatchResult = phase19SetTextTool.verifyDetailed(
+            expected: setTextExpected,
+            observed: setTextObservedMismatch
+        )
+        check(!setTextMismatchResult.isSuccess && setTextMismatchResult.outcome == VerificationOutcome.failed, "TEST E: Accessibility SetText fails verification when observed field value contradicts expected text")
+
+        // 19.6 TEST F: Accessibility text success (expected 'hello', observed 'hello')
+        let setTextObservedMatch = ObservationResult(
+            observations: ["currentValue": "hello"],
+            isAvailable: true
+        )
+        let setTextMatchResult = phase19SetTextTool.verifyDetailed(
+            expected: setTextExpected,
+            observed: setTextObservedMatch
+        )
+        check(setTextMatchResult.isSuccess && setTextMatchResult.outcome == VerificationOutcome.passed, "TEST F: Accessibility SetText passes verification when observed field value matches expected text")
+
+        // 19.7 TEST G: Destructive safety / Shell side-effect verification failure
+        let phase19RunShellTool = RunShellTool()
+        let nonExistentPath = "/tmp/jarvis_selftest_missing_\(UUID().uuidString).dat"
+        let shellExpectedSideEffect = ToolResult(
+            success: true,
+            output: "Created file",
+            sideEffects: ["process_executed"],
+            metadata: ["command": "touch \(nonExistentPath)", "exitCode": "0", "expectedFile": nonExistentPath]
+        )
+        let shellObserved = ObservationResult(observations: ["status": "completed"], isAvailable: true)
+        let shellSideEffectResult = phase19RunShellTool.verifyDetailed(
+            expected: shellExpectedSideEffect,
+            observed: shellObserved
+        )
+        check(!shellSideEffectResult.isSuccess && shellSideEffectResult.outcome == VerificationOutcome.failed, "TEST G: RunShell fails verification when expected side-effect file does not exist despite exit code 0")
+
+        // 19.8 TEST H: Tool regression — SetVolume deterministic verification
+        let phase19SetVolumeTool = SetVolumeTool()
+        let volumeExpected = ToolResult(
+            success: true,
+            output: "Volume set to 60%",
+            sideEffects: ["volume_changed"],
+            metadata: ["targetLevel": "60"]
+        )
+        let volumeObservedMatch = ObservationResult(observations: ["volume": "60"], isAvailable: true)
+        let volumeObservedMismatch = ObservationResult(observations: ["volume": "15"], isAvailable: true)
+        let volMatchResult = phase19SetVolumeTool.verifyDetailed(expected: volumeExpected, observed: volumeObservedMatch)
+        let volMismatchResult = phase19SetVolumeTool.verifyDetailed(expected: volumeExpected, observed: volumeObservedMismatch)
+        check(volMatchResult.isSuccess && volMatchResult.outcome == VerificationOutcome.passed, "TEST H.1: SetVolume passes verification when observed volume matches target level")
+        check(!volMismatchResult.isSuccess && volMismatchResult.outcome == VerificationOutcome.failed, "TEST H.2: SetVolume fails verification when observed volume deviates from target level")
+
+        // 19.9 TEST I: ReferenceResolver blocks consumption of inconclusive or unavailable outputs
+        let sm4 = TaskStateMachine.shared
+        let inconclusiveTask = sm4.createTask(title: "InconclusiveTask", goal: "selftest: unverified downstream block")
+        let incRecord = StepResolutionRecord(
+            stepNumber: 1,
+            toolName: "click_element",
+            rawOutput: "Clicked Submit",
+            structuredOutput: nil,
+            completedAt: Date(),
+            verification: .inconclusive
+        )
+        _ = try? sm4.appendResolutionRecord(incRecord, for: inconclusiveTask.id)
+        var blockedResolution = false
+        do {
+            let records = sm4.resolutionRecords(for: inconclusiveTask.id)
+            _ = try ReferenceResolver.resolveTarget(
+                target: .stepOutput(stepNumber: 1, field: nil),
+                currentStepNumber: 2,
+                resolutionRecords: records,
+                environmentContext: nil
+            )
+        } catch ReferenceResolutionError.unverifiedStep(let stepNum, let outcome) {
+            if stepNum == 1 && outcome == "inconclusive" {
+                blockedResolution = true
+            }
+        } catch {}
+        check(blockedResolution, "TEST I: ReferenceResolver deterministically blocks consuming outputs from steps with .inconclusive verification")
+
         // ── Results ──
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

@@ -247,8 +247,9 @@ actor AgentLoop {
                             expected: "meaningful output",
                             actual: result.output)
                     }
+                    let stepOutcome = result.verification?.outcome ?? .passed
                     _ = try? stateMachine.markStepVerification(
-                        taskId: task.id, stepIndex: stepIndex, outcome: .passed)
+                        taskId: task.id, stepIndex: stepIndex, outcome: stepOutcome)
 
                     // RECORD Resolution Record on stateMachine (for subsequent steps to reference)
                     let record = StepResolutionRecord(
@@ -257,7 +258,7 @@ actor AgentLoop {
                         rawOutput: result.output,
                         structuredOutput: nil,
                         completedAt: Date(),
-                        verification: .passed
+                        verification: stepOutcome
                     )
                     _ = try? stateMachine.appendResolutionRecord(record, for: task.id)
 
@@ -566,8 +567,9 @@ actor AgentLoop {
                     throw JarvisError.verificationFailed(
                         action: toolName, expected: "meaningful output", actual: result.output)
                 }
+                let stepOutcome = result.verification?.outcome ?? .passed
                 _ = try? stateMachine.markStepVerification(
-                    taskId: task.id, stepIndex: allSteps.count - 1, outcome: .passed)
+                    taskId: task.id, stepIndex: allSteps.count - 1, outcome: stepOutcome)
                 try stateMachine.updateStep(
                     taskId: task.id, stepIndex: allSteps.count - 1, state: .completed,
                     output: result.output)

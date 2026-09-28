@@ -1383,3 +1383,58 @@ struct EscalationContext: Sendable {
 
 ---
 
+## 32. Milestone 4A — High-Reliability Deterministic Verification
+
+### 1. Architectural Scope & Problem Statement
+During repository audits, Continue workers and human audits identified concrete verification weaknesses in the desktop execution pipeline:
+- **Bug 1 (Default Verify Too Weak):** `JarvisTool.verify(expected:observed:)` had a default implementation that trusted `expected.success`, violating the *Evidence Before Green* principle.
+- **Bug 2 (Open App Verification):** `OpenAppTool.observe()` captured the frontmost application, but verification did not assert `observed frontmost == expected application`.
+- **Bug 3 (Shell Side-Effect Verification):** `RunShellTool.observe()` reported `status = completed` solely based on process termination, insufficient for commands intended to produce filesystem side effects.
+- **Bug 4 (Accessibility Mutation Verification):** `ClickElementTool` and `SetTextTool` inherited weak verification without explicit postcondition checking or distinguishing inconclusive states.
+
+### 2. Implemented Architecture & Authoritative Contract
+1. **Four-Outcome Verification Semantics:**
+   `VerificationOutcome` in `TaskStateMachine.swift` is expanded to distinguish:
+   - `.passed`: Observed real-world state deterministically satisfies expected postcondition.
+   - `.failed`: Observed real-world state deterministically contradicts expected postcondition.
+   - `.inconclusive`: System cannot establish whether the expected postcondition is true (cannot convert to passed).
+   - `.unavailable`: Required observation mechanism is unavailable (cannot convert to passed).
+   - `.notApplicable`: Applied to non-effectual steps (e.g. direct text composition).
+   - Property `isVerified: Bool` returns `true` **only** if `.passed`.
+
+2. **Tool Protocol & Verification Contract (`ToolDefinitions.swift`):**
+   - Added `struct ToolVerificationResult: Sendable, Equatable` with `.outcome` and `.reason`.
+   - Enriched `ToolResult` with `metadata: [String: String]` and `var verification: ToolVerificationResult?`.
+   - Enriched `ObservationResult` with `isAvailable: Bool` and `reason: String?`.
+   - Added `func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult` to `JarvisTool`.
+   - Default `verifyDetailed` checks `expected.success`, `observed.isAvailable`, and `observed.observations["error"]`.
+   - Retained legacy `verify(...) -> Bool` bridge returning `verifyDetailed(...).isSuccess`.
+
+3. **Concrete Verification Upgrades (`BuiltinTools.swift` & `AccessibilityTools.swift`):**
+   - `OpenAppTool`: Sets `metadata["targetApp"]`. `verifyDetailed` asserts `observed.observations["frontmostApp"]` matches target application, returning `.failed` on mismatch and `.unavailable` if system workspace state cannot be read.
+   - `SetVolumeTool`: Sets `metadata["targetLevel"]`. `verifyDetailed` asserts observed audio volume matches expected level.
+   - `RunShellTool`: Added optional `expected_file` parameter. If specified, `verifyDetailed` verifies file existence on disk via `FileManager.default.fileExists(atPath:)` and asserts non-zero exit code.
+   - `ClickElementTool`: Explicit deterministic strategy. If `expected_app` or explicit postcondition is provided, verifies frontmost app transition; otherwise returns `.inconclusive`, preventing false-positive success claims.
+   - `SetTextTool`: Stores `metadata["expectedValue"]`. `verifyDetailed` asserts `observed.observations["currentValue"]` equals expected value, returning `.failed` on mismatch.
+
+4. **Authority Boundary & Pipeline Enforcement (`ToolExecutor.swift` & `AgentLoop.swift`):**
+   - `ToolExecutor.execute` runs `tool.verifyDetailed`, attaches outcome to `expected.verification`, and throws `JarvisError.verificationFailed` if `!verification.isSuccess`.
+   - `AgentLoop.run` and `AgentLoop.runSequential` record `result.verification?.outcome ?? .passed` onto `TaskStateMachine` and `StepResolutionRecord`.
+   - `ReferenceResolver` enforces that downstream steps referencing `$step.<N>` fail with `ReferenceResolutionError.unverifiedStep` if the prior step verification was `.inconclusive`, `.unavailable`, or `.failed`.
+
+### 3. Canonical Test Suite Evidence (`SelfTest.swift` Phase 19)
+- **Self-Test Baseline Advanced:** **542 passed, 0 failed** (from 531 passed, +11 verified tests).
+- **Exact Test Matrix (Phase 19):**
+  1. `TEST A: False positive rejected when observation detects error despite expected.success == true` [VERIFIED]
+  2. `TEST B: OpenApp fails verification when observed frontmost app contradicts expected app` [VERIFIED]
+  3. `TEST C: OpenApp passes verification when observed frontmost matches expected app` [VERIFIED]
+  4. `TEST D.1: ObservationResult.unavailable produces .unavailable outcome and does not pass` [VERIFIED]
+  5. `TEST D.2: Action without deterministic postcondition produces .inconclusive and does not pass` [VERIFIED]
+  6. `TEST E: Accessibility SetText fails verification when observed field value contradicts expected text` [VERIFIED]
+  7. `TEST F: Accessibility SetText passes verification when observed field value matches expected text` [VERIFIED]
+  8. `TEST G: RunShell fails verification when expected side-effect file does not exist despite exit code 0` [VERIFIED]
+  9. `TEST H.1: SetVolume passes verification when observed volume matches target level` [VERIFIED]
+  10. `TEST H.2: SetVolume fails verification when observed volume deviates from target level` [VERIFIED]
+  11. `TEST I: ReferenceResolver deterministically blocks consuming outputs from steps with .inconclusive verification` [VERIFIED]
+
+---

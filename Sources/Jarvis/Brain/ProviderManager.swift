@@ -11,6 +11,7 @@ final class ProviderManager {
     let gemini = GeminiProvider()
     let openai = OpenAIProvider()
     let groq = GroqProvider()
+    let openrouter = OpenRouterProvider()
     let localNormal = MLXProvider(id: "mlx-normal", modelSlot: "normal")
     let localReflex = MLXProvider(id: "mlx-reflex", modelSlot: "reflex")
 
@@ -76,13 +77,13 @@ final class ProviderManager {
     func getFallbackChain(for category: IntentClassifier.IntentCategory) -> [any LLMProvider] {
         switch category {
         case .coding:
-            return [claude, openai, localNormal, localReflex]
+            return [claude, openai, openrouter, localNormal, localReflex]
         case .deepReasoning:
-            return [claude, gemini, openai, localNormal, localReflex]
+            return [claude, gemini, openai, openrouter, localNormal, localReflex]
         case .webSearch:
-            return [groq, gemini, localNormal, localReflex]
+            return [groq, openrouter, gemini, localNormal, localReflex]
         case .conversation, .systemQuery:
-            return [localNormal, groq, openai, localReflex]
+            return [localNormal, groq, openrouter, openai, localReflex]
         }
     }
 }

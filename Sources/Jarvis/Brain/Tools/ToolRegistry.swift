@@ -63,5 +63,8 @@ final class ToolRegistry {
         register(WebSearchTool())
         register(FetchURLTool())
         register(OpenBrowserTool())
+        register(InspectUITool())
+        register(ClickElementTool())
+        register(SetTextTool())
     }
 }

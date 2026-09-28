@@ -1,0 +1,585 @@
+(lldb) target create .build/out/Products/Debug/Jarvis
+Current executable set to '/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis' (arm64).
+(lldb) settings set -- target.run-args --sequential-experiment SEQA B1
+(lldb) run
+╔════════════════════════════════════════════════════════════╗
+║   TIER-A SEQUENTIAL EXPERIMENT — PHASE: EXPERIMENT A (sequential next-step)
+║   mode=sequential (next-step)
+╚════════════════════════════════════════════════════════════╝
+
+────────────────────── BENCHMARK B1 — ×5 ──────────────────────
+  goal: "echo alpha_one, then echo bravo_two, then echo charlie_three"
+  intended steps (definition-derived): 3
+  note: 3-step INDEPENDENT task: three unrelated echoes
+2026-09-28 03:24:24.226736+0530 Jarvis[42779:6600078] [brain] AgentLoop: Goal classified as PUBLIC
+2026-09-28 03:24:24.637689+0530 Jarvis[42779:6600077] [actions] Created task [F3B09FCF]: 'Autonomous Goal'
+2026-09-28 03:24:24.637731+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: CREATED -> PLANNING
+2026-09-28 03:24:24.637758+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: PLANNING -> RUNNING
+2026-09-28 03:24:24.742739+0530 Jarvis[42779:6600027] [actions] Registered tool: 'open_app'
+2026-09-28 03:24:24.742786+0530 Jarvis[42779:6600027] [actions] Registered tool: 'set_volume'
+2026-09-28 03:24:24.742812+0530 Jarvis[42779:6600027] [actions] Registered tool: 'run_shell'
+2026-09-28 03:24:24.742826+0530 Jarvis[42779:6600027] [actions] Registered tool: 'web_search'
+2026-09-28 03:24:24.742853+0530 Jarvis[42779:6600027] [actions] Registered tool: 'fetch_url'
+2026-09-28 03:24:24.742865+0530 Jarvis[42779:6600027] [actions] Registered tool: 'open_browser'
+2026-09-28 03:24:26.535762+0530 Jarvis[42779:6600078] [brain] mlx worker stderr: Fetching 9 files:   0%|          | 0/9 [00:00<?, ?it/s]
+2026-09-28 03:24:26.537859+0530 Jarvis[42779:6600078] [brain] mlx worker stderr: Fetching 9 files: 100%|██████████| 9/9 [00:00<00:00, 4310.20it/s]
+2026-09-28 03:24:26.916553+0530 Jarvis[42779:6600078] [brain] MLXProvider (normal) loaded real model mlx-community/Qwen2.5-0.5B-Instruct-4bit via mlx_lm in 1863ms
+2026-09-28 03:24:27.122563+0530 Jarvis[42779:6600027] [resources] Model loaded: mlx-community/Qwen2.5-0.5B-Instruct-4bit (~600MB)
+2026-09-28 03:24:27.535409+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 0 attempt 1: request 2791ms, ttft 241ms, 39 tokens
+2026-09-28 03:24:28.374550+0530 Jarvis[42779:6600027] [actions] Tool 'run_shell' executed and verified in 520.2ms
+2026-09-28 03:24:28.819195+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 1 attempt 1: request 339ms, ttft 183ms, 39 tokens
+2026-09-28 03:24:28.819501+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:28.819532+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:28.819543+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:28.819549+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:28.819556+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:29.241749+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 1 attempt 1: request 317ms, ttft 159ms, 39 tokens
+2026-09-28 03:24:29.242011+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:29.242027+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:29.242036+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:29.242042+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:29.242048+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:29.655001+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 1 attempt 1: request 312ms, ttft 146ms, 39 tokens
+2026-09-28 03:24:29.655336+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:29.655360+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:29.655369+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:29.655374+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:29.655380+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:30.076797+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 1 attempt 1: request 318ms, ttft 151ms, 41 tokens
+2026-09-28 03:24:30.917912+0530 Jarvis[42779:6600027] [actions] Tool 'run_shell' executed and verified in 523.2ms
+2026-09-28 03:24:31.403793+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 2 attempt 1: request 381ms, ttft 219ms, 39 tokens
+2026-09-28 03:24:31.404097+0530 Jarvis[42779:6600078] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:31.404113+0530 Jarvis[42779:6600078] [actions] Task [F3B09FCF] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:31.404123+0530 Jarvis[42779:6600078] [actions] Task [F3B09FCF] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:31.404129+0530 Jarvis[42779:6600078] [actions] Task [F3B09FCF] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:31.404136+0530 Jarvis[42779:6600078] [actions] Task [F3B09FCF] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:31.829373+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 2 attempt 1: request 322ms, ttft 166ms, 39 tokens
+2026-09-28 03:24:31.829608+0530 Jarvis[42779:6600078] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:31.829622+0530 Jarvis[42779:6600078] [actions] Task [F3B09FCF] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:31.829630+0530 Jarvis[42779:6600078] [actions] Task [F3B09FCF] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:31.829635+0530 Jarvis[42779:6600078] [actions] Task [F3B09FCF] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:31.829641+0530 Jarvis[42779:6600078] [actions] Task [F3B09FCF] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:32.263476+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 2 attempt 1: request 329ms, ttft 160ms, 39 tokens
+2026-09-28 03:24:32.263746+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:32.263765+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:32.263775+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:32.263782+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:32.263798+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:32.263805+0530 Jarvis[42779:6600077] [actions] Task [F3B09FCF] transitioned: RUNNING -> FAILED
+▶ RUN B1#1  [mode: seq]
+  runID: 4D10D38A  taskID: F3B09FCF
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 2
+  planValid: true  executed: 2  recovery: 6  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    plan snapshot cycle1: [run_shell, run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c3.a1: "alpha_one" present=false
+    compiled c3: "alpha_one" present=false cmd=echo bravo_two
+    raw c2.a1: "alpha_one" present=true
+    compiled c2: "alpha_one" present=true cmd=echo alpha_one
+    raw c4.a1: "alpha_one" present=true
+    compiled c4: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c1.a1: "alpha_one" present=true
+    compiled c1: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c3.a1: "bravo_two" present=true
+    compiled c3: "bravo_two" present=true cmd=echo bravo_two
+    raw c2.a1: "bravo_two" present=false
+    compiled c2: "bravo_two" present=false cmd=echo alpha_one
+    raw c4.a1: "bravo_two" present=false
+    compiled c4: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c1.a1: "bravo_two" present=false
+    compiled c1: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    executed+stdout: "bravo_two" present=true
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo bravo_two
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo alpha_one
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=8451ms model=5109ms
+  verdict: FAILED  completeness: 0.67  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|1|4D10D38A|F3B09FCF|plannerCalls=8|gens=8|genStepsInit=1|exec=2|recovery=6|verdict=FAILED|cat=B|wallMs=8451|modelMs=5108
+2026-09-28 03:24:32.786015+0530 Jarvis[42779:6600077] [brain] AgentLoop: Goal classified as PUBLIC
+2026-09-28 03:24:33.205887+0530 Jarvis[42779:6600078] [actions] Created task [1D88C7AD]: 'Autonomous Goal'
+2026-09-28 03:24:33.205948+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: CREATED -> PLANNING
+2026-09-28 03:24:33.205972+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: PLANNING -> RUNNING
+2026-09-28 03:24:33.647804+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 0 attempt 1: request 342ms, ttft 184ms, 39 tokens
+2026-09-28 03:24:34.481693+0530 Jarvis[42779:6600027] [actions] Tool 'run_shell' executed and verified in 519.1ms
+2026-09-28 03:24:34.918491+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 1 attempt 1: request 334ms, ttft 169ms, 39 tokens
+2026-09-28 03:24:34.918744+0530 Jarvis[42779:6600078] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:34.918760+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:34.918771+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:34.918777+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:34.918784+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:35.354643+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 1 attempt 1: request 331ms, ttft 155ms, 41 tokens
+2026-09-28 03:24:36.188798+0530 Jarvis[42779:6600027] [actions] Tool 'run_shell' executed and verified in 521.7ms
+2026-09-28 03:24:36.678472+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 2 attempt 1: request 384ms, ttft 209ms, 39 tokens
+2026-09-28 03:24:36.678738+0530 Jarvis[42779:6600079] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:36.678754+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:36.678764+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:36.678772+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:36.678780+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:37.106792+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 2 attempt 1: request 323ms, ttft 162ms, 39 tokens
+2026-09-28 03:24:37.107067+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:37.107087+0530 Jarvis[42779:6600077] [actions] Task [1D88C7AD] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:37.107097+0530 Jarvis[42779:6600077] [actions] Task [1D88C7AD] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:37.107104+0530 Jarvis[42779:6600077] [actions] Task [1D88C7AD] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:37.107109+0530 Jarvis[42779:6600077] [actions] Task [1D88C7AD] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:37.539729+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 2 attempt 1: request 328ms, ttft 172ms, 39 tokens
+2026-09-28 03:24:37.539979+0530 Jarvis[42779:6600079] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:37.539995+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:37.540004+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:37.540010+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:37.540017+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:37.972966+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 2 attempt 1: request 328ms, ttft 165ms, 39 tokens
+2026-09-28 03:24:37.973234+0530 Jarvis[42779:6600079] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:37.973257+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:37.973268+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:37.973275+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:37.973281+0530 Jarvis[42779:6600079] [actions] Task [1D88C7AD] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:38.399071+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 2 attempt 1: request 321ms, ttft 150ms, 39 tokens
+2026-09-28 03:24:38.399353+0530 Jarvis[42779:6600078] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:38.399374+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:38.399385+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:38.399392+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:38.399398+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:38.399403+0530 Jarvis[42779:6600078] [actions] Task [1D88C7AD] transitioned: RUNNING -> FAILED
+▶ RUN B1#2  [mode: seq]
+  runID: 3903F1ED  taskID: 1D88C7AD
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 2
+  planValid: true  executed: 2  recovery: 6  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    plan snapshot cycle1: [run_shell, run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    raw c3.a1: "alpha_one" present=true
+    compiled c3: "alpha_one" present=true cmd=echo alpha_one
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    raw c4.a1: "alpha_one" present=true
+    compiled c4: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c1.a1: "alpha_one" present=false
+    compiled c1: "alpha_one" present=false cmd=echo bravo_two
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c2.a1: "alpha_one" present=true
+    compiled c2: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    raw c3.a1: "bravo_two" present=false
+    compiled c3: "bravo_two" present=false cmd=echo alpha_one
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    raw c4.a1: "bravo_two" present=false
+    compiled c4: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c1.a1: "bravo_two" present=true
+    compiled c1: "bravo_two" present=true cmd=echo bravo_two
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c2.a1: "bravo_two" present=false
+    compiled c2: "bravo_two" present=false cmd=echo alpha_one
+    executed+stdout: "bravo_two" present=true
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo alpha_one
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo bravo_two
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=6027ms model=2689ms
+  verdict: FAILED  completeness: 0.67  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|2|3903F1ED|1D88C7AD|plannerCalls=8|gens=8|genStepsInit=1|exec=2|recovery=6|verdict=FAILED|cat=B|wallMs=6027|modelMs=2689
+2026-09-28 03:24:38.919268+0530 Jarvis[42779:6600077] [brain] AgentLoop: Goal classified as PUBLIC
+2026-09-28 03:24:39.335755+0530 Jarvis[42779:6600078] [actions] Created task [6D534DC2]: 'Autonomous Goal'
+2026-09-28 03:24:39.335814+0530 Jarvis[42779:6600078] [actions] Task [6D534DC2] transitioned: CREATED -> PLANNING
+2026-09-28 03:24:39.335837+0530 Jarvis[42779:6600078] [actions] Task [6D534DC2] transitioned: PLANNING -> RUNNING
+2026-09-28 03:24:39.808485+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 0 attempt 1: request 368ms, ttft 201ms, 39 tokens
+2026-09-28 03:24:40.633745+0530 Jarvis[42779:6600027] [actions] Tool 'run_shell' executed and verified in 520.8ms
+2026-09-28 03:24:41.088794+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 1 attempt 1: request 350ms, ttft 186ms, 41 tokens
+2026-09-28 03:24:41.927004+0530 Jarvis[42779:6600027] [actions] Tool 'run_shell' executed and verified in 524.0ms
+2026-09-28 03:24:42.369108+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 2 attempt 1: request 338ms, ttft 180ms, 39 tokens
+2026-09-28 03:24:42.369387+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:42.369409+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:42.369418+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:42.369424+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:42.369430+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:42.792559+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 2 attempt 1: request 318ms, ttft 158ms, 39 tokens
+2026-09-28 03:24:42.792820+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:42.792838+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:42.792848+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:42.792856+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:42.792861+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:43.200709+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 2 attempt 1: request 307ms, ttft 149ms, 39 tokens
+2026-09-28 03:24:43.205392+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:43.205425+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:43.205436+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:43.205444+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:43.205451+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:43.630248+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 2 attempt 1: request 320ms, ttft 161ms, 39 tokens
+2026-09-28 03:24:43.630525+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:43.630543+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:43.630553+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:43.630560+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:43.630567+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:44.055312+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 2 attempt 1: request 322ms, ttft 161ms, 39 tokens
+2026-09-28 03:24:44.055575+0530 Jarvis[42779:6600078] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:44.055599+0530 Jarvis[42779:6600078] [actions] Task [6D534DC2] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:44.055611+0530 Jarvis[42779:6600078] [actions] Task [6D534DC2] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:44.055618+0530 Jarvis[42779:6600078] [actions] Task [6D534DC2] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:44.055623+0530 Jarvis[42779:6600078] [actions] Task [6D534DC2] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:44.499980+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 2 attempt 1: request 339ms, ttft 176ms, 39 tokens
+2026-09-28 03:24:44.500271+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:44.500292+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:44.500302+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:44.500309+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:44.500315+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:44.500320+0530 Jarvis[42779:6600077] [actions] Task [6D534DC2] transitioned: RUNNING -> FAILED
+▶ RUN B1#3  [mode: seq]
+  runID: 71DB12E2  taskID: 6D534DC2
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 2
+  planValid: true  executed: 2  recovery: 6  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    plan snapshot cycle1: [run_shell, run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c0.a1: "alpha_one" present=false
+    compiled c0: "alpha_one" present=false cmd=echo bravo_two
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    raw c2.a1: "alpha_one" present=true
+    compiled c2: "alpha_one" present=true cmd=echo alpha_one
+    raw c4.a1: "alpha_one" present=true
+    compiled c4: "alpha_one" present=true cmd=echo alpha_one
+    raw c3.a1: "alpha_one" present=true
+    compiled c3: "alpha_one" present=true cmd=echo alpha_one
+    raw c1.a1: "alpha_one" present=true
+    compiled c1: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c0.a1: "bravo_two" present=true
+    compiled c0: "bravo_two" present=true cmd=echo bravo_two
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    raw c2.a1: "bravo_two" present=false
+    compiled c2: "bravo_two" present=false cmd=echo alpha_one
+    raw c4.a1: "bravo_two" present=false
+    compiled c4: "bravo_two" present=false cmd=echo alpha_one
+    raw c3.a1: "bravo_two" present=false
+    compiled c3: "bravo_two" present=false cmd=echo alpha_one
+    raw c1.a1: "bravo_two" present=false
+    compiled c1: "bravo_two" present=false cmd=echo alpha_one
+    executed+stdout: "bravo_two" present=true
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo bravo_two
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo alpha_one
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo alpha_one
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo alpha_one
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5995ms model=2662ms
+  verdict: FAILED  completeness: 0.67  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|3|71DB12E2|6D534DC2|plannerCalls=8|gens=8|genStepsInit=1|exec=2|recovery=6|verdict=FAILED|cat=B|wallMs=5994|modelMs=2661
+2026-09-28 03:24:45.022192+0530 Jarvis[42779:6600079] [brain] AgentLoop: Goal classified as PUBLIC
+2026-09-28 03:24:45.435078+0530 Jarvis[42779:6600079] [actions] Created task [31250F68]: 'Autonomous Goal'
+2026-09-28 03:24:45.435146+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: CREATED -> PLANNING
+2026-09-28 03:24:45.435174+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: PLANNING -> RUNNING
+2026-09-28 03:24:45.929475+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 0 attempt 1: request 394ms, ttft 238ms, 39 tokens
+2026-09-28 03:24:46.760458+0530 Jarvis[42779:6600027] [actions] Tool 'run_shell' executed and verified in 517.8ms
+2026-09-28 03:24:47.208717+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 1 attempt 1: request 345ms, ttft 186ms, 39 tokens
+2026-09-28 03:24:47.209007+0530 Jarvis[42779:6600079] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:47.209027+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:47.209037+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:47.209045+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:47.209051+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:47.630292+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 1 attempt 1: request 320ms, ttft 160ms, 39 tokens
+2026-09-28 03:24:47.630544+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:47.630562+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:47.630572+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:47.630578+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:47.630583+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:48.045469+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 1 attempt 1: request 310ms, ttft 152ms, 39 tokens
+2026-09-28 03:24:48.047030+0530 Jarvis[42779:6600079] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:48.047049+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:48.047065+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:48.047074+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:48.047081+0530 Jarvis[42779:6600079] [actions] Task [31250F68] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:48.462430+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 1 attempt 1: request 312ms, ttft 157ms, 39 tokens
+2026-09-28 03:24:48.463673+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:48.463691+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:48.463699+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:48.463704+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:48.463711+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:48.877499+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 1 attempt 1: request 311ms, ttft 151ms, 39 tokens
+2026-09-28 03:24:48.879469+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:48.879488+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:48.879497+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:48.879502+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:48.879508+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:49.292927+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 1 attempt 1: request 308ms, ttft 155ms, 39 tokens
+2026-09-28 03:24:49.293201+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:49.293217+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:49.293225+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:49.293231+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:49.293238+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:49.711329+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 1 attempt 1: request 314ms, ttft 157ms, 39 tokens
+2026-09-28 03:24:49.711569+0530 Jarvis[42779:6600077] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:49.711585+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:49.711593+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:49.711600+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:49.711605+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:49.711611+0530 Jarvis[42779:6600077] [actions] Task [31250F68] transitioned: RUNNING -> FAILED
+▶ RUN B1#4  [mode: seq]
+  runID: 1FA5A23F  taskID: 31250F68
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c1.a1: "alpha_one" present=true
+    compiled c1: "alpha_one" present=true cmd=echo alpha_one
+    raw c2.a1: "alpha_one" present=true
+    compiled c2: "alpha_one" present=true cmd=echo alpha_one
+    raw c3.a1: "alpha_one" present=true
+    compiled c3: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c4.a1: "alpha_one" present=true
+    compiled c4: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c1.a1: "bravo_two" present=false
+    compiled c1: "bravo_two" present=false cmd=echo alpha_one
+    raw c2.a1: "bravo_two" present=false
+    compiled c2: "bravo_two" present=false cmd=echo alpha_one
+    raw c3.a1: "bravo_two" present=false
+    compiled c3: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c4.a1: "bravo_two" present=false
+    compiled c4: "bravo_two" present=false cmd=echo alpha_one
+    executed: "bravo_two" NOT found in any executed step
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo alpha_one
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo alpha_one
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5103ms model=2613ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|4|1FA5A23F|31250F68|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5102|modelMs=2613
+2026-09-28 03:24:50.234501+0530 Jarvis[42779:6600078] [brain] AgentLoop: Goal classified as PUBLIC
+2026-09-28 03:24:50.653696+0530 Jarvis[42779:6600079] [actions] Created task [E9EEECD0]: 'Autonomous Goal'
+2026-09-28 03:24:50.653825+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: CREATED -> PLANNING
+2026-09-28 03:24:50.653865+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: PLANNING -> RUNNING
+2026-09-28 03:24:51.104147+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 0 attempt 1: request 349ms, ttft 188ms, 39 tokens
+2026-09-28 03:24:51.946079+0530 Jarvis[42779:6600027] [actions] Tool 'run_shell' executed and verified in 532.5ms
+2026-09-28 03:24:52.375948+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 1 attempt 1: request 327ms, ttft 171ms, 39 tokens
+2026-09-28 03:24:52.376247+0530 Jarvis[42779:6600078] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:52.376267+0530 Jarvis[42779:6600078] [actions] Task [E9EEECD0] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:52.376276+0530 Jarvis[42779:6600078] [actions] Task [E9EEECD0] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:52.376283+0530 Jarvis[42779:6600078] [actions] Task [E9EEECD0] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:52.376290+0530 Jarvis[42779:6600078] [actions] Task [E9EEECD0] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:52.794957+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 1 attempt 1: request 313ms, ttft 156ms, 39 tokens
+2026-09-28 03:24:52.796070+0530 Jarvis[42779:6600079] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:52.796097+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:52.796109+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:52.796115+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:52.796121+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:53.215750+0530 Jarvis[42779:6600077] [brain] MLXPlanner next-step 1 attempt 1: request 315ms, ttft 156ms, 41 tokens
+2026-09-28 03:24:54.047940+0530 Jarvis[42779:6600027] [actions] Tool 'run_shell' executed and verified in 520.1ms
+2026-09-28 03:24:54.481474+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 2 attempt 1: request 328ms, ttft 171ms, 39 tokens
+2026-09-28 03:24:54.481765+0530 Jarvis[42779:6600079] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:54.481788+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:54.481797+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:54.481802+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:54.481807+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:54.909526+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 2 attempt 1: request 323ms, ttft 164ms, 39 tokens
+2026-09-28 03:24:54.909804+0530 Jarvis[42779:6600079] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:54.909827+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:54.909844+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:54.909853+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:54.909860+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:55.339285+0530 Jarvis[42779:6600079] [brain] MLXPlanner next-step 2 attempt 1: request 324ms, ttft 169ms, 39 tokens
+2026-09-28 03:24:55.339540+0530 Jarvis[42779:6600079] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:55.339558+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:55.339567+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:55.339574+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:55.339580+0530 Jarvis[42779:6600079] [actions] Task [E9EEECD0] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:55.770523+0530 Jarvis[42779:6600078] [brain] MLXPlanner next-step 2 attempt 1: request 326ms, ttft 164ms, 39 tokens
+2026-09-28 03:24:55.770786+0530 Jarvis[42779:6600078] [actions] Sequential: model repeated completed step (run_shell|command=echo alpha_one) — discarded, no progress
+2026-09-28 03:24:55.770802+0530 Jarvis[42779:6600078] [actions] Task [E9EEECD0] transitioned: RUNNING -> FAILED
+2026-09-28 03:24:55.770813+0530 Jarvis[42779:6600078] [actions] Task [E9EEECD0] transitioned: FAILED -> RECOVERING
+2026-09-28 03:24:55.770820+0530 Jarvis[42779:6600078] [actions] Task [E9EEECD0] transitioned: RECOVERING -> REPLANNING
+2026-09-28 03:24:55.770830+0530 Jarvis[42779:6600078] [actions] Task [E9EEECD0] transitioned: REPLANNING -> RUNNING
+2026-09-28 03:24:55.770835+0530 Jarvis[42779:6600078] [actions] Task [E9EEECD0] transitioned: RUNNING -> FAILED
+▶ RUN B1#5  [mode: seq]
+  runID: 845AE62C  taskID: E9EEECD0
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 2
+  planValid: true  executed: 2  recovery: 6  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    plan snapshot cycle1: [run_shell, run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c1.a1: "alpha_one" present=true
+    compiled c1: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c4.a1: "alpha_one" present=true
+    compiled c4: "alpha_one" present=true cmd=echo alpha_one
+    raw c3.a1: "alpha_one" present=true
+    compiled c3: "alpha_one" present=true cmd=echo alpha_one
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c2.a1: "alpha_one" present=false
+    compiled c2: "alpha_one" present=false cmd=echo bravo_two
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c1.a1: "bravo_two" present=false
+    compiled c1: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c4.a1: "bravo_two" present=false
+    compiled c4: "bravo_two" present=false cmd=echo alpha_one
+    raw c3.a1: "bravo_two" present=false
+    compiled c3: "bravo_two" present=false cmd=echo alpha_one
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c2.a1: "bravo_two" present=true
+    compiled c2: "bravo_two" present=true cmd=echo bravo_two
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    executed+stdout: "bravo_two" present=true
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo alpha_one
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo alpha_one
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo bravo_two
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5950ms model=2606ms
+  verdict: FAILED  completeness: 0.67  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|5|845AE62C|E9EEECD0|plannerCalls=8|gens=8|genStepsInit=1|exec=2|recovery=6|verdict=FAILED|cat=B|wallMs=5950|modelMs=2605
+── SECTION SUMMARY B1 (scored=true) ──
+  PASS: 0/5  NOT_COMPLETE: 0/5  FAILED: 5/5
+  avg plannerCalls: 8.0  avg generations: 8.0  avg generatedSteps(initial): 1.0  avg wall ms: 6305
+  failure categories: B=5
+════════════════════ PHASE SUMMARY: EXPERIMENT A (sequential next-step) ════════════════════
+  B1: PASS 0/5 NOT_COMPLETE 0/5 FAILED 5/5 | plannerCalls 40 gens 40 avgGenSteps 1.0 exec 5/5 verify 0/5 recovery 31 avgWall 6305ms
+  B2: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B3: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B4: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B5: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+══════════════════════════════════════════════════════
+Process 42779 launched: '/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis' (arm64)
+Process 42779 exited with status = 0 (0x00000000)
+(lldb) quit

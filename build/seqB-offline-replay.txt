@@ -1,0 +1,209 @@
+════════════════════════════════════════════════════════════
+ EXPERIMENT B — OFFLINE REPLAY (no model, no network)
+════════════════════════════════════════════════════════════
+
+─── Step 7 fixtures (offline) ───
+  PASS  P1 command=echo args=hello → 'echo hello' (normalized(from: "run_shell{command=\"echo\", args=\"hello\"}", to: "echo hello"))
+  PASS  P2 command=echo args=[hello,world] → 'echo hello world' (normalized(from: "run_shell{command=\"echo\", args=[hello, world]}", to: "echo hello world"))
+  PASS  P3 literal preservation echo+jarvis_planner_e2e_verified (normalized(from: "run_shell{command=\"echo\", args=\"jarvis_planner_e2e_verified\"}", to: "echo jarvis_planner_e2e_verified"))
+  PASS  N1 missing command not normalized
+  PASS  N2 missing args not normalized
+  PASS  N3 empty command not normalized
+  PASS  N4 empty args not normalized
+  PASS  N5 whitespace command not normalized
+  PASS  N6 ambiguous list not normalized
+  PASS  N7 extra field not normalized
+  PASS  N8 unrelated tool not normalized
+  PASS  N9a int args not normalized
+  PASS  N9b malformed steps not normalized
+  PASS  INV1 joined is exactly model's echo+literal (echo jarvis_planner_e2e_verified)
+  PASS  INV2 no example value introduced
+  PASS  INV3 unusual literal verbatim (echo BASELINE_mArKeR-42.3)
+  PASS  INV4 operator value quoted (echo 'a;b')
+  PASS  INV5 disabled → object untouched (control behavior)
+
+─── recorded raw attempts (complete payloads from ii-seg-DA.txt + fc-seg-DA.txt) ───
+  [ii-seg-DA.txt cycle0 attempt1] literal=present bytes=271
+  [ii-seg-DA.txt cycle0 attempt2(repair)] literal=present bytes=1197
+  [ii-seg-DA.txt cycle1 attempt1] literal=present bytes=271
+  [ii-seg-DA.txt cycle1 attempt2(repair)] literal=present bytes=1197
+  [ii-seg-DA.txt cycle0 attempt1] literal=present bytes=271
+  [ii-seg-DA.txt cycle0 attempt2(repair)] literal=present bytes=1197
+  [ii-seg-DA.txt cycle1 attempt1] literal=present bytes=271
+  [ii-seg-DA.txt cycle1 attempt2(repair)] literal=present bytes=1199
+  [ii-seg-DA.txt cycle0 attempt1] literal=present bytes=193
+  [ii-seg-DA.txt cycle0 attempt2(repair)] literal=present bytes=279
+  [ii-seg-DA.txt cycle1 attempt1] literal=present bytes=225
+  [ii-seg-DA.txt cycle1 attempt2(repair)] literal=absent bytes=86
+  [ii-seg-DA.txt cycle0 attempt1] literal=present bytes=198
+  [ii-seg-DA.txt cycle0 attempt2(repair)] literal=present bytes=203
+  [ii-seg-DA.txt cycle0 attempt1] literal=present bytes=219
+  [ii-seg-DA.txt cycle0 attempt2(repair)] literal=absent bytes=86
+  [ii-seg-DA.txt cycle1 attempt1] literal=present bytes=193
+  [ii-seg-DA.txt cycle1 attempt2(repair)] literal=present bytes=279
+  [fc-seg-DA.txt attempt 1] literal=present bytes=193
+  [fc-seg-DA.txt attempt 2] literal=present bytes=279
+  [fc-seg-DA.txt attempt 1] literal=present bytes=193
+  [fc-seg-DA.txt attempt 2] literal=present bytes=252
+  [fc-seg-DA.txt attempt 1] literal=present bytes=262
+  [fc-seg-DA.txt attempt 1] literal=present bytes=193
+  [fc-seg-DA.txt attempt 2] literal=present bytes=238
+  [fc-seg-DA.txt attempt 1] literal=present bytes=262
+  [fc-seg-DA.txt attempt 2] literal=present bytes=262
+
+─── per-attempt treatment-pipeline outcome ───
+  ii-seg-DA.txt [cycle0 attempt1] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle0 attempt2(repair)] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle1 attempt1] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle1 attempt2(repair)] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle0 attempt1] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle0 attempt2(repair)] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle1 attempt1] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle1 attempt2(repair)] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle0 attempt1] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle0 attempt2(repair)] normalized=true (NORMALIZED run_shell{command="echo", args="jarvis_planner_e2e_verified"} → command="echo jarvis_planner_e2e_verified")
+      original : run_shell{args=jarvis_planner_e2e_verified,command=echo}
+      normalized → validate=true compiled=echo jarvis_planner_e2e_verified validateErr=—
+  ii-seg-DA.txt [cycle1 attempt1] normalized=true (NORMALIZED run_shell{command="echo", args="jarvis_planner_e2e_verified"} → command="echo jarvis_planner_e2e_verified")
+      original : run_shell{args=jarvis_planner_e2e_verified,command=echo}
+      normalized → validate=true compiled=echo jarvis_planner_e2e_verified validateErr=—
+  ii-seg-DA.txt [cycle0 attempt1] normalized=true (NORMALIZED run_shell{command="echo", args="jarvis_planner_e2e_verified"} → command="echo jarvis_planner_e2e_verified")
+      original : run_shell{args=jarvis_planner_e2e_verified,command=echo}
+      normalized → validate=true compiled=echo jarvis_planner_e2e_verified validateErr=—
+  ii-seg-DA.txt [cycle0 attempt2(repair)] normalized=false (not-applicable: arguments are not exactly {command, args})
+  ii-seg-DA.txt [cycle0 attempt1] normalized=true (NORMALIZED run_shell{command="echo", args="jarvis_planner_e2e_verified"} → command="echo jarvis_planner_e2e_verified")
+      original : run_shell{args=jarvis_planner_e2e_verified,command=echo}
+      normalized → validate=true compiled=echo jarvis_planner_e2e_verified validateErr=—
+  ii-seg-DA.txt [cycle1 attempt1] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  ii-seg-DA.txt [cycle1 attempt2(repair)] normalized=true (NORMALIZED run_shell{command="echo", args="jarvis_planner_e2e_verified"} → command="echo jarvis_planner_e2e_verified")
+      original : run_shell{args=jarvis_planner_e2e_verified,command=echo}
+      normalized → validate=true compiled=echo jarvis_planner_e2e_verified validateErr=—
+  fc-seg-DA.txt [attempt 1] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  fc-seg-DA.txt [attempt 2] normalized=true (NORMALIZED run_shell{command="echo", args="jarvis_planner_e2e_verified"} → command="echo jarvis_planner_e2e_verified")
+      original : run_shell{args=jarvis_planner_e2e_verified,command=echo}
+      normalized → validate=true compiled=echo jarvis_planner_e2e_verified validateErr=—
+  fc-seg-DA.txt [attempt 1] normalized=true (NORMALIZED run_shell{command="echo", args="jarvis_planner_e2e_verified"} → command="echo jarvis_planner_e2e_verified")
+      original : run_shell{args=jarvis_planner_e2e_verified,command=echo}
+      normalized → validate=true compiled=echo jarvis_planner_e2e_verified validateErr=—
+  fc-seg-DA.txt [attempt 2] normalized=false (not-applicable: command is not a single whitespace-free token)
+      passthrough → parseErr=Step for 'run_shell' argument 'args' must be a scalar validateErr=—
+  fc-seg-DA.txt [attempt 1] normalized=false (not-applicable: arguments are not exactly {command, args})
+  fc-seg-DA.txt [attempt 1] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  fc-seg-DA.txt [attempt 2] normalized=false (not-applicable: arguments are not exactly {command, args})
+  fc-seg-DA.txt [attempt 1] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  fc-seg-DA.txt [attempt 2] normalized=false (no object)
+      passthrough → parseErr=no JSON object decoded by replay extractor validateErr=—
+  fc-audit.txt [line151-slice] NORMALIZABLE-SLICE (proves command=echo + args=literal) | {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_s…
+  fc-audit.txt [line158-slice] NORMALIZABLE-SLICE (proves command=echo + args=literal) | {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_s…
+  fc-audit.txt [line167-slice] NORMALIZABLE-SLICE (proves command=echo + args=literal) | {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_s…
+  fc-audit.txt [line169-slice] NORMALIZABLE-SLICE (proves command=echo + args=literal) | {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_s…
+
+─── per-source tally ───
+  fc-audit.txt: literal-bearing 4, normalizable 4
+  fc-seg-DA.txt: literal-bearing 9, normalizable 2
+  ii-seg-DA.txt: literal-bearing 16, normalizable 5
+═══════════════════════════════════════════════════════════
+OFFLINE GATE (predeclared: ≥50% of literal-bearing attempts
+must match the single normalizable shape)
+  numerator   = 11
+  denominator = 29
+  percentage  = 37.9%
+  GATE: FAIL
+═══════════════════════════════════════════════════════════
+
+════════════════════════════════════════════════════════════
+EXPERIMENT B — OFFLINE REPLAY METADATA
+════════════════════════════════════════════════════════════
+git HEAD during replay: 9971809cb27a99035322c8f21d6307b7f9480662
+branch: master
+worktree status at replay time: 16 modified tracked files + untracked
+  Experiment-A evidence + NEW Experiment B files:
+    Sources/Jarvis/Agent/PlanNormalizerB.swift       (the only production source addition)
+    Tests/JarvisTests/PlanNormalizerBTests.swift     (fixtures; XCTest not runnable
+                                                      under CommandLineTools in this env)
+    build/seqB-offline-replay.txt                    (this file)
+  No other production source was created or modified by Experiment B.
+
+EXACT NORMALIZER RULE (predeclared, from Sources/Jarvis/Agent/PlanNormalizerB.swift):
+  Normalize ONLY when ALL are true:
+    1. tool == "run_shell"
+    2. arguments contain exactly the keys: command, args
+    3. command is one whitespace-free token
+    4. args is a non-empty whitespace-free string OR a list of non-empty
+       whitespace-free strings
+    5. interpretation as command + args is unambiguous
+  Then: command = "<command> <arg1> <arg2> …" (values only from the malformed
+  arguments; shell-dangerous tokens single-quoted, content unaltered).
+  Anything else: NOT normalized, passed through to the existing
+  validation/repair path (fail closed).
+
+REPLAY POLICY (predeclared BEFORE running):
+  - Every recorded RAW payload with the literal from build/ii-seg-DA.txt and
+    build/fc-seg-DA.txt was replayed through the REAL AgentPlanParser +
+    PlanValidator + PlanNormalizerB (compiled from unchanged production
+    sources; see /tmp/experiment-b-preservation/replay-build file list).
+  - seq-base-B4.txt / seq-A2-B4.txt contain NO byte-exact raw payloads
+    (0 RAW >>> lines): their validation-error lines carry only 140-char
+    verbatim slices. A slice counts NORMALIZABLE-SLICE iff it verbatim-proves
+    both "command":"echo" and "args":"jarvis…" within the slice; slices
+    truncating before either key count as NOT normalizable (fail closed).
+    fc-audit.txt contributes the only slices meeting that bar (4).
+  - No thresholds, extractors, or rules were changed after seeing results.
+    (Two extractor BUGS were fixed to match the predeclared policy: an
+    over-broad regex, and an over-aggressive dedup that collapsed distinct
+    timestamped attempts. Both fixes restored the predeclared counting.)
+
+WHY THE GATE FAILED — classification of the 29 literal-bearing attempts:
+  -  5/16 ii-seg-DA attempts: exact command+args shape → NORMALIZED
+    (all validated and compiled 'echo jarvis_planner_e2e_verified')
+  -  2/9  fc-seg-DA attempts: exact command+args shape → NORMALIZED (same)
+  -  4/4  fc-audit slices: shape proven verbatim → NORMALIZABLE-SLICE
+  -  8/16 ii-seg-DA attempts: a DIFFERENT malformed variant —
+    "command": "echo " + "jarvis_planner_e2e_verified" + " "  (string
+    concatenation pseudo-code) → NOT normalizable under the single shape
+  -  2/9  fc-seg-DA attempts: mixed variants (command "echo hello" + args list
+    ['literal']; "command": "echo "literal"" unescaped quotes) → NOT normalizable
+  - remaining fc-seg-DA attempts: repair outputs that already dropped the
+    literal (echo hello / fenced unparseable) → nothing to preserve
+
+CONCLUSION OF THE OFFLINE GATE:
+  numerator=11, denominator=29 → 37.9% < 50% predeclared threshold.
+  The single-shape hypothesis is FALSIFIED by the recorded evidence: the
+  model's malformed-shape distribution is heterogeneous (the command+args
+  shape is the largest single class at ~38%, but a string-concatenation
+  pseudo-JSON variant is nearly as frequent at ~28%). Per the predeclared
+  rule, live Experiment B is NOT run, and no second normalization rule may
+  be invented in this experiment.
+
+CONFIRMATIONS:
+  - NO model calls were made during this offline replay.
+  - NO network access was used.
+  - NO production planner behavior was changed: PlanNormalizerB is
+    default-off (normalizerBEnabled=false) and NO production call site
+    references it. AgentPlanParser/PlanValidator were compiled UNCHANGED.
+  - Fixture results above: 18/18 PASS (main.swift run) incl. literal
+    preservation, no-example-value introduction, and disabled-toggle
+    pass-through; mirrored as XCTest in
+    Tests/JarvisTests/PlanNormalizerBTests.swift (runnable under Xcode toolchain).
+  - Evidence file written by Experiment B: build/seqB-offline-replay.txt only.
+    Pre-existing seq-*/ii-* evidence untouched.
+  - Worktree pre-diff preserved at:
+    /tmp/experiment-b-preservation/pre-experiment-b-diff-20260928-102945.patch
+  - Evidence archive preserved at:
+    /tmp/experiment-b-preservation/seq-evidence-20260928-102945.tar.gz
+  - Replay harness (outside repo): /tmp/experiment-b-preservation/replay-build/
+    (unchanged copies of PlanValidator.swift, ToolRegistry.swift, etc. +
+    PlanNormalizerB.swift + main.swift extractor)

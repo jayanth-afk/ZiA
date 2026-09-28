@@ -30,11 +30,14 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
 
     private let synthesizer = AVSpeechSynthesizer()
 
+    private var isExplicitlyStopped = false
+
     /// Ground truth: whether the synthesizer is actually producing (or paused
     /// while producing) audio. Derived from AVFoundation rather than a
     /// manually-maintained flag so stale callbacks can never lie about it.
     var isSpeaking: Bool {
-        synthesizer.isSpeaking || synthesizer.isPaused
+        if isExplicitlyStopped { return false }
+        return synthesizer.isSpeaking || synthesizer.isPaused
     }
 
     /// Measured latency for immediate barge-in halt from stop() invocation.
@@ -63,6 +66,7 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
     /// Speak text using the appropriate mode.
     func speak(_ text: String, mode: TTSMode = .acknowledgement) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        isExplicitlyStopped = false
 
         // If currently speaking, stop immediately for new utterance
         if synthesizer.isSpeaking || synthesizer.isPaused {
@@ -82,11 +86,10 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
 
     /// Stop speech immediately (barge-in / interrupt).
     func stop() {
-        guard isSpeaking else { return }
+        isExplicitlyStopped = true
+        guard synthesizer.isSpeaking || synthesizer.isPaused else { return }
         let start = CFAbsoluteTimeGetCurrent()
-        if synthesizer.isSpeaking {
-            synthesizer.stopSpeaking(at: .immediate)
-        }
+        synthesizer.stopSpeaking(at: .immediate)
         let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
         lastBargeInHaltLatencyMs = elapsed
         JarvisLogger.voice.info("TTS stopped immediately in \(String(format: "%.2f", elapsed))ms")

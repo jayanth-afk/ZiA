@@ -24,8 +24,9 @@ final class Config {
 
     private func registerDefaults() {
         defaults.register(defaults: [
-            // Wake word
+            // Wake word & aliases
             Keys.wakeWord: "jarvis",
+            Keys.wakeAliases: ["jarvis", "zia", "ziya"],
 
             // Hotkey
             Keys.hotkeyEnabled: true,
@@ -67,6 +68,7 @@ final class Config {
 
     private enum Keys {
         static let wakeWord = "jarvis.wakeWord"
+        static let wakeAliases = "jarvis.wakeAliases"
         static let hotkeyEnabled = "jarvis.hotkey.enabled"
         static let autonomyLevel = "jarvis.autonomyLevel"
         static let ttsProvider = "jarvis.voice.ttsProvider"
@@ -92,9 +94,23 @@ final class Config {
 
     // MARK: - General
 
+    var wakeAliases: [String] {
+        get {
+            let list = defaults.stringArray(forKey: Keys.wakeAliases) ?? ["jarvis", "zia", "ziya"]
+            return list.isEmpty ? ["jarvis", "zia", "ziya"] : list
+        }
+        set { defaults.set(newValue, forKey: Keys.wakeAliases) }
+    }
+
     var wakeWord: String {
-        get { defaults.string(forKey: Keys.wakeWord) ?? "jarvis" }
-        set { defaults.set(newValue, forKey: Keys.wakeWord) }
+        get { wakeAliases.first ?? "jarvis" }
+        set {
+            if !wakeAliases.contains(where: { $0.caseInsensitiveCompare(newValue) == .orderedSame }) {
+                var updated = wakeAliases
+                updated.insert(newValue, at: 0)
+                wakeAliases = updated
+            }
+        }
     }
 
     var hotkeyEnabled: Bool {

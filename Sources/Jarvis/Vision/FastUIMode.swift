@@ -71,6 +71,16 @@ final class FastUIMode {
         return elements.first(where: { $0.label.lowercased().contains(lower) })
     }
 
+    /// Click an interactive element by name or label.
+    func clickElement(matching text: String) throws -> String {
+        return try AccessibilityBridge.shared.performAction(matchingLabel: text)
+    }
+
+    /// Set text into an editable element or the focused element.
+    func setText(_ text: String, onElement matching: String? = nil) throws -> String {
+        return try AccessibilityBridge.shared.setValue(matchingLabel: matching, value: text)
+    }
+
     // MARK: - Private
 
     private func extractActionableElements(from element: AXElementInfo) -> [ActionableUIElement] {

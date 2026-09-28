@@ -42,6 +42,10 @@ enum JarvisError: LocalizedError {
     case insufficientMemory(required: Int, available: Int)
     case modelLoadFailed(model: String, reason: String)
 
+    // MARK: - Escalation & Privacy
+    case privacyPolicyViolation(level: String, reason: String)
+    case escalationFailed(reason: String)
+
     var errorDescription: String? {
         switch self {
         case .notInitialized(let c): return "Not initialized: \(c)"
@@ -69,6 +73,8 @@ enum JarvisError: LocalizedError {
         case .insufficientMemory(let req, let avail):
             return "Insufficient memory: need \(req)MB, have \(avail)MB"
         case .modelLoadFailed(let m, let r): return "Model load failed (\(m)): \(r)"
+        case .privacyPolicyViolation(let level, let reason): return "Privacy violation [\(level)]: \(reason)"
+        case .escalationFailed(let reason): return "Escalation failed: \(reason)"
         }
     }
 }

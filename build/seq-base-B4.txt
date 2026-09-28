@@ -1,0 +1,126 @@
+warning: 'zia': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Workers/mlx_worker.py
+Building for debugging...
+Build complete! (0.21 secs)
+╔════════════════════════════════════════════════════════════╗
+║   TIER-A SEQUENTIAL EXPERIMENT — PHASE: BASELINE (single-shot full-plan)
+║   mode=fullPlan (single-shot)
+╚════════════════════════════════════════════════════════════╝
+
+────────────────────── BENCHMARK B4 — ×5 ──────────────────────
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  intended steps (definition-derived): 1
+  note: existing canonical D-A benchmark (exact user token must survive)
+▶ RUN B4#1  [mode: fullPlan]
+  runID: 1F2648EF  taskID: CED2EA1C
+  intendedSteps: 1  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+ )
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_
+    validation error 2: Step for 'run_shell' declares undeclared argument 'args'
+    validation error 3: Plan is missing required field 'goal'
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  ── argument-preservation chain ──
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    raw c1.a2R: "jarvis_planner_e2e_verified" present=false
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    raw c0.a2R: "jarvis_planner_e2e_verified" present=true
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=6561ms model=5667ms
+  verdict: FAILED  completeness: 0.00  category: A — model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+ )
+SEQDATA|BASELINE-B4|B4|1|1F2648EF|CED2EA1C|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=FAILED|cat=A|wallMs=6561|modelMs=5666
+▶ RUN B4#2  [mode: fullPlan]
+  runID: 2371138C  taskID: 95F8B352
+  intendedSteps: 1  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_
+    validation error 2: Step for 'run_shell' declares undeclared argument 'args'
+    validation error 3: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_
+    validation error 4: Step for 'run_shell' declares undeclared argument 'args'
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  ── argument-preservation chain ──
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    raw c0.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    raw c1.a2R: "jarvis_planner_e2e_verified" present=true
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=3571ms model=2425ms
+  verdict: FAILED  completeness: 0.00  category: A — model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+SEQDATA|BASELINE-B4|B4|2|2371138C|95F8B352|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=FAILED|cat=A|wallMs=3571|modelMs=2425
+▶ RUN B4#3  [mode: fullPlan]
+  runID: 41D8FA39  taskID: 73D2C2A6
+  intendedSteps: 1  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: model output never validated (Step for 'run_shell' declares undeclared argument 'args')
+    validation error 1: Step for 'run_shell' declares undeclared argument 'args'
+    validation error 2: Plan is missing required field 'goal'
+    validation error 3: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_
+    validation error 4: Step for 'run_shell' declares undeclared argument 'args'
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  ── argument-preservation chain ──
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    raw c0.a2R: "jarvis_planner_e2e_verified" present=false
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    raw c1.a2R: "jarvis_planner_e2e_verified" present=true
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=2916ms model=1899ms
+  verdict: FAILED  completeness: 0.00  category: A — model output never validated (Step for 'run_shell' declares undeclared argument 'args')
+SEQDATA|BASELINE-B4|B4|3|41D8FA39|73D2C2A6|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=FAILED|cat=A|wallMs=2916|modelMs=1899
+▶ RUN B4#4  [mode: fullPlan]
+  runID: 97E9695F  taskID: 93342198
+  intendedSteps: 1  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_
+    validation error 2: Step for 'run_shell' declares undeclared argument 'args'
+    validation error 3: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  ── argument-preservation chain ──
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    raw c1.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    raw c0.a2R: "jarvis_planner_e2e_verified" present=true
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=4539ms model=3603ms
+  verdict: FAILED  completeness: 0.00  category: A — model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+SEQDATA|BASELINE-B4|B4|4|97E9695F|93342198|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=FAILED|cat=A|wallMs=4539|modelMs=3603
+▶ RUN B4#5  [mode: fullPlan]
+  runID: 7928834A  taskID: AB4454D6
+  intendedSteps: 1  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_
+    validation error 2: Step for 'run_shell' declares undeclared argument 'args'
+    validation error 3: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_
+    validation error 4: Step for 'run_shell' declares undeclared argument 'args'
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  ── argument-preservation chain ──
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    raw c1.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    raw c0.a2R: "jarvis_planner_e2e_verified" present=true
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=3333ms model=2123ms
+  verdict: FAILED  completeness: 0.00  category: A — model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+SEQDATA|BASELINE-B4|B4|5|7928834A|AB4454D6|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=FAILED|cat=A|wallMs=3333|modelMs=2122
+── SECTION SUMMARY B4 (scored=true) ──
+  PASS: 0/5  NOT_COMPLETE: 0/5  FAILED: 5/5
+  avg plannerCalls: 2.0  avg generations: 4.0  avg generatedSteps(initial): 0.0  avg wall ms: 4184
+  failure categories: A=5
+════════════════════ PHASE SUMMARY: BASELINE (single-shot full-plan) ════════════════════
+  B1: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B2: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B3: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B4: PASS 0/5 NOT_COMPLETE 0/5 FAILED 5/5 | plannerCalls 10 gens 20 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 5 avgWall 4184ms
+  B5: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+══════════════════════════════════════════════════════

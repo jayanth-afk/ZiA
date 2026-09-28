@@ -30,6 +30,14 @@ enum PhysicalDemonstration {
         await testVolumeUp()
         await testStopDuringTTS()
         await testStopDuringBackgroundTask()
+        await testZiaWhatTimeIsIt()
+        await testZiyaOpenSafari()
+        await testZiaStopDuringTTS()
+        await testForegroundApp()
+        await testBrightnessControl()
+        await testScreenshotControl()
+        await testFileListControl()
+        await testSleepPreviewCommit()
         await testNegativeSecurityCases()
 
         print("\n════════════════════════════════════════════════════════════════════════")
@@ -154,7 +162,7 @@ enum PhysicalDemonstration {
         }
         let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
         let hasPercent = result.contains("%")
-        let hasPowerState = result.contains("battery power") || result.contains("power") || result.contains("AC power")
+        let hasPowerState = result.contains("battery power") || result.contains("power") || result.contains("AC power") || result.contains("charging")
 
         print("  ✓ IOKit Real Hardware State: '\(result)'")
         print("  ✓ Verification: \(hasPercent && hasPowerState ? "PASS" : "FAIL") (elapsed: \(String(format: "%.2f", elapsed))ms)")
@@ -367,5 +375,275 @@ enum PhysicalDemonstration {
 
         let allBlocked = blocked1 && blocked2 && blocked3 && blocked4
         print("  ✓ Verification: \(allBlocked ? "PASS (Zero unauthorized execution)" : "FAIL")")
+    }
+
+    // MARK: - 12. Zia Alias Demonstration: "Hey Zia, what time is it?"
+    private static func testZiaWhatTimeIsIt() async {
+        print("\n[TEST 12] Physical Speech Pipeline: 'Hey Zia, what time is it?'")
+        let utterance = "Hey Zia, what time is it?"
+        let start = CFAbsoluteTimeGetCurrent()
+
+        // 1. Wake Alias Detection & Command Extraction
+        let wakeMatch = WakeWordDetector.findWakeMatch(in: utterance)
+        let aliasDetected = wakeMatch?.matchedAlias == "zia"
+        let command = wakeMatch?.strippedCommand ?? ""
+
+        // 2. Deterministic Router Match
+        let match = DeterministicRouter.shared.match(utterance)
+        var result = ""
+        if let match = match {
+            do {
+                result = try await ActionEngine.shared.execute(
+                    intent: match.intent,
+                    impact: match.impact,
+                    action: match.action
+                )
+            } catch {
+                result = "Error: \(error.localizedDescription)"
+            }
+        }
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        let expectedTime = formatter.string(from: Date())
+
+        print("  ✓ Wake Alias Detected: '\(wakeMatch?.matchedAlias ?? "")' (prefix: '\(wakeMatch?.prefixUsed ?? "")'), extracted command: '\(command)'")
+        print("  ✓ Intent: '\(match?.intent ?? "none")', Action result: '\(result)'")
+        let pass = aliasDetected && command == "what time is it" && match?.intent == "system.time" && result.contains(expectedTime)
+        print("  ✓ Verification: \(pass ? "PASS" : "FAIL") (elapsed: \(String(format: "%.2f", elapsed))ms)")
+    }
+
+    // MARK: - 13. Ziya Alias Demonstration: "Hey Ziya, open Safari"
+    private static func testZiyaOpenSafari() async {
+        print("\n[TEST 13] Physical Speech Pipeline: 'Hey Ziya, open Safari'")
+        let utterance = "Hey Ziya, open Safari"
+        let start = CFAbsoluteTimeGetCurrent()
+
+        // 1. Wake Alias Detection & Command Extraction
+        let wakeMatch = WakeWordDetector.findWakeMatch(in: utterance)
+        let aliasDetected = wakeMatch?.matchedAlias == "ziya"
+        let command = wakeMatch?.strippedCommand ?? ""
+
+        // 2. Deterministic Router Match
+        let match = DeterministicRouter.shared.match(utterance)
+        var result = ""
+        if let match = match {
+            result = (try? await ActionEngine.shared.execute(
+                intent: match.intent,
+                impact: match.impact,
+                action: match.action
+            )) ?? ""
+        }
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+
+        let safari = NSWorkspace.shared.runningApplications.first(where: {
+            $0.bundleIdentifier == "com.apple.Safari" || $0.localizedName?.localizedCaseInsensitiveContains("Safari") == true
+        })
+        let isRunning = safari != nil
+
+        print("  ✓ Wake Alias Detected: '\(wakeMatch?.matchedAlias ?? "")' (prefix: '\(wakeMatch?.prefixUsed ?? "")'), extracted command: '\(command)'")
+        print("  ✓ Intent: '\(match?.intent ?? "none")', Safari Running: \(isRunning) (PID: \(safari?.processIdentifier ?? 0)), Action result: '\(result)'")
+        let pass = aliasDetected && command == "open Safari" && match?.intent == "app.open" && isRunning
+        print("  ✓ Verification: \(pass ? "PASS" : "FAIL") (elapsed: \(String(format: "%.2f", elapsed))ms)")
+    }
+
+    // MARK: - 14. Emergency Stop with Alias: "Hey Zia, stop"
+    private static func testZiaStopDuringTTS() async {
+        print("\n[TEST 14] Emergency Stop Alias: 'Hey Zia, stop' during TTS (barge-in)")
+        TTSEngine.shared.speak("Verifying spoken emergency stop alias Zia while outputting speech.")
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms audio initiation
+
+        let start = CFAbsoluteTimeGetCurrent()
+        let emergencyDetected = EmergencyInterrupt.shared.checkForEmergency(in: "Hey Zia, stop")
+        let haltLatency = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        let isStillSpeaking = TTSEngine.shared.isSpeaking
+
+        print("  ✓ Emergency Detection: \(emergencyDetected), TTS halted in \(String(format: "%.2f", haltLatency))ms, isSpeaking = \(isStillSpeaking)")
+        let pass = emergencyDetected && !isStillSpeaking && haltLatency < 50.0
+        print("  ✓ Verification: \(pass ? "PASS" : "FAIL")")
+    }
+
+    // MARK: - 15. Foreground App Control: "bring Safari to front"
+    private static func testForegroundApp() async {
+        print("\n[TEST 15] Control 3: Bring Application to Foreground ('bring Safari to front')")
+        let start = CFAbsoluteTimeGetCurrent()
+        let match = DeterministicRouter.shared.match("bring Safari to front")
+        var result = ""
+        if let match = match {
+            do {
+                result = try await ActionEngine.shared.execute(
+                    intent: match.intent,
+                    impact: match.impact,
+                    action: match.action
+                )
+            } catch {
+                result = "Error: \(error.localizedDescription)"
+            }
+        }
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
+        let isFront = front.localizedCaseInsensitiveContains("Safari")
+        print("  ✓ Frontmost application after switch: '\(front)', Action result: '\(result)'")
+        print("  ✓ Verification: \(isFront ? "PASS" : "FAIL") (elapsed: \(String(format: "%.1f", elapsed))ms)")
+    }
+
+    // MARK: - 16. Display Brightness Control: "what is the brightness" & adjustment
+    private static func testBrightnessControl() async {
+        print("\n[TEST 16] Control 5: Display Brightness Control & Readback")
+        let start = CFAbsoluteTimeGetCurrent()
+        let initialBrightness = SystemControl.shared.getBrightness()
+
+        let match = DeterministicRouter.shared.match("what is the brightness")
+        var queryResult = ""
+        if let match = match {
+            do {
+                queryResult = try await ActionEngine.shared.execute(
+                    intent: match.intent,
+                    impact: match.impact,
+                    action: match.action
+                )
+            } catch {
+                queryResult = "Error: \(error.localizedDescription)"
+            }
+        }
+        let queryElapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+
+        print("  ✓ Brightness Query Result: '\(queryResult)' (hardware readback: \(initialBrightness)%, latency: \(String(format: "%.1f", queryElapsed))ms)")
+
+        // Relative test: adjust up, verify, adjust back
+        let upStart = CFAbsoluteTimeGetCurrent()
+        let upMatch = DeterministicRouter.shared.match("brightness up")
+        var upResult = ""
+        if let upMatch = upMatch {
+            do {
+                upResult = try await ActionEngine.shared.execute(
+                    intent: upMatch.intent,
+                    impact: upMatch.impact,
+                    action: upMatch.action
+                )
+            } catch {
+                upResult = "Error: \(error.localizedDescription)"
+            }
+        }
+        let upElapsed = (CFAbsoluteTimeGetCurrent() - upStart) * 1000.0
+        let newBrightness = SystemControl.shared.getBrightness()
+        print("  ✓ Brightness Adjustment Result: '\(upResult)' (new readback: \(newBrightness)%, latency: \(String(format: "%.1f", upElapsed))ms)")
+
+        // Restore initial brightness
+        _ = try? SystemControl.shared.setBrightness(initialBrightness)
+
+        let pass = initialBrightness >= 0 && initialBrightness <= 100 && (newBrightness >= initialBrightness || initialBrightness == 100)
+        print("  ✓ Verification: \(pass ? "PASS" : "FAIL")")
+    }
+
+    // MARK: - 17. Screenshot Control: "take a screenshot"
+    private static func testScreenshotControl() async {
+        print("\n[TEST 17] Control 9: Screenshot Capture & Deterministic Artifact Verification")
+        let start = CFAbsoluteTimeGetCurrent()
+        let testDestURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("jarvis_physical_screenshot_\(UUID().uuidString).png")
+
+        var result = ""
+        do {
+            result = try await ActionEngine.shared.execute(
+                intent: "system.screenshot",
+                isDeterministic: true,
+                impact: .readOnly,
+                action: { try await MainActor.run { try SystemControl.shared.takeScreenshot(destination: testDestURL) } }
+            )
+        } catch {
+            result = "Error: \(error.localizedDescription)"
+        }
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+
+        let fileExists = FileManager.default.fileExists(atPath: testDestURL.path)
+        let attrs = (try? FileManager.default.attributesOfItem(atPath: testDestURL.path)) ?? [:]
+        let fileSize = attrs[.size] as? Int64 ?? 0
+
+        print("  ✓ Screenshot Artifact: path='\(testDestURL.lastPathComponent)', size=\(fileSize) bytes, result='\(result)'")
+        try? FileManager.default.removeItem(at: testDestURL)
+
+        let pass = fileExists && fileSize > 0 && result.contains("verified")
+        print("  ✓ Verification: \(pass ? "PASS" : "FAIL") (elapsed: \(String(format: "%.1f", elapsed))ms)")
+    }
+
+    // MARK: - 18. File Listing Control: "list downloads"
+    private static func testFileListControl() async {
+        print("\n[TEST 18] Control 8: Safe File Navigation & Directory Listing ('list downloads')")
+        let start = CFAbsoluteTimeGetCurrent()
+        let match = DeterministicRouter.shared.match("list downloads")
+        var result = ""
+        if let match = match {
+            do {
+                result = try await ActionEngine.shared.execute(
+                    intent: match.intent,
+                    impact: match.impact,
+                    action: match.action
+                )
+            } catch {
+                result = "Error: \(error.localizedDescription)"
+            }
+        }
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        let pass = result.contains("Downloads contains") && match?.impact == .readOnly
+        print("  ✓ Directory Listing Result: '\(String(result.prefix(100)))…'")
+        print("  ✓ Verification: \(pass ? "PASS" : "FAIL") (elapsed: \(String(format: "%.1f", elapsed))ms)")
+    }
+
+    // MARK: - 19. Sleep Mac: PREVIEW -> COMMIT Lifecycle
+    private static func testSleepPreviewCommit() async {
+        print("\n[TEST 19] Control 11: Sleep Mac PREVIEW -> explicit COMMIT -> verify Lifecycle")
+        let start = CFAbsoluteTimeGetCurrent()
+
+        // Step 1: PREVIEW
+        let previewMatch = DeterministicRouter.shared.match("preview sleep mac")
+        var previewResult = ""
+        if let previewMatch = previewMatch {
+            do {
+                previewResult = try await ActionEngine.shared.execute(
+                    intent: previewMatch.intent,
+                    impact: previewMatch.impact,
+                    action: previewMatch.action
+                )
+            } catch {
+                previewResult = "Error: \(error.localizedDescription)"
+            }
+        }
+        print("  ✓ [Step 1: PREVIEW] Intent: '\(previewMatch?.intent ?? "")', Result: '\(previewResult)'")
+        let previewOK = previewResult.contains("PREVIEW:") && DestructiveActionManager.shared.pendingAction != nil
+
+        // Step 2: Explicit COMMIT (executed with dry-run)
+        let commitMatch = DeterministicRouter.shared.match("confirm sleep")
+        var commitResult = ""
+        if let commitMatch = commitMatch {
+            do {
+                commitResult = try await ActionEngine.shared.execute(
+                    intent: commitMatch.intent,
+                    impact: commitMatch.impact,
+                    action: commitMatch.action
+                )
+            } catch {
+                commitResult = "Error: \(error.localizedDescription)"
+            }
+        }
+        print("  ✓ [Step 2: COMMIT] Intent: '\(commitMatch?.intent ?? "")', Result: '\(commitResult)'")
+        let commitOK = commitResult.contains("dry-run") && DestructiveActionManager.shared.pendingAction == nil
+
+        // Step 3: Cancellation test
+        _ = DestructiveActionManager.shared.requestPreview(intent: "system.sleep", description: "Cancellation test") { "aborted" }
+        let cancelMatch = DeterministicRouter.shared.match("cancel pending action")
+        var cancelResult = ""
+        if let cancelMatch = cancelMatch {
+            cancelResult = (try? await ActionEngine.shared.execute(
+                intent: cancelMatch.intent,
+                impact: cancelMatch.impact,
+                action: cancelMatch.action
+            )) ?? ""
+        }
+        let cancelOK = cancelResult.contains("Cancelled") && DestructiveActionManager.shared.pendingAction == nil
+        print("  ✓ [Step 3: CANCEL] Intent: '\(cancelMatch?.intent ?? "")', Result: '\(cancelResult)'")
+
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        let pass = previewOK && commitOK && cancelOK
+        print("  ✓ Verification: \(pass ? "PASS" : "FAIL") (elapsed: \(String(format: "%.1f", elapsed))ms)")
     }
 }

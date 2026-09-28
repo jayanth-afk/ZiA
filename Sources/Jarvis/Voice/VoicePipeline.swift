@@ -300,17 +300,26 @@ final class VoicePipeline {
         }
 
         // 2. Wake-word gating in SLEEP state:
-        // When in SLEEP, require the wake word ("jarvis") to transition to ACTIVE and process the command.
-        // If wake word is absent, ignore the ambient room utterance.
-        let wakeWord = Config.shared.wakeWord.lowercased()
+        // When in SLEEP, require a configured wake alias ("jarvis", "zia", "ziya") to transition to ACTIVE and process the command.
+        // If wake alias is absent, ignore the ambient room utterance.
+        let wakeMatch = WakeWordDetector.findWakeMatch(in: cleaned)
         if AppState.shared.state == .sleep {
-            if cleaned.contains(wakeWord) || cleaned.hasPrefix(wakeWord) {
-                JarvisLogger.voice.info("Wake word '\(wakeWord, privacy: .public)' recognized in SLEEP state: '\(text, privacy: .public)'")
-                AppState.shared.transition(to: .active)
-                AudioPlayer.shared.playChime(.wakeDetected)
-            } else {
-                JarvisLogger.voice.debug("Utterance in SLEEP state ignored (wake word '\(wakeWord, privacy: .public)' not detected): '\(text, privacy: .public)'")
+            guard let match = wakeMatch else {
+                JarvisLogger.voice.debug("Utterance in SLEEP state ignored (no wake alias detected): '\(text, privacy: .public)'")
                 return
+            }
+            JarvisLogger.voice.info("Wake alias '\(match.matchedAlias, privacy: .public)' recognized in SLEEP state: '\(text, privacy: .public)'")
+            AppState.shared.transition(to: .active)
+            AudioPlayer.shared.playChime(.wakeDetected)
+            cleaned = match.strippedCommand
+            guard !cleaned.isEmpty else {
+                // Utterance was just the wake phrase (e.g. "Hey Zia" or "Jarvis")
+                return
+            }
+        } else {
+            // Already ACTIVE: if an alias was used, strip it for routing
+            if let match = wakeMatch {
+                cleaned = match.strippedCommand
             }
         }
 

@@ -1,0 +1,85 @@
+warning: 'zia': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Workers/mlx_worker.py
+Building for debugging...
+[1 / 7] Jarvis-product
+Build complete! (0.28 secs)
+╔════════════════════════════════════════════════════════════╗
+║   TIER-A SEQUENTIAL EXPERIMENT — PHASE: BASELINE (single-shot full-plan)
+║   mode=fullPlan (single-shot)
+╚════════════════════════════════════════════════════════════╝
+
+────────────────────── BENCHMARK B3 — ×5 ──────────────────────
+  goal: "echo reference_probe_77, then echo it"
+  intended steps (definition-derived): 2
+  note: REFERENCE_RESOLUTION_NOT_IMPLEMENTED — 'it' cannot be resolved by any implemented mechanism. Informational probe only: documents model behavior; never scored.
+  ⚠️ UNSCORED PROBE (see note above)
+▶ RUN B3#1  [mode: fullPlan]
+  runID: 6ECCB326  taskID: A9DE9291
+  intendedSteps: 2  plannerCalls: 2  generations: 3  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 1  finalState: COMPLETED
+  agentLoopCompleted: true
+    validation error 1: Step for 'run_shell' argument 'args' must be a scalar
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING → RUNNING → VERIFYING → COMPLETED
+  response: >>>reference_probe_77
+<<<
+  latency: wall=5573ms model=3666ms
+  verdict: PROBE  completeness: 0.50  category: INFO — unscored reference-resolution probe
+SEQDATA|BASELINE-B3|B3|1|6ECCB326|A9DE9291|plannerCalls=2|gens=3|genStepsInit=1|exec=1|recovery=1|verdict=PROBE|cat=INFO|wallMs=5573|modelMs=3666
+▶ RUN B3#2  [mode: fullPlan]
+  runID: 59E90B50  taskID: 42178736
+  intendedSteps: 2  plannerCalls: 2  generations: 3  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 1  finalState: COMPLETED
+  agentLoopCompleted: true
+    validation error 1: Step for 'run_shell' argument 'args' must be a scalar
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING → RUNNING → VERIFYING → COMPLETED
+  response: >>>reference_probe_77
+<<<
+  latency: wall=3132ms model=1238ms
+  verdict: PROBE  completeness: 0.50  category: INFO — unscored reference-resolution probe
+SEQDATA|BASELINE-B3|B3|2|59E90B50|42178736|plannerCalls=2|gens=3|genStepsInit=1|exec=1|recovery=1|verdict=PROBE|cat=INFO|wallMs=3131|modelMs=1237
+▶ RUN B3#3  [mode: fullPlan]
+  runID: EB8E5ACC  taskID: 5C27F029
+  intendedSteps: 2  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: unscored reference-resolution probe
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"echo reference_probe_77","steps":[
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  response: >>><<<
+  latency: wall=2430ms model=1560ms
+  verdict: PROBE  completeness: 0.00  category: INFO — unscored reference-resolution probe
+SEQDATA|BASELINE-B3|B3|3|EB8E5ACC|5C27F029|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=PROBE|cat=INFO|wallMs=2429|modelMs=1559
+▶ RUN B3#4  [mode: fullPlan]
+  runID: 404F7121  taskID: BDADD9BE
+  intendedSteps: 2  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: unscored reference-resolution probe
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"echo reference_probe_77","steps":[
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  response: >>><<<
+  latency: wall=2371ms model=1468ms
+  verdict: PROBE  completeness: 0.00  category: INFO — unscored reference-resolution probe
+SEQDATA|BASELINE-B3|B3|4|404F7121|BDADD9BE|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=PROBE|cat=INFO|wallMs=2370|modelMs=1468
+▶ RUN B3#5  [mode: fullPlan]
+  runID: 85914AA0  taskID: 788802EF
+  intendedSteps: 2  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: unscored reference-resolution probe
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"echo reference_probe_77","steps":[
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  response: >>><<<
+  latency: wall=2372ms model=1452ms
+  verdict: PROBE  completeness: 0.00  category: INFO — unscored reference-resolution probe
+SEQDATA|BASELINE-B3|B3|5|85914AA0|788802EF|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=PROBE|cat=INFO|wallMs=2372|modelMs=1451
+── SECTION SUMMARY B3 (scored=false) ──
+  PASS: 0/5  NOT_COMPLETE: 0/5  FAILED: 0/5
+  avg plannerCalls: 2.0  avg generations: 3.6  avg generatedSteps(initial): 0.4  avg wall ms: 3176
+  failure categories: none
+════════════════════ PHASE SUMMARY: BASELINE (single-shot full-plan) ════════════════════
+  B1: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B2: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B3: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 10 gens 18 avgGenSteps 0.4 exec 2/5 verify 2/5 recovery 5 avgWall 3176ms
+  B4: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B5: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+══════════════════════════════════════════════════════

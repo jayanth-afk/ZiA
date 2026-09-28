@@ -1,0 +1,194 @@
+╔════════════════════════════════════════════════════════════╗
+║   TIER-A SEQUENTIAL EXPERIMENT — PHASE: EXPERIMENT A (sequential next-step)
+║   mode=sequential (next-step)
+╚════════════════════════════════════════════════════════════╝
+
+────────────────────── BENCHMARK B4 — ×5 ──────────────────────
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  intended steps (definition-derived): 1
+  note: existing canonical D-A benchmark (exact user token must survive)
+▶ RUN B4#1  [mode: seq]
+  runID: B7CFB03C  taskID: DEE71FE0
+  intendedSteps: 1  plannerCalls: 4  generations: 7  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 2  finalState: FAILED
+  agentLoopCompleted: false | error: argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal": "write the word jarvis_planner_e2e
+    validation error 2: Step for 'run_shell' argument 'args' must be a scalar
+    validation error 3: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal": "write the word jarvis_planner_e2e
+    validation error 4: Step for 'run_shell' argument 'args' must be a scalar
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c2.a1: "jarvis_planner_e2e_verified" present=true
+    raw c2.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    raw c0.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c0: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    raw c1.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c0: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=7591ms model=5474ms
+  verdict: FAILED  completeness: 1.00  category: C — argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+SEQDATA|SEQA-B4|B4|1|B7CFB03C|DEE71FE0|plannerCalls=4|gens=7|genStepsInit=1|exec=1|recovery=2|verdict=FAILED|cat=C|wallMs=7590|modelMs=5474
+▶ RUN B4#2  [mode: seq]
+  runID: AA4C8975  taskID: CB8B0EB9
+  intendedSteps: 1  plannerCalls: 8  generations: 10  genStepsInitial: 1  genStepsFinal: 2
+  planValid: true  executed: 2  recovery: 6  finalState: FAILED
+  agentLoopCompleted: false | error: argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal": "write the word jarvis_planner_e2e
+    plan snapshot cycle0: [run_shell]
+    plan snapshot cycle1: [run_shell, run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c2.a1: "jarvis_planner_e2e_verified" present=false
+    compiled c2: "jarvis_planner_e2e_verified" present=false cmd=echo hello world
+    raw c5.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c5: "jarvis_planner_e2e_verified" present=false cmd=echo hello world
+    raw c4.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c4: "jarvis_planner_e2e_verified" present=false cmd=echo hello world
+    raw c6.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c6: "jarvis_planner_e2e_verified" present=false cmd=echo hello world
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    raw c0.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c0: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c3.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c3: "jarvis_planner_e2e_verified" present=false cmd=echo hello world
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c0: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    raw c1.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c1: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=7639ms model=4192ms
+  verdict: FAILED  completeness: 1.00  category: C — argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+SEQDATA|SEQA-B4|B4|2|AA4C8975|CB8B0EB9|plannerCalls=8|gens=10|genStepsInit=1|exec=2|recovery=6|verdict=FAILED|cat=C|wallMs=7639|modelMs=4191
+▶ RUN B4#3  [mode: seq]
+  runID: FCE0F393  taskID: 97FC14D7
+  intendedSteps: 1  plannerCalls: 11  generations: 20  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 9  finalState: FAILED
+  agentLoopCompleted: false | error: argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+    validation error 1: Step for 'run_shell' argument 'args' must be a scalar
+    validation error 2: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal": "write the word jarvis_planner_e2e
+    validation error 3: Step for 'run_shell' argument 'args' must be a scalar
+    validation error 4: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal": "write the word jarvis_planner_e2e
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c2.a1: "jarvis_planner_e2e_verified" present=true
+    raw c2.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c2: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c7.a1: "jarvis_planner_e2e_verified" present=true
+    raw c7.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c7: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c8.a1: "jarvis_planner_e2e_verified" present=true
+    raw c8.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c6.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c6: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c5.a1: "jarvis_planner_e2e_verified" present=true
+    raw c5.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c5: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c0: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c4.a1: "jarvis_planner_e2e_verified" present=true
+    raw c4.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c4: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c3.a1: "jarvis_planner_e2e_verified" present=true
+    raw c3.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c9.a1: "jarvis_planner_e2e_verified" present=true
+    raw c9.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    raw c0.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    raw c1.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c1: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=11869ms model=9210ms
+  verdict: FAILED  completeness: 1.00  category: C — argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+SEQDATA|SEQA-B4|B4|3|FCE0F393|97FC14D7|plannerCalls=11|gens=20|genStepsInit=1|exec=1|recovery=9|verdict=FAILED|cat=C|wallMs=11869|modelMs=9210
+▶ RUN B4#4  [mode: seq]
+  runID: B0FA847D  taskID: 12BFCA79
+  intendedSteps: 1  plannerCalls: 8  generations: 10  genStepsInitial: 1  genStepsFinal: 2
+  planValid: true  executed: 2  recovery: 6  finalState: FAILED
+  agentLoopCompleted: false | error: argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal": "write the word jarvis_planner_e2e
+    plan snapshot cycle0: [run_shell]
+    plan snapshot cycle1: [run_shell, run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    raw c0.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c0: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c5.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c5: "jarvis_planner_e2e_verified" present=false cmd=echo hello world
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c0: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c4.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c4: "jarvis_planner_e2e_verified" present=false cmd=echo hello world
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c1: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c2.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c2: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c6.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c6: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c3.a1: "jarvis_planner_e2e_verified" present=true
+    raw c3.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c3: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=7950ms model=4371ms
+  verdict: FAILED  completeness: 1.00  category: C — argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+SEQDATA|SEQA-B4|B4|4|B0FA847D|12BFCA79|plannerCalls=8|gens=10|genStepsInit=1|exec=2|recovery=6|verdict=FAILED|cat=C|wallMs=7949|modelMs=4370
+▶ RUN B4#5  [mode: seq]
+  runID: 2773D8BF  taskID: E092915A
+  intendedSteps: 1  plannerCalls: 9  generations: 14  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 8  finalState: FAILED
+  agentLoopCompleted: false | error: argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal": "write the word jarvis_planner_e2e
+    validation error 2: Step for 'run_shell' argument 'args' must be a scalar
+    validation error 3: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal": "write the word jarvis_planner_e2e
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c6.a1: "jarvis_planner_e2e_verified" present=true
+    raw c6.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c6: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c2.a1: "jarvis_planner_e2e_verified" present=true
+    raw c2.a2R: "jarvis_planner_e2e_verified" present=true
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c0: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c0.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c0: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c4.a1: "jarvis_planner_e2e_verified" present=true
+    raw c4.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c4: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c7.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c7: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c5.a1: "jarvis_planner_e2e_verified" present=true
+    raw c5.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c5: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c1.a1: "jarvis_planner_e2e_verified" present=true
+    compiled c1: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    raw c3.a1: "jarvis_planner_e2e_verified" present=true
+    raw c3.a2R: "jarvis_planner_e2e_verified" present=true
+    compiled c3: "jarvis_planner_e2e_verified" present=false cmd=echo hello
+    executed: "jarvis_planner_e2e_verified" NOT found in any executed step
+  response: >>><<<
+  latency: wall=8931ms model=6259ms
+  verdict: FAILED  completeness: 1.00  category: C — argument preservation: tokens not preserved into executed args+stdout: ["jarvis_planner_e2e_verified"]
+SEQDATA|SEQA-B4|B4|5|2773D8BF|E092915A|plannerCalls=9|gens=14|genStepsInit=1|exec=1|recovery=8|verdict=FAILED|cat=C|wallMs=8931|modelMs=6259
+── SECTION SUMMARY B4 (scored=true) ──
+  PASS: 0/5  NOT_COMPLETE: 0/5  FAILED: 5/5
+  avg plannerCalls: 8.0  avg generations: 12.2  avg generatedSteps(initial): 1.0  avg wall ms: 8796
+  failure categories: C=5
+════════════════════ PHASE SUMMARY: EXPERIMENT A (sequential next-step) ════════════════════
+  B1: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B2: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B3: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B4: PASS 0/5 NOT_COMPLETE 0/5 FAILED 5/5 | plannerCalls 40 gens 61 avgGenSteps 1.0 exec 5/5 verify 0/5 recovery 31 avgWall 8796ms
+  B5: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+══════════════════════════════════════════════════════

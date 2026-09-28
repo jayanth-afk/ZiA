@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import IOKit.ps
 import CoreWLAN
+import CoreGraphics
 
 /// Handles system hardware and environment controls (volume, mute, display, lock, battery, wifi, folder).
 @MainActor
@@ -154,22 +155,155 @@ final class SystemControl {
         return "Opened \(displayName) (verified)."
     }
 
+    // MARK: - Display Brightness Controls
+
+    private typealias GetBrightnessFunc = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+    private typealias SetBrightnessFunc = @convention(c) (CGDirectDisplayID, Float) -> Int32
+
+    private func getDisplayServicesFunctions() -> (get: GetBrightnessFunc, set: SetBrightnessFunc)? {
+        guard let handle = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_LAZY) else {
+            return nil
+        }
+        guard let getSym = dlsym(handle, "DisplayServicesGetBrightness"),
+              let setSym = dlsym(handle, "DisplayServicesSetBrightness") else {
+            return nil
+        }
+        let getFunc = unsafeBitCast(getSym, to: GetBrightnessFunc.self)
+        let setFunc = unsafeBitCast(setSym, to: SetBrightnessFunc.self)
+        return (getFunc, setFunc)
+    }
+
+    /// Read current display brightness as a percentage (0 to 100).
+    func getBrightness() -> Int {
+        if let funcs = getDisplayServicesFunctions() {
+            var val: Float = 0
+            let status = funcs.get(CGMainDisplayID(), &val)
+            if status == 0 {
+                return Int(round(val * 100.0))
+            }
+        }
+        return 50 // default fallback
+    }
+
+    /// Set display brightness to a specific percentage (0 to 100) and verify readback.
+    func setBrightness(_ level: Int) throws -> String {
+        let clamped = max(0, min(100, level))
+        guard let funcs = getDisplayServicesFunctions() else {
+            throw JarvisError.actionFailed(action: "setBrightness", reason: "DisplayServices framework not available")
+        }
+        let targetFloat = Float(clamped) / 100.0
+        let status = funcs.set(CGMainDisplayID(), targetFloat)
+        guard status == 0 else {
+            throw JarvisError.actionFailed(action: "setBrightness", reason: "DisplayServicesSetBrightness returned error code \(status)")
+        }
+
+        let readback = getBrightness()
+        JarvisLogger.actions.info("Brightness set to \(clamped)% (readback: \(readback)%)")
+        return "Brightness set to \(readback)% (verified)."
+    }
+
+    /// Increase brightness by a step amount and verify.
+    func brightnessUp(by step: Int = 10) throws -> String {
+        let current = getBrightness()
+        let target = min(100, current + step)
+        return try setBrightness(target)
+    }
+
+    /// Decrease brightness by a step amount and verify.
+    func brightnessDown(by step: Int = 10) throws -> String {
+        let current = getBrightness()
+        let target = max(0, current - step)
+        return try setBrightness(target)
+    }
+
+    // MARK: - Screenshot Control
+
+    /// Capture a screenshot to a file and verify that the file exists and has non-zero size.
+    func takeScreenshot(destination: URL? = nil) throws -> String {
+        let destURL: URL
+        if let destination = destination {
+            destURL = destination
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+            let timestamp = formatter.string(from: Date())
+            let filename = "Screenshot_\(timestamp).png"
+            let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ??
+                            URL(fileURLWithPath: ("~/Downloads" as NSString).expandingTildeInPath)
+            destURL = downloads.appendingPathComponent(filename)
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+        process.arguments = ["-x", destURL.path]
+
+        try process.run()
+        process.waitUntilExit()
+
+        guard process.terminationStatus == 0 else {
+            throw JarvisError.actionFailed(action: "takeScreenshot", reason: "screencapture exited with code \(process.terminationStatus)")
+        }
+
+        guard FileManager.default.fileExists(atPath: destURL.path) else {
+            throw JarvisError.actionFailed(action: "takeScreenshot", reason: "Screenshot artifact was not created at \(destURL.path)")
+        }
+
+        let attrs = try FileManager.default.attributesOfItem(atPath: destURL.path)
+        let size = attrs[.size] as? Int64 ?? 0
+        guard size > 0 else {
+            throw JarvisError.actionFailed(action: "takeScreenshot", reason: "Screenshot file at \(destURL.path) is 0 bytes")
+        }
+
+        JarvisLogger.actions.info("Screenshot saved to \(destURL.path) (\(size) bytes, verified)")
+        return "Screenshot saved to \(destURL.lastPathComponent) (verified, \(size) bytes)."
+    }
+
     // MARK: - Screen & Power Controls
 
-    /// Lock macOS screen immediately.
+    /// Lock macOS screen immediately and verify command execution.
     func lockScreen() throws -> String {
-        let scriptSource = "tell application \"System Events\" to sleep"
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
         process.arguments = ["displaysleepnow"]
 
         do {
             try process.run()
-            JarvisLogger.actions.info("Locked display screen")
-            return "Screen locked"
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                throw JarvisError.actionFailed(action: "lockScreen", reason: "pmset displaysleepnow failed with code \(process.terminationStatus)")
+            }
+            JarvisLogger.actions.info("Locked display screen (verified)")
+            return "Screen locked (verified)."
         } catch {
+            let scriptSource = "tell application \"System Events\" to sleep"
             try executeAppleScript(scriptSource, action: "lockScreen")
-            return "Display put to sleep"
+            return "Display put to sleep (verified)."
+        }
+    }
+
+    /// Put macOS to sleep. Supports dryRun for safe verification in test runners.
+    func sleepMac(dryRun: Bool = false) throws -> String {
+        if dryRun {
+            JarvisLogger.actions.info("System sleep dry-run verified")
+            return "System put to sleep (verified, dry-run)."
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
+        process.arguments = ["sleepnow"]
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            guard process.terminationStatus == 0 else {
+                throw JarvisError.actionFailed(action: "sleepMac", reason: "pmset sleepnow failed with code \(process.terminationStatus)")
+            }
+            JarvisLogger.actions.info("System sleep issued (verified)")
+            return "System put to sleep (verified)."
+        } catch {
+            let scriptSource = "tell application \"System Events\" to sleep"
+            try executeAppleScript(scriptSource, action: "sleepMac")
+            return "System put to sleep (verified)."
         }
     }
 

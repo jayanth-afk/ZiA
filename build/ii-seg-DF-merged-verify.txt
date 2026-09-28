@@ -1,0 +1,637 @@
+warning: 'zia': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Workers/mlx_worker.py
+Building for debugging...
+[3 / 10] KeychainAccess
+[4 / 59]
+[11 / 59]
+[12 / 59]
+[18 / 59]
+[19 / 59]
+[22 / 59]
+[24 / 59]
+[35 / 59]
+[36 / 59]
+[36 / 59] KeychainAccess
+[42 / 60]
+[42 / 60] KeychainAccess
+[45 / 59]
+[47 / 59]
+[48 / 59]
+[55 / 59] HotKey
+[58 / 62] HotKey
+[58 / 62] Jarvis-product
+warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+[70 / 73] Jarvis-product
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/ClaudeProvider.swift:29:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m27 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m28 |[0;0m         stream: Bool
+ [0;36m29 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m30 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m31 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/GeminiProvider.swift:27:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m25 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m26 |[0;0m         stream: Bool
+ [0;36m27 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m28 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m29 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/GroqProvider.swift:26:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m24 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m25 |[0;0m         stream: Bool
+ [0;36m26 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m27 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m28 |[0;0m             Task {
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:212:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m210 |[0;0m         tools: [ToolDefinition]?,
+[0;36m211 |[0;0m         stream: Bool
+[0;36m212 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m213 |[0;0m         complete(messages: messages, tools: tools, stream: stream, options: [:])
+[0;36m214 |[0;0m     }
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:221:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m219 |[0;0m         stream: Bool,
+[0;36m220 |[0;0m         options: [String: any Sendable]
+[0;36m221 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m222 |[0;0m         // Per-request token budget (planner requests need more headroom than
+[0;36m223 |[0;0m         // the 256-token default; small direct requests can be tighter).
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:390:65: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m388 |[0;0m     private let lock = NSLock()
+[0;36m389 |[0;0m     private var requestID = 0
+[0;36m390 |[0;0m     private var pending: [Int: CheckedContinuation<WorkerReply, Error>] = [:]
+    [0;36m|[0;0m                                                                 `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m391 |[0;0m     private let readQueue = DispatchQueue(label: "jarvis.mlxworker.read")
+[0;36m392 |[0;0m     private var buffer = Data()
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:478:29: [1;33mwarning: [1;39mreference to captured var 'lines' in concurrently-executing code[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/sendable-closure-captures\SendableClosureCaptures]8;;\]
+[0;36m476 |[0;0m         readQueue.async { [weak self] in
+[0;36m477 |[0;0m             guard let self else { return }
+[0;36m478 |[0;0m             for lineData in lines {
+    [0;36m|[0;0m                             `- [1;33mwarning: [1;39mreference to captured var 'lines' in concurrently-executing code[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/sendable-closure-captures\SendableClosureCaptures]8;;\]
+[0;36m479 |[0;0m                 guard !lineData.isEmpty else { continue }
+[0;36m480 |[0;0m                 guard
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/OpenAIProvider.swift:29:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m27 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m28 |[0;0m         stream: Bool
+ [0;36m29 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m30 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m31 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/Provider.swift:68:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m66 |[0;0m         tools: [ToolDefinition]?,
+[0;36m67 |[0;0m         stream: Bool
+[0;36m68 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error>
+   [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m69 |[0;0m 
+[0;36m70 |[0;0m     /// Optional per-request overrides (e.g. ["max_tokens": 384]). Default
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/Provider.swift:78:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m76 |[0;0m         stream: Bool,
+[0;36m77 |[0;0m         options: [String: any Sendable]
+[0;36m78 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error>
+   [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m79 |[0;0m }
+[0;36m80 |[0;0m 
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/Provider.swift:87:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m85 |[0;0m         stream: Bool,
+[0;36m86 |[0;0m         options: [String: any Sendable]
+[0;36m87 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+   [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m88 |[0;0m         complete(messages: messages, tools: tools, stream: stream)
+[0;36m89 |[0;0m     }
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+[#SendableClosureCaptures]: <https://docs.swift.org/compiler/documentation/diagnostics/sendable-closure-captures>
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Actions/DeterministicRouter.swift:629:55: [1;33mwarning: [1;39mtrailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning[0;0m
+[0;36m627 |[0;0m                 impact: .readOnly,
+[0;36m628 |[0;0m                 action: {
+[0;36m629 |[0;0m                     if let text = await MainActor.run { ClipboardManager.shared.getClipboardText() } {
+    [0;36m|[0;0m                                                       `- [1;33mwarning: [1;39mtrailing closure in this context is confusable with the body of the statement; pass as a parenthesized argument to silence this warning[0;0m
+[0;36m630 |[0;0m                         return "Clipboard contains: \(text)"
+[0;36m631 |[0;0m                     } else {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Actions/System/AppLauncher.swift:44:41: [1;33mwarning: [1;39m'activateIgnoringOtherApps' was deprecated in macOS 14.0: ignoringOtherApps is deprecated in macOS 14 and will have no effect.[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m42 |[0;0m             $0.bundleIdentifier?.localizedCaseInsensitiveCompare(targetName) == .orderedSame
+ [0;36m43 |[0;0m         }) {
+ [0;36m44 |[0;0m             running.activate(options: [.activateIgnoringOtherApps])
+    [0;36m|[0;0m                                         `- [1;33mwarning: [1;39m'activateIgnoringOtherApps' was deprecated in macOS 14.0: ignoringOtherApps is deprecated in macOS 14 and will have no effect.[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration\DeprecatedDeclaration]8;;\]
+ [0;36m45 |[0;0m             let resolvedName = running.localizedName ?? targetName
+ [0;36m46 |[0;0m             JarvisLogger.actions.info("Activated already running application: \(resolvedName)")
+
+[#DeprecatedDeclaration]: <https://docs.swift.org/compiler/documentation/diagnostics/deprecated-declaration>
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Agent/AgentLoop.swift:150:13: [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m148 |[0;0m 
+[0;36m149 |[0;0m             let step = plan.steps[stepIndex]
+[0;36m150 |[0;0m             [4;39mtry? stateMachine.setCurrentStepIndex(taskId: task.id, index: stepIndex)[0;0m
+    [0;36m|[0;0m             `- [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m151 |[0;0m 
+[0;36m152 |[0;0m             do {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Agent/AgentLoop.swift:242:17: [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m240 |[0;0m                 try stateMachine.transition(taskId: task.id, to: .recovering)
+[0;36m241 |[0;0m                 try stateMachine.transition(taskId: task.id, to: .replanning)
+[0;36m242 |[0;0m                 [4;39mtry? stateMachine.incrementRetryCount(taskId: task.id)[0;0m
+    [0;36m|[0;0m                 `- [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m243 |[0;0m 
+[0;36m244 |[0;0m                 // REPLAN with real failure context (not a blind repeat): the
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Agent/AgentLoop.swift:304:13: [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m302 |[0;0m             try stateMachine.transition(taskId: taskId, to: .recovering)
+[0;36m303 |[0;0m             try stateMachine.transition(taskId: taskId, to: .replanning)
+[0;36m304 |[0;0m             [4;39mtry? stateMachine.incrementRetryCount(taskId: taskId)[0;0m
+    [0;36m|[0;0m             `- [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m305 |[0;0m             do {
+[0;36m306 |[0;0m                 let retryPlan = try await MLXPlanner.shared.plan(goal: goal, context: context, taskID: taskId)
+
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Agent/TaskWorker.swift:10:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+  [0;36m8 |[0;0m     private(set) var currentTaskId: UUID?
+  [0;36m9 |[0;0m     private(set) var isBusy: Bool = false
+ [0;36m10 |[0;0m     private var executionTask: Task<Void, Error>?
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m11 |[0;0m 
+ [0;36m12 |[0;0m     init(id: UUID = UUID()) {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Agent/TaskWorker.swift:66:21: [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+ [0;36m64 |[0;0m                         output: result.output
+ [0;36m65 |[0;0m                     )
+ [0;36m66 |[0;0m                     [4;39mtry? stateMachine.markStepVerification([0;0m
+    [0;36m|[0;0m                     `- [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+ [0;36m67 |[0;0m                         taskId: task.id, stepIndex: index, outcome: .passed)
+ [0;36m68 |[0;0m                 } else {
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/Errors.swift:34:55: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m32 |[0;0m 
+[0;36m33 |[0;0m     // MARK: - Memory
+[0;36m34 |[0;0m     case databaseError(operation: String, underlying: Error)
+   [0;36m|[0;0m                                                       `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m35 |[0;0m     case embeddingFailed(reason: String)
+[0;36m36 |[0;0m 
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/IntegrationAudit.swift:1059:9: [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m1057 |[0;0m             TaskStep(stepNumber: 1, description: "Sleep shell command", toolName: "run_shell", arguments: ["command": "sleep 5"])
+[0;36m1058 |[0;0m         ]
+[0;36m1059 |[0;0m         [4;39mtry? sm.transition(taskId: stopTask.id, to: .planning)[0;0m
+     [0;36m|[0;0m         `- [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m1060 |[0;0m         try? sm.setSteps(taskId: stopTask.id, steps: stopSteps)
+[0;36m1061 |[0;0m         if let poolTask = sm.getTask(id: stopTask.id) {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/IntegrationAudit.swift:1060:9: [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m1058 |[0;0m         ]
+[0;36m1059 |[0;0m         try? sm.transition(taskId: stopTask.id, to: .planning)
+[0;36m1060 |[0;0m         [4;39mtry? sm.setSteps(taskId: stopTask.id, steps: stopSteps)[0;0m
+     [0;36m|[0;0m         `- [1;33mwarning: [1;39mresult of 'try?' is unused[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m1061 |[0;0m         if let poolTask = sm.getTask(id: stopTask.id) {
+[0;36m1062 |[0;0m             await TaskWorkerPool.shared.submit(task: poolTask)
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Voice/SpeechRecognizer.swift:319:87: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m317 |[0;0m     }
+[0;36m318 |[0;0m 
+[0;36m319 |[0;0m     private func handleRecognitionResult(_ result: SFSpeechRecognitionResult?, error: Error?) {
+    [0;36m|[0;0m                                                                                       `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m320 |[0;0m         if let error = error {
+[0;36m321 |[0;0m             // Error code 216 is recognition cancelled; ignore it cleanly
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Agent/TaskWorker.swift:10:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+  [0;36m8 |[0;0m     private(set) var currentTaskId: UUID?
+  [0;36m9 |[0;0m     private(set) var isBusy: Bool = false
+ [0;36m10 |[0;0m     private var executionTask: Task<Void, Error>?
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m11 |[0;0m 
+ [0;36m12 |[0;0m     init(id: UUID = UUID()) {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/ClaudeProvider.swift:29:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m27 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m28 |[0;0m         stream: Bool
+ [0;36m29 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m30 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m31 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/GeminiProvider.swift:27:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m25 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m26 |[0;0m         stream: Bool
+ [0;36m27 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m28 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m29 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/GroqProvider.swift:26:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m24 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m25 |[0;0m         stream: Bool
+ [0;36m26 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m27 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m28 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:212:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m210 |[0;0m         tools: [ToolDefinition]?,
+[0;36m211 |[0;0m         stream: Bool
+[0;36m212 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m213 |[0;0m         complete(messages: messages, tools: tools, stream: stream, options: [:])
+[0;36m214 |[0;0m     }
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:221:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m219 |[0;0m         stream: Bool,
+[0;36m220 |[0;0m         options: [String: any Sendable]
+[0;36m221 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m222 |[0;0m         // Per-request token budget (planner requests need more headroom than
+[0;36m223 |[0;0m         // the 256-token default; small direct requests can be tighter).
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/MLXProvider.swift:390:65: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m388 |[0;0m     private let lock = NSLock()
+[0;36m389 |[0;0m     private var requestID = 0
+[0;36m390 |[0;0m     private var pending: [Int: CheckedContinuation<WorkerReply, Error>] = [:]
+    [0;36m|[0;0m                                                                 `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m391 |[0;0m     private let readQueue = DispatchQueue(label: "jarvis.mlxworker.read")
+[0;36m392 |[0;0m     private var buffer = Data()
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/OpenAIProvider.swift:29:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m27 |[0;0m         tools: [ToolDefinition]?,
+ [0;36m28 |[0;0m         stream: Bool
+ [0;36m29 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+    [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m30 |[0;0m         AsyncThrowingStream { continuation in
+ [0;36m31 |[0;0m             Task {
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/Provider.swift:68:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m66 |[0;0m         tools: [ToolDefinition]?,
+[0;36m67 |[0;0m         stream: Bool
+[0;36m68 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error>
+   [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m69 |[0;0m 
+[0;36m70 |[0;0m     /// Optional per-request overrides (e.g. ["max_tokens": 384]). Default
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/Provider.swift:78:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m76 |[0;0m         stream: Bool,
+[0;36m77 |[0;0m         options: [String: any Sendable]
+[0;36m78 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error>
+   [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m79 |[0;0m }
+[0;36m80 |[0;0m 
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Providers/Provider.swift:87:43: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m85 |[0;0m         stream: Bool,
+[0;36m86 |[0;0m         options: [String: any Sendable]
+[0;36m87 |[0;0m     ) -> AsyncThrowingStream<StreamChunk, Error> {
+   [0;36m|[0;0m                                           `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m88 |[0;0m         complete(messages: messages, tools: tools, stream: stream)
+[0;36m89 |[0;0m     }
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/Errors.swift:34:55: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m32 |[0;0m 
+[0;36m33 |[0;0m     // MARK: - Memory
+[0;36m34 |[0;0m     case databaseError(operation: String, underlying: Error)
+   [0;36m|[0;0m                                                       `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m35 |[0;0m     case embeddingFailed(reason: String)
+[0;36m36 |[0;0m 
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/ResourceManager.swift:54:33: [1;33mwarning: [1;39muse of protocol 'DispatchSourceMemoryPressure' as a type must be written 'any DispatchSourceMemoryPressure'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m52 |[0;0m     // MARK: - Private
+ [0;36m53 |[0;0m 
+ [0;36m54 |[0;0m     private var pressureSource: DispatchSourceMemoryPressure?
+    [0;36m|[0;0m                                 `- [1;33mwarning: [1;39muse of protocol 'DispatchSourceMemoryPressure' as a type must be written 'any DispatchSourceMemoryPressure'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m55 |[0;0m     private var pollingTimer: Timer?
+ [0;36m56 |[0;0m 
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Voice/SpeechRecognizer.swift:319:87: [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m317 |[0;0m     }
+[0;36m318 |[0;0m 
+[0;36m319 |[0;0m     private func handleRecognitionResult(_ result: SFSpeechRecognitionResult?, error: Error?) {
+    [0;36m|[0;0m                                                                                       `- [1;33mwarning: [1;39muse of protocol 'Error' as a type must be written 'any Error'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+[0;36m320 |[0;0m         if let error = error {
+[0;36m321 |[0;0m             // Error code 216 is recognition cancelled; ignore it cleanly
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+<unknown>:0: warning: upcoming feature 'ForwardTrailingClosures' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'ConciseMagicFile' already enabled as of the Swift 6 language mode
+<unknown>:0: warning: upcoming feature 'BareSlashRegexLiterals' already enabled as of the Swift 6 language mode
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/PlannerBenchmark.swift:342:13: [1;33mwarning: [1;39minitialization of immutable value 'routed' was never used; consider replacing with assignment to '_' or removing it[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m340 |[0;0m         print("  Goals run: \(report.total)")
+[0;36m341 |[0;0m 
+[0;36m342 |[0;0m         let routed = results.filter(\.fastPath)
+    [0;36m|[0;0m             `- [1;33mwarning: [1;39minitialization of immutable value 'routed' was never used; consider replacing with assignment to '_' or removing it[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/no-usage\NoUsage]8;;\]
+[0;36m343 |[0;0m         let planned = results.filter { !$0.fastPath }
+[0;36m344 |[0;0m 
+
+/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Core/ResourceManager.swift:54:33: [1;33mwarning: [1;39muse of protocol 'DispatchSourceMemoryPressure' as a type must be written 'any DispatchSourceMemoryPressure'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m52 |[0;0m     // MARK: - Private
+ [0;36m53 |[0;0m 
+ [0;36m54 |[0;0m     private var pressureSource: DispatchSourceMemoryPressure?
+    [0;36m|[0;0m                                 `- [1;33mwarning: [1;39muse of protocol 'DispatchSourceMemoryPressure' as a type must be written 'any DispatchSourceMemoryPressure'; this will be an error in a future Swift language mode[0;0m [#]8;;https://docs.swift.org/compiler/documentation/diagnostics/existential-any\ExistentialAny]8;;\]
+ [0;36m55 |[0;0m     private var pollingTimer: Timer?
+ [0;36m56 |[0;0m 
+
+[#ExistentialAny]: <https://docs.swift.org/compiler/documentation/diagnostics/existential-any>
+[#NoUsage]: <https://docs.swift.org/compiler/documentation/diagnostics/no-usage>
+[71 / 73] Jarvis-product
+Build complete! (25.52 secs)
+╔════════════════════════════════════════════════════════════════════════╗
+║   SCHEMA-CONTRACT EXPERIMENT — SEGMENT DF                                    ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+
+────────────────────── SECTION 4. D-F — D-F ×3 ──────────────────────
+  goal: "use the audit_failing_tool and then echo recovery_completed"  (audit D-F recovery goal (replan expected; final plan must execute))
+
+▶ RUN D-F#1
+  goal: "use the audit_failing_tool and then echo recovery_completed"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+  runID: AC8BD029  taskID: 4D73DBB4
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle0 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit only","tool":"run_shell","arguments":{"command":"echo recovery_completed"}}]}<<<
+    [cycle0 attempt1] result: VALID — parsed plan: goal="use the audit_failing_tool and then echo recovery_completed" steps=[audit_failing_tool{reason="answer from knowledge"}]
+    [cycle1 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle1 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit only"}]}
+
+Note: The purpose is incorrect as it should be "answer from knowledge" instead of "answer from audit".<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle1 attempt2(repair)] prompt sha256: 22f43929d85a999d…
+    [cycle1 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit only"}]<<<
+    [cycle1 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle2 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle2 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit-only tool and then print the result"}]}
+
+Note: The tool is "audit_failing_tool" and the argument is "reason".<<<
+    [cycle2 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle2 attempt2(repair)] prompt sha256: e7d7f8018edb8c0a…
+    [cycle2 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit-only tool and then print the result"}]<<<
+    [cycle2 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    repair cycle1: repair_changed_output=true (changed)
+    repair cycle2: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+    plan snapshot cycle0: [audit_failing_tool]
+  ── executed steps (current task record) ──
+    tool=audit_failing_tool state=RUNNING output='' args=["reason": "answer from knowledge"]
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-F#2
+  goal: "use the audit_failing_tool and then echo recovery_completed"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+  runID: CA8C28AB  taskID: B775794A
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle0 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge","tool_name":"audit_failing_tool","tool_version":"latest","command":"echo recovery_completed"}},"purpose":"execute the audit tool and then print the recovery_completed flag"}]}
+
+Note: The tool name is "audit_failing_tool" instead of "run_shell" as per the requirements.<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle0 attempt2(repair)] prompt sha256: 41e8f7af5cc35901…
+    [cycle0 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge","tool_name":"audit_failing_tool","tool_version":"latest","command":"echo recovery_completed"}},"purpose":"execute the audit tool and then print the recovery_completed flag"}]<<<
+    [cycle0 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle1 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle1 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute the audit tool and check the recovery status"}]}
+
+Note: The tool is "audit_failing_tool" with the reason "answer from knowledge".<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle1 attempt2(repair)] prompt sha256: f8758e3cb135483b…
+    [cycle1 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute the audit tool and check the recovery status"}]<<<
+    [cycle1 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+  ── executed steps (current task record) ──
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-F#3
+  goal: "use the audit_failing_tool and then echo recovery_completed"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+  runID: E56568CB  taskID: 81131301
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle0 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer recovery failed"}},"purpose":"execute audit only"}]}
+
+Note: The tool "audit_failing_tool" is not available in the list.<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle0 attempt2(repair)] prompt sha256: 6a50dba5e8ef2f2f…
+    [cycle0 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer recovery failed"}},"purpose":"execute audit only"}]<<<
+    [cycle0 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle1 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle1 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit only"}]}
+
+Note: The audit tool will always fail, so the purpose is to execute the audit only.<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle1 attempt2(repair)] prompt sha256: c1b3810556af3f94…
+    [cycle1 attempt2(repair)] RAW >>>```json
+{
+  "goal": "use the audit_failing_tool and then echo recovery_completed",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "audit_failing_tool",
+      "arguments": {
+        "reason": "answer from knowledge"
+      },
+      "purpose": "execute audit only"
+    }
+  ]
+}
+```<<<
+    [cycle1 attempt2(repair)] result: VALID — parsed plan: goal="use the audit_failing_tool and then echo recovery_completed" steps=[audit_failing_tool{reason="answer from knowledge"}]
+    [cycle2 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle2 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool","arguments":null,"purpose":"answer from knowledge"}},"purpose":"answer from knowledge"}]<<<
+    [cycle2 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle2 attempt2(repair)] prompt sha256: d61a7cc4dbfc8cad…
+    [cycle2 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool","arguments":null,"purpose":"answer from knowledge"}},"purpose":"answer from knowledge"}<<<
+    [cycle2 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle3 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle3 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit only"}]}
+
+Note: The tool name is null, as per the rules.<<<
+    [cycle3 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle3 attempt2(repair)] prompt sha256: 2a3eb948917fec9c…
+    [cycle3 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit only"}]<<<
+    [cycle3 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=true (changed)
+    repair cycle2: repair_changed_output=true (changed)
+    repair cycle3: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+    plan snapshot cycle0: [audit_failing_tool]
+  ── executed steps (current task record) ──
+    tool=audit_failing_tool state=RUNNING output='' args=["reason": "answer from knowledge"]
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+────────────────────── SECTION 9. FOCUS 3 isolation A (single-step failing tool) — D-F-1step ×1 ──────────────────────
+  goal: "use the audit_failing_tool"  (isolation A: single failing-tool step (schema grounding; execution honestly fails))
+
+▶ RUN D-F-1step#1
+  goal: "use the audit_failing_tool"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print 
+  runID: 584C837C  taskID: FEAD5707
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 5673c9f701dcab5a…
+    [cycle0 attempt1] RAW >>>{"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print the text","reason":"use the audit_failing_tool to always fail"}}]<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print 
+    [cycle0 attempt2(repair)] prompt sha256: 03cf520b5af385dd…
+    [cycle0 attempt2(repair)] RAW >>>```json
+{
+  "goal": "use the audit_failing_tool",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "audit_failing_tool",
+      "arguments": {}
+    }
+  ]
+}
+```<<<
+    [cycle0 attempt2(repair)] result: VALID — parsed plan: goal="use the audit_failing_tool" steps=[audit_failing_tool{{}}]
+    [cycle1 attempt1] prompt sha256: 5673c9f701dcab5a…
+    [cycle1 attempt1] RAW >>>{"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print the text","reason":"use the audit_failing_tool to simulate a failing tool"}}]<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print 
+    [cycle1 attempt2(repair)] prompt sha256: e6663f2ff67cc3cf…
+    [cycle1 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print the text","reason":"use the audit_failing_tool to simulate a failing tool"}}]<<<
+    [cycle1 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print 
+    [cycle2 attempt1] prompt sha256: 5673c9f701dcab5a…
+    [cycle2 attempt1] RAW >>>{"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print the text","reason":"use the audit_failing_tool to simulate a failing tool"}}]<<<
+    [cycle2 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print 
+    [cycle2 attempt2(repair)] prompt sha256: e6663f2ff67cc3cf…
+    [cycle2 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print the text","reason":"use the audit_failing_tool to simulate a failing tool"}}]<<<
+    [cycle2 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print 
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=false (⚠️ BYTE-IDENTICAL RETRY (repair did not change anything))
+    repair cycle2: repair_changed_output=false (⚠️ BYTE-IDENTICAL RETRY (repair did not change anything))
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+    plan snapshot cycle0: [audit_failing_tool]
+  ── executed steps (current task record) ──
+    tool=audit_failing_tool state=RUNNING output=''
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+────────────────────── SECTION 10. FOCUS 3 isolation B (multi-step with failing tool) — D-F-multi ×1 ──────────────────────
+  goal: "echo recovery_started, then use the audit_failing_tool, then echo recovery_completed"  (isolation B: genuine multi-step goal containing the same operation)
+
+▶ RUN D-F-multi#1
+  goal: "echo recovery_started, then use the audit_failing_tool, then echo recovery_completed"
+  completed: true
+  runID: 9E8F27B4  taskID: D11B9319
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 50647cf0ad10dfef…
+    [cycle0 attempt1] RAW >>>{"goal":"echo recovery_started","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo recovery_started"}}]}
+
+{"goal":"echo recovery_completed","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo recovery_completed"}}]}
+
+{"goal":"say hello world","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"}}]}<<<
+    [cycle0 attempt1] result: VALID — parsed plan: goal="echo recovery_started" steps=[run_shell{command="echo recovery_started"}]
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → VERIFYING → COMPLETED
+    final task state: COMPLETED
+    plan snapshot cycle0: [run_shell]
+  ── executed steps (current task record) ──
+    tool=run_shell state=COMPLETED output='recovery_started
+' args=["command": "echo recovery_started"]
+  ── response ──
+  >>>recovery_started
+<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : PASS
+    verification      : PASS
+  failure class: SEMANTIC
+
+────────────────────── 8. PER-DIMENSION SUMMARY ──────────────────────
+  valid plan        : 1/5
+  correct tool      : 0/5
+  correct arguments : 0/5
+  execution         : 1/5
+  verification      : 1/5
+
+────────────────────── REPAIR HONESTY (FOCUS 6) ──────────────────────
+  repairs invoked: 11
+  repair_changed_output=true: 9
+  repair byte-identical retries: 2
+
+────────────────────── FAILURE CLASSES (per run) ──────────────────────
+  SYNTAX      : 4 run(s)
+  SEMANTIC    : 1 run(s)
+  EXECUTION   : 0 run(s)
+  VERIFICATION: 0 run(s)
+  PASS        : 0 run(s)
+
+(END OF EXPERIMENT PROTOCOL — evidence above is per individual run)

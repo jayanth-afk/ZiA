@@ -329,6 +329,182 @@ actor MLXPlanner {
         return "goal=\"\(plan.goal)\" steps=[\(steps.joined(separator: " | "))]"
     }
 
+    // MARK: - Experiment A: sequential next-step planning
+
+    /// Sequential next-step planning (Experiment A): ONE planning generation
+    /// for the NEXT executable action, conditioned on the original goal, the
+    /// steps already completed this run, and the most recent observation.
+    /// Deterministic authority is unchanged: the same parser, the same
+    /// validator, the same bounded schema-aware repair, the same ledger, the
+    /// same registry. The ONLY difference from plan() is the prompt shape:
+    /// the model is never asked to emit future steps in one shot.
+    /// Ledger classification: nextStepIndex == 0 records cycleIndex 0 (initial
+    /// planning); every later call is recorded as a replan cycle so existing
+    /// attribution/consumers work unchanged.
+    func planNextStep(
+        goal: String,
+        completedSteps: [(tool: String?, command: String?, purpose: String, output: String?)],
+        nextStepIndex: Int,
+        taskID: UUID?
+    ) async throws -> AgentPlan {
+        let ledgerRunID = activeLedgerRunID.value ?? UUID()
+        if let taskID {
+            TaskStateMachine.shared.registerRunAttribution(runID: ledgerRunID, taskID: taskID)
+        }
+        let cycleID = UUID()
+        let cycleIndex: Int = nextStepIndex == 0 ? 0 : cycleCountersValue(for: ledgerRunID)
+
+        // Same catalog/hint logic as plan(): deterministic, unchanged.
+        var hint = Self.toolFamilyHint(for: goal)
+        let allTools = await MainActor.run { ToolRegistry.shared.allTools }
+        let forcedNames = Self.toolNamesMentioned(in: goal, tools: allTools)
+        hint.formUnion(forcedNames)
+        let promptTools: [any JarvisTool]
+        if let hinted = Self.hintedTools(from: allTools, families: hint) {
+            promptTools = hinted.sorted { $0.name < $1.name }
+        } else {
+            promptTools = allTools.sorted { $0.name < $1.name }
+        }
+
+        var attempt = 0
+        var lastError: PlanValidationError?
+        var lastRawOutput: String?
+        while attempt < 2 {
+            attempt += 1
+            let isRepair = attempt > 1
+            let prompt: String
+            if isRepair, let error = lastError, let previous = lastRawOutput {
+                prompt = Self.buildRepairPrompt(
+                    goal: goal,
+                    tools: Self.repairTools(for: error, promptTools: promptTools, allTools: allTools),
+                    error: error,
+                    previousAttempt: previous,
+                    context: Self.contextFor(goal: goal, completedSteps: completedSteps))
+            } else {
+                prompt = Self.buildNextStepPrompt(
+                    goal: goal, tools: promptTools, completedSteps: completedSteps)
+            }
+
+            let raw = try await generate(prompt: prompt, maxTokens: Self.plannerMaxTokens)
+
+            // DONE detection: the next-step prompt instructs the model to reply
+            // with exactly "DONE" when the goal is fully achieved. Treat a
+            // strict DONE reply as an EMPTY validated plan (the caller's
+            // completion signal) — NOT as a parse failure.
+            let trimmed = raw.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".!"))
+            if trimmed.lowercased() == "done" {
+                appendLedgerRecord(
+                    runID: ledgerRunID, taskID: taskID, cycleID: cycleID,
+                    cycleIndex: cycleIndex, attempt: attempt, isRepair: isRepair,
+                    prompt: prompt, rawOutput: raw.text, validatorError: nil,
+                    parseStageFailed: false,
+                    parsedPlanSummary: "DONE (goal achieved; no further steps)",
+                    compiledTools: [], compiledArgs: [],
+                    latencyMs: raw.metrics.requestLatencyMs)
+                return AgentPlan(goal: goal, steps: [])
+            }
+
+            let metrics = raw.metrics
+            let ttftText = metrics.ttftMs.map { String(format: "%.0f", $0) } ?? "n/a"
+            JarvisLogger.brain.info("MLXPlanner next-step \(nextStepIndex) attempt \(attempt): request \(String(format: "%.0f", metrics.requestLatencyMs))ms, ttft \(ttftText)ms, \(metrics.tokens ?? 0) tokens")
+
+            switch AgentPlanParser.parse(raw.text) {
+            case .success(let parsed):
+                switch await PlanValidator.validateAsync(parsed) {
+                case .success(let plan):
+                    appendLedgerRecord(
+                        runID: ledgerRunID, taskID: taskID, cycleID: cycleID,
+                        cycleIndex: cycleIndex, attempt: attempt, isRepair: isRepair,
+                        prompt: prompt, rawOutput: raw.text, validatorError: nil,
+                        parseStageFailed: false,
+                        parsedPlanSummary: Self.summarizePlan(plan),
+                        compiledTools: plan.steps.map { $0.toolName },
+                        compiledArgs: plan.steps.map { $0.arguments },
+                        latencyMs: metrics.requestLatencyMs)
+                    return plan
+                case .failure(let error):
+                    lastError = error
+                    JarvisLogger.brain.warning("MLXPlanner next-step \(nextStepIndex) attempt \(attempt) rejected: \(error.description)")
+                    appendLedgerRecord(
+                        runID: ledgerRunID, taskID: taskID, cycleID: cycleID,
+                        cycleIndex: cycleIndex, attempt: attempt, isRepair: isRepair,
+                        prompt: prompt, rawOutput: raw.text, validatorError: error.description,
+                        parseStageFailed: false, parsedPlanSummary: nil,
+                        compiledTools: nil, compiledArgs: nil,
+                        latencyMs: metrics.requestLatencyMs)
+                }
+            case .failure(let error):
+                lastError = error
+                JarvisLogger.brain.warning("MLXPlanner next-step \(nextStepIndex) attempt \(attempt) unparseable: \(error.description)")
+                appendLedgerRecord(
+                    runID: ledgerRunID, taskID: taskID, cycleID: cycleID,
+                    cycleIndex: cycleIndex, attempt: attempt, isRepair: isRepair,
+                    prompt: prompt, rawOutput: raw.text, validatorError: error.description,
+                    parseStageFailed: true, parsedPlanSummary: nil,
+                    compiledTools: nil, compiledArgs: nil,
+                    latencyMs: metrics.requestLatencyMs)
+            }
+            lastRawOutput = raw.text
+        }
+
+        throw JarvisError.actionFailed(
+            action: "mlx.planner.nextStep",
+            reason: "Next-step output invalid after \(attempt) attempts: \(lastError?.description ?? "unknown")")
+    }
+
+    private func cycleCountersValue(for runID: UUID) -> Int {
+        var counters = cycleCounters.value
+        let index = counters[runID] ?? 0
+        counters[runID] = index + 1
+        cycleCounters.value = counters
+        return index
+    }
+
+    /// PlannerContext view of completed steps (feeds the repair prompt's real
+    /// failure/observation slots without changing its structure).
+    private static func contextFor(
+        goal: String,
+        completedSteps: [(tool: String?, command: String?, purpose: String, output: String?)]
+    ) -> PlannerContext {
+        let observations = completedSteps.compactMap { step -> String? in
+            guard let output = step.output else { return nil }
+            return "[\(step.tool ?? "step")] \(output)"
+        }
+        return PlannerContext.initial(goal: goal).with(
+            failure: "the next step must not repeat any completed step",
+            observations: observations)
+    }
+
+    /// Sequential next-step prompt: compact, schema-grounded, and conditioned
+    /// on completed steps. The model must emit EXACTLY ONE step — the next
+    /// executable action. Emits "DONE" when the goal is fully achieved.
+    private static func buildNextStepPrompt(
+        goal: String,
+        tools: [any JarvisTool],
+        completedSteps: [(tool: String?, command: String?, purpose: String, output: String?)]
+    ) -> String {
+        var p = ""
+        p += "ORIGINAL GOAL: \(goal)\n\n"
+        if completedSteps.isEmpty {
+            p += "COMPLETED STEPS: none yet\n"
+        } else {
+            p += "COMPLETED STEPS (do NOT repeat these):\n"
+            for (i, s) in completedSteps.enumerated() {
+                let cmd = s.command.map { " command=\($0)" } ?? ""
+                let out = s.output.map { " output=\($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))" } ?? ""
+                p += "\(i + 1). \(s.tool ?? "step")\(cmd)\(out)\n"
+            }
+        }
+        p += "\nDecide the NEXT SINGLE action that moves toward the goal.\n"
+        p += "If the goal is already fully achieved, reply with exactly: DONE\n"
+        p += "Otherwise reply with ONE JSON object (no code fences, no future steps):\n"
+        p += "{\"goal\": \"<the original goal verbatim>\", \"steps\": [{\"id\": \"step_1\", \"tool\": \"<tool name from the catalog\", \"arguments\": {<exact arguments>}}]}\n\n"
+        p += Self.schemaSection(from: tools)
+        p += "\nRULES: exactly one step. Reuse EXACT user wording from the goal in arguments. Never invent tools or argument fields.\n"
+        return p
+    }
+
     // MARK: - Generation
 
     /// Token budget for planner generations. The default worker budget (256)
@@ -531,6 +707,7 @@ actor MLXPlanner {
         - command is ONE scalar string containing the complete shell command. Never create an args field.
         - "echo hello world" must be represented as one scalar command string.
         - Always fill "purpose" with a short reason.
+        - To use the output of an earlier step N in step M (M > N), write "$step.<N>.output" or "$step.<N>.<field>". For frontmost app, write "$ambient.current_app". The system resolves it deterministically.
         - Output the JSON object as your entire reply. No explanations.
 
         Example 1:
@@ -540,6 +717,10 @@ actor MLXPlanner {
         Example 2:
         Goal: what is the capital of France
         {"goal":"what is the capital of France","steps":[{"id":"step_1","tool":null,"arguments":{},"purpose":"answer from knowledge"}]}
+
+        Example 3:
+        Goal: check git branch and echo it
+        {"goal":"check git branch and echo it","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"git rev-parse --abbrev-ref HEAD"},"purpose":"get current branch"},{"id":"step_2","tool":"run_shell","arguments":{"command":"echo $step.1.output"},"purpose":"print branch"}]}
 
         Goal: \(goal)
         """
@@ -619,6 +800,8 @@ actor MLXPlanner {
         case .unsafeOperation(let tool, _):
             return tool
         case .stepLimitArgument(let tool):
+            return tool
+        case .invalidReference(let tool, _, _):
             return tool
         }
     }

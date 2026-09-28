@@ -1,0 +1,754 @@
+╔════════════════════════════════════════════════════════════════════════╗
+║   SCHEMA-CONTRACT EXPERIMENT — SEGMENT DA                                    ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+
+────────────────────── SECTION 3. D-A — D-A ×5 ──────────────────────
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"  (audit D-A router-proof goal (exact user argument must survive))
+
+▶ RUN D-A#1
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Step for 'run_shell' declares undeclared argument 'args'
+  runID: 0E6B83BB  taskID: 962870A9
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle0 attempt1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    [cycle0 attempt2(repair)] prompt sha256: 79948f5160044ffe…
+    [cycle0 attempt2(repair)] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "<<<
+    [cycle0 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    [cycle1 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle1 attempt1] RAW >>>{"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis_planner_e2e_verified"}},"purpose":"execute the command and print the result"}]<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis
+    [cycle1 attempt2(repair)] prompt sha256: bfabb0afd2e59c8c…
+    [cycle1 attempt2(repair)] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo",
+        "args": "jarvis_planner_e2e_verified"
+      },
+      "purpose": "execute the command and print the result"
+    }
+  ]
+}
+```<<<
+    [cycle1 attempt2(repair)] result: VALIDATION-FAIL — Step for 'run_shell' declares undeclared argument 'args'
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+  ── executed steps (current task record) ──
+  ── argument-preservation chain ──
+    raw cycle0.attempt1: tokenPresent=true
+    raw cycle0.attempt2(repair): tokenPresent=true
+    raw cycle1.attempt1: tokenPresent=true
+    raw cycle1.attempt2(repair): tokenPresent=true
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-A#2
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: true
+  runID: 657B8475  taskID: D7BEC624
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle0 attempt1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    [cycle0 attempt2(repair)] prompt sha256: 79948f5160044ffe…
+    [cycle0 attempt2(repair)] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "<<<
+    [cycle0 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    [cycle1 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle1 attempt1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo 'jarvis_planner_e2e_verified'"
+      },
+      "purpose": "execute the command and print the result"
+    }
+  ]
+}
+```<<<
+    [cycle1 attempt1] result: VALID — parsed plan: goal="write the word jarvis_planner_e2e_verified" steps=[run_shell{command="echo 'jarvis_planner_e2e_verified'"}]
+    repair cycle0: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING → RUNNING → VERIFYING → COMPLETED
+    final task state: COMPLETED
+    plan snapshot cycle0: [run_shell]
+  ── executed steps (current task record) ──
+    tool=run_shell state=COMPLETED output='jarvis_planner_e2e_verified
+' args=["command": "echo \'jarvis_planner_e2e_verified\'"]
+  ── argument-preservation chain ──
+    raw cycle0.attempt1: tokenPresent=true
+    raw cycle0.attempt2(repair): tokenPresent=true
+    raw cycle1.attempt1: tokenPresent=true
+    compiled cycle1: command=echo 'jarvis_planner_e2e_verified' tokenPresent=true
+    executed: command=echo 'jarvis_planner_e2e_verified' tokenPresent=true
+    stdout: output=jarvis_planner_e2e_verified tokenPresent=true
+  ── response ──
+  >>>jarvis_planner_e2e_verified
+<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : PASS
+    correct arguments : PASS
+    execution         : PASS
+    verification      : PASS
+  failure class: PASS
+
+▶ RUN D-A#3
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Step for 'run_shell' declares undeclared argument 'args'
+  runID: E286AC20  taskID: 7B964A1A
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle0 attempt1] RAW >>>{"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis_planner_e2e_verified"}}],"purpose":"execute the command and print the result"}<<<
+    [cycle0 attempt1] result: VALIDATION-FAIL — Step for 'run_shell' declares undeclared argument 'args'
+    [cycle0 attempt2(repair)] prompt sha256: cdb1eaae2c4d61df…
+    [cycle0 attempt2(repair)] RAW >>>```json
+{
+  "tool": "run_shell",
+  "arguments": {
+    "command": "echo hello world"
+  }
+}
+```<<<
+    [cycle0 attempt2(repair)] result: PARSE-FAIL — Plan is missing required field 'goal'
+    [cycle1 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle1 attempt1] RAW >>>{"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis_planner_e2e_verified"}},"purpose":"print the text"}]<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis
+    [cycle1 attempt2(repair)] prompt sha256: d3c1d1c39eeacecc…
+    [cycle1 attempt2(repair)] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo",
+        "args": "jarvis_planner_e2e_verified"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+    [cycle1 attempt2(repair)] result: VALIDATION-FAIL — Step for 'run_shell' declares undeclared argument 'args'
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+  ── executed steps (current task record) ──
+  ── argument-preservation chain ──
+    raw cycle0.attempt1: tokenPresent=true
+    raw cycle0.attempt2(repair): tokenPresent=false
+    raw cycle1.attempt1: tokenPresent=true
+    raw cycle1.attempt2(repair): tokenPresent=true
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-A#4
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+  runID: AB3570F8  taskID: 1D6C18B8
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle0 attempt1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    [cycle0 attempt2(repair)] prompt sha256: 79948f5160044ffe…
+    [cycle0 attempt2(repair)] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "<<<
+    [cycle0 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    [cycle1 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle1 attempt1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    [cycle1 attempt2(repair)] prompt sha256: 79948f5160044ffe…
+    [cycle1 attempt2(repair)] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1<<<
+    [cycle1 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+  ── executed steps (current task record) ──
+  ── argument-preservation chain ──
+    raw cycle0.attempt1: tokenPresent=true
+    raw cycle0.attempt2(repair): tokenPresent=true
+    raw cycle1.attempt1: tokenPresent=true
+    raw cycle1.attempt2(repair): tokenPresent=true
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-A#5
+  goal: "write the word jarvis_planner_e2e_verified using run_shell"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Step for 'run_shell' declares undeclared argument 'args'
+  runID: 47102B51  taskID: B5B40F0A
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle0 attempt1] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    [cycle0 attempt2(repair)] prompt sha256: 79948f5160044ffe…
+    [cycle0 attempt2(repair)] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo " + "jarvis_planner_e2e_verified" + " "
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "<<<
+    [cycle0 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "argumen
+    [cycle1 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle1 attempt1] RAW >>>{"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis_planner_e2e_verified"}}]}
+
+{"goal":"what is the capital of France","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis_planner_e2e_verified"}}]}<<<
+    [cycle1 attempt1] result: VALIDATION-FAIL — Step for 'run_shell' declares undeclared argument 'args'
+    [cycle1 attempt2(repair)] prompt sha256: 57c06d42802d8440…
+    [cycle1 attempt2(repair)] RAW >>>{"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"jarvis_planner_e2e_verified"}}]}<<<
+    [cycle1 attempt2(repair)] result: VALID — parsed plan: goal="write the word jarvis_planner_e2e_verified" steps=[run_shell{command="jarvis_planner_e2e_verified"}]
+    [cycle2 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle2 attempt1] RAW >>>{"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis_planner_e2e_verified"}},"purpose":"print the text"}]<<<
+    [cycle2 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis
+    [cycle2 attempt2(repair)] prompt sha256: 7473848ec431c318…
+    [cycle2 attempt2(repair)] RAW >>>{"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis_planner_e2e_verified"}},"purpose":"print the text"}]<<<
+    [cycle2 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis
+    [cycle3 attempt1] prompt sha256: 54c4f71391713e82…
+    [cycle3 attempt1] RAW >>>{"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis_planner_e2e_verified"}},"purpose":"execute the command and print the result"}]<<<
+    [cycle3 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"write the word jarvis_planner_e2e_verified","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo","args":"jarvis
+    [cycle3 attempt2(repair)] prompt sha256: 7fb11329a58d87ae…
+    [cycle3 attempt2(repair)] RAW >>>```json
+{
+  "goal": "write the word jarvis_planner_e2e_verified",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo",
+        "args": "jarvis_planner_e2e_verified"
+      },
+      "purpose": "execute the command and print the result"
+    }
+  ]
+}
+```<<<
+    [cycle3 attempt2(repair)] result: VALIDATION-FAIL — Step for 'run_shell' declares undeclared argument 'args'
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=true (changed)
+    repair cycle2: repair_changed_output=false (⚠️ BYTE-IDENTICAL RETRY (repair did not change anything))
+    repair cycle3: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+    plan snapshot cycle0: [run_shell]
+  ── executed steps (current task record) ──
+    tool=run_shell state=RUNNING output='' args=["command": "jarvis_planner_e2e_verified"]
+  ── argument-preservation chain ──
+    raw cycle0.attempt1: tokenPresent=true
+    raw cycle0.attempt2(repair): tokenPresent=true
+    raw cycle1.attempt1: tokenPresent=true
+    raw cycle1.attempt2(repair): tokenPresent=true
+    compiled cycle1: command=jarvis_planner_e2e_verified tokenPresent=true
+    raw cycle2.attempt1: tokenPresent=true
+    raw cycle2.attempt2(repair): tokenPresent=true
+    raw cycle3.attempt1: tokenPresent=true
+    raw cycle3.attempt2(repair): tokenPresent=true
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+────────────────────── 8. PER-DIMENSION SUMMARY ──────────────────────
+  valid plan        : 1/5
+  correct tool      : 1/5
+  correct arguments : 1/5
+  execution         : 1/5
+  verification      : 1/5
+
+────────────────────── REPAIR HONESTY (FOCUS 6) ──────────────────────
+  repairs invoked: 11
+  repair_changed_output=true: 10
+  repair byte-identical retries: 1
+
+────────────────────── FAILURE CLASSES (per run) ──────────────────────
+  SYNTAX      : 4 run(s)
+  SEMANTIC    : 0 run(s)
+  EXECUTION   : 0 run(s)
+  VERIFICATION: 0 run(s)
+  PASS        : 1 run(s)
+
+(END OF EXPERIMENT PROTOCOL — evidence above is per individual run)

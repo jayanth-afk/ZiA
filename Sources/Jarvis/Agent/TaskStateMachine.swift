@@ -109,6 +109,8 @@ struct JarvisTask: Identifiable, Sendable {
     var updatedAt: Date
     var completedAt: Date?
     var error: String?
+    var resolutionRecords: [StepResolutionRecord]
+    var environmentContext: TaskEnvironmentContext?
 
     init(
         id: UUID = UUID(),
@@ -122,7 +124,9 @@ struct JarvisTask: Identifiable, Sendable {
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
         completedAt: Date? = nil,
-        error: String? = nil
+        error: String? = nil,
+        resolutionRecords: [StepResolutionRecord] = [],
+        environmentContext: TaskEnvironmentContext? = nil
     ) {
         self.id = id
         self.title = title
@@ -136,6 +140,8 @@ struct JarvisTask: Identifiable, Sendable {
         self.updatedAt = updatedAt
         self.completedAt = completedAt
         self.error = error
+        self.resolutionRecords = resolutionRecords
+        self.environmentContext = environmentContext
     }
 
     /// Progress completion percentage (0.0 to 1.0).
@@ -206,11 +212,16 @@ final class TaskStateMachine: @unchecked Sendable {
 
     /// Create and register a new task.
     @discardableResult
-    func createTask(title: String, goal: String, steps: [TaskStep] = []) -> JarvisTask {
+    func createTask(
+        title: String,
+        goal: String,
+        steps: [TaskStep] = [],
+        environmentContext: TaskEnvironmentContext? = nil
+    ) -> JarvisTask {
         lock.lock()
         defer { lock.unlock() }
 
-        let task = JarvisTask(title: title, goal: goal, steps: steps)
+        let task = JarvisTask(title: title, goal: goal, steps: steps, environmentContext: environmentContext)
         tasks[task.id] = task
         stateHistory[task.id] = [(.created, Date())]
 
@@ -380,6 +391,58 @@ final class TaskStateMachine: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return stateHistory[taskId] ?? []
+    }
+
+    /// Append a completed step resolution record to the task (P1 Reference Resolution).
+    @discardableResult
+    func appendResolutionRecord(_ record: StepResolutionRecord, for taskId: UUID) throws -> JarvisTask {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var task = tasks[taskId] else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.appendResolutionRecord", reason: "Task \(taskId) not found")
+        }
+
+        task.resolutionRecords.append(record)
+        task.updatedAt = Date()
+        tasks[taskId] = task
+        return task
+    }
+
+    /// Retrieve step resolution records indexed by stepNumber for reference resolution.
+    func resolutionRecords(for taskId: UUID) -> [Int: StepResolutionRecord] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard let task = tasks[taskId] else { return [:] }
+        var map: [Int: StepResolutionRecord] = [:]
+        for record in task.resolutionRecords {
+            map[record.stepNumber] = record
+        }
+        return map
+    }
+
+    /// Set or update the ambient environment context snapshot for the task.
+    @discardableResult
+    func setEnvironmentContext(_ context: TaskEnvironmentContext, for taskId: UUID) throws -> JarvisTask {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var task = tasks[taskId] else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.setEnvironmentContext", reason: "Task \(taskId) not found")
+        }
+
+        task.environmentContext = context
+        task.updatedAt = Date()
+        tasks[taskId] = task
+        return task
+    }
+
+    /// Retrieve the environment context for the task.
+    func environmentContext(for taskId: UUID) -> TaskEnvironmentContext? {
+        lock.lock()
+        defer { lock.unlock() }
+        return tasks[taskId]?.environmentContext
     }
 
     /// Record a failure and enter the recovery/replanning cycle.

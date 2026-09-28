@@ -1,0 +1,22 @@
+(lldb) target create "/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis"
+Current executable set to '/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis' (arm64).
+(lldb) settings set -- target.run-args  "--audit"
+(lldb) run
+╔════════════════════════════════════════════════════════════════════════╗
+║        JARVIS — HARDENED INTEGRATION AUDIT (ZERO FALSE POSITIVES)      ║
+║                   Apple M4 (16 GB) — macOS Sequoia / Tahoe             ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+2026-09-26 16:26:46.489500+0530 Jarvis[46711:4729585] [security] EmergencyInterrupt production subscribers registered: 6
+2026-09-26 16:26:46.494360+0530 Jarvis[46711:4729585] [voice] VoicePipeline handling transition to state: off
+2026-09-26 16:26:47.129015+0530 Jarvis[46711:4729585] [voice] VoicePipeline initialized and active
+2026-09-26 16:26:47.222421+0530 Jarvis[46711:4729585] [voice] [VOICE_TRACE] startup: bundled=true micAuth=Not Determined sttAuth=Not Determined onDeviceSupport=true recognizerAvailable=true
+
+─── 1. VOICE SUBSYSTEM AUDIT ───
+  [🟡 WARN (PARTIAL)] Microphone Permission: macOS AVCaptureDevice status: Not Determined (permission prompt pending)
+2026-09-26 16:26:47.277672+0530 Jarvis[46711:4729585] [plugin] AddInstanceForFactory: No factory registered for id <CFUUID 0x7a7d025340> F8BB1C28-BAE8-11D6-9C31-00039315CD46
+2026-09-26 16:28:17.353229+0530 Jarvis[46711:4729606]       HALC_ShellObject.mm:280    HALC_ShellObject::HasProperty: call to the proxy failed, Error: 268451843 (\^P)
+2026-09-26 16:28:47.361435+0530 Jarvis[46711:4729606]       HALC_ShellObject.mm:280    HALC_ShellObject::HasProperty: call to the proxy failed, Error: 268451843 (\^P)
+2026-09-26 16:29:17.371796+0530 Jarvis[46711:4729606]       HALC_ShellObject.mm:280    HALC_ShellObject::HasProperty: call to the proxy failed, Error: 268451843 (\^P)
+2026-09-26 16:29:47.375170+0530 Jarvis[46711:4729606]       HALC_ShellObject.mm:280    HALC_ShellObject::HasProperty: call to the proxy failed, Error: 268451843 (\^P)
+2026-09-26 16:30:17.379899+0530 Jarvis[46711:4729606]       HALC_ShellObject.mm:280    HALC_ShellObject::HasProperty: call to the proxy failed, Error: 268435460 (\^P)

@@ -1,0 +1,76 @@
+╔════════════════════════════════════════════════════════════╗
+║   TIER-A SEQUENTIAL EXPERIMENT — PHASE: EXPERIMENT A (sequential next-step)
+║   mode=sequential (next-step)
+╚════════════════════════════════════════════════════════════╝
+
+────────────────────── BENCHMARK B3 — ×5 ──────────────────────
+  goal: "echo reference_probe_77, then echo it"
+  intended steps (definition-derived): 2
+  note: REFERENCE_RESOLUTION_NOT_IMPLEMENTED — 'it' cannot be resolved by any implemented mechanism. Informational probe only: documents model behavior; never scored.
+  ⚠️ UNSCORED PROBE (see note above)
+▶ RUN B3#1  [mode: seq]
+  runID: ED027620  taskID: 8ECC9363
+  intendedSteps: 2  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: unscored reference-resolution probe
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  response: >>><<<
+  latency: wall=7972ms model=5306ms
+  verdict: PROBE  completeness: 0.50  category: INFO — unscored reference-resolution probe
+SEQDATA|SEQA-B3|B3|1|ED027620|8ECC9363|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=PROBE|cat=INFO|wallMs=7971|modelMs=5306
+▶ RUN B3#2  [mode: seq]
+  runID: 806090BD  taskID: CFE45362
+  intendedSteps: 2  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: unscored reference-resolution probe
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  response: >>><<<
+  latency: wall=5407ms model=2824ms
+  verdict: PROBE  completeness: 0.50  category: INFO — unscored reference-resolution probe
+SEQDATA|SEQA-B3|B3|2|806090BD|CFE45362|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=PROBE|cat=INFO|wallMs=5407|modelMs=2824
+▶ RUN B3#3  [mode: seq]
+  runID: 8F96DC90  taskID: E254A81A
+  intendedSteps: 2  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: unscored reference-resolution probe
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  response: >>><<<
+  latency: wall=5393ms model=2786ms
+  verdict: PROBE  completeness: 0.50  category: INFO — unscored reference-resolution probe
+SEQDATA|SEQA-B3|B3|3|8F96DC90|E254A81A|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=PROBE|cat=INFO|wallMs=5393|modelMs=2785
+▶ RUN B3#4  [mode: seq]
+  runID: 9F23A5CB  taskID: 52609646
+  intendedSteps: 2  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: unscored reference-resolution probe
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  response: >>><<<
+  latency: wall=5391ms model=2795ms
+  verdict: PROBE  completeness: 0.50  category: INFO — unscored reference-resolution probe
+SEQDATA|SEQA-B3|B3|4|9F23A5CB|52609646|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=PROBE|cat=INFO|wallMs=5390|modelMs=2795
+▶ RUN B3#5  [mode: seq]
+  runID: 38AC4C53  taskID: ADE32AAD
+  intendedSteps: 2  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: unscored reference-resolution probe
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  response: >>><<<
+  latency: wall=5419ms model=2802ms
+  verdict: PROBE  completeness: 0.50  category: INFO — unscored reference-resolution probe
+SEQDATA|SEQA-B3|B3|5|38AC4C53|ADE32AAD|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=PROBE|cat=INFO|wallMs=5418|modelMs=2802
+── SECTION SUMMARY B3 (scored=false) ──
+  PASS: 0/5  NOT_COMPLETE: 0/5  FAILED: 0/5
+  avg plannerCalls: 8.0  avg generations: 8.0  avg generatedSteps(initial): 1.0  avg wall ms: 5916
+  failure categories: none
+════════════════════ PHASE SUMMARY: EXPERIMENT A (sequential next-step) ════════════════════
+  B1: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B2: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B3: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 40 gens 40 avgGenSteps 1.0 exec 5/5 verify 0/5 recovery 35 avgWall 5916ms
+  B4: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B5: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+══════════════════════════════════════════════════════

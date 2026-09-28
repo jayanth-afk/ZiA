@@ -45,6 +45,11 @@ final class PermissionGate {
         }
 
         let current = self.currentLevel
+        // At L1 Supervised, a destructive action is authorized if explicitly confirmed via Preview/Commit
+        if current == .l1Supervised && impact == .destructive && DestructiveActionManager.shared.isConfirmed(intent: actionName) {
+            return true
+        }
+
         guard current >= required else {
             JarvisLogger.security.warning("Permission denied for '\(actionName)': requires L\(required.rawValue), current is L\(current.rawValue)")
             throw JarvisError.permissionDenied(action: actionName, requiredLevel: required.rawValue, currentLevel: current.rawValue)

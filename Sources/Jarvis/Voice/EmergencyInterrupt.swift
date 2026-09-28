@@ -6,15 +6,22 @@ import Foundation
 final class EmergencyInterrupt {
     static let shared = EmergencyInterrupt()
 
-    private let emergencyPhrases: [String] = [
-        "stop",
-        "cancel",
-        "abort",
-        "shut up",
-        "jarvis stop",
-        "emergency stop",
-        "halt"
-    ]
+    private var emergencyPhrases: [String] {
+        var phrases = [
+            "stop",
+            "cancel",
+            "abort",
+            "shut up",
+            "emergency stop",
+            "halt"
+        ]
+        for alias in Config.shared.wakeAliases {
+            let lower = alias.lowercased()
+            phrases.append("\(lower) stop")
+            phrases.append("hey \(lower) stop")
+        }
+        return phrases
+    }
 
     // MARK: - Emergency stop wiring
 
@@ -70,10 +77,11 @@ final class EmergencyInterrupt {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let words = cleaned.split(whereSeparator: { $0.isWhitespace || $0.isPunctuation }).map(String.init)
         guard !words.isEmpty else { return false }
+        let normalized = words.joined(separator: " ")
 
         // 1. Direct match with full emergency phrase
         for phrase in emergencyPhrases {
-            if cleaned == phrase {
+            if cleaned == phrase || normalized == phrase {
                 triggerEmergencyStop(phrase: phrase)
                 return true
             }
@@ -111,17 +119,20 @@ final class EmergencyInterrupt {
         // 2. Cancel current speech recognition
         SpeechRecognizer.shared.cancelRecognition()
 
-        // 3. Publish emergency event to cancel all background workers and tasks
-        EventBus.shared.publish(EmergencyStopEvent(phrase: phrase))
-
-        // 4. Fall back to SLEEP if currently ACTIVE
+        // 3. Fall back to SLEEP if currently ACTIVE
         if AppState.shared.state == .active {
             AppState.shared.transition(to: .sleep)
         }
 
+        // 3b. Cancel any pending destructive actions (Preview/Commit) synchronously
+        DestructiveActionManager.shared.cancel()
+
         let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
         lastEmergencyHaltLatencyMs = elapsed
         JarvisLogger.security.info("Emergency stop halt completed in \(String(format: "%.2f", elapsed), privacy: .public)ms")
+
+        // 4. Publish emergency event to cancel all background workers and tasks
+        EventBus.shared.publish(EmergencyStopEvent(phrase: phrase))
 
         // 5. Deterministic acknowledgement corresponding to real emergency halt
         TTSEngine.shared.speak("Stopped.", mode: .acknowledgement)

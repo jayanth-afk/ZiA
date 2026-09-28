@@ -33,9 +33,19 @@ actor AgentLoop {
     /// Emergency Stop: request cancellation of the in-flight agent run.
     /// Combined with the cooperative cancellation checks inside the loop and
     /// the TaskWorkerPool.cancelAll() path registered in EmergencyInterrupt.
-    func emergencyCancel() {
+    nonisolated func emergencyCancel() {
         Self.cancellationObserved.value = true
         JarvisLogger.security.fault("AgentLoop.emergencyCancel: in-flight agent run cancellation requested")
+    }
+
+    /// Current cancellation observation status (for tests & audits).
+    nonisolated var isEmergencyCancelled: Bool {
+        Self.cancellationObserved.value
+    }
+
+    /// Reset emergency cancellation status (for testing hygiene).
+    nonisolated func resetEmergencyCancellation() {
+        Self.cancellationObserved.value = false
     }
 
     private init() {}
@@ -119,8 +129,24 @@ actor AgentLoop {
         // Evidence ledger: the harness (or a self-contained run) owns the scope;
         // MLXPlanner.plan(goal:context:taskID:) attributes every attempt of THIS
         // run (initial + all replan cycles) to one runID + taskID.
-        let task = stateMachine.createTask(title: "Autonomous Goal", goal: goal)
+        let task = stateMachine.createTask(
+            title: "Autonomous Goal",
+            goal: goal,
+            environmentContext: TaskEnvironmentContext.captureLive()
+        )
         try stateMachine.transition(taskId: task.id, to: .planning)
+
+        // Experiment A: sequential next-step planning. When enabled, each
+        // planning generation produces the NEXT SINGLE action; validate →
+        // compile → execute → observe → verify → update Task State → repeat.
+        // Deterministic authority, PermissionGate, ToolExecutor, verification,
+        // and the recovery chain are all unchanged. A partial completion can
+        // never report success: the loop continues until the model signals
+        // DONE or the bounded attempt budget is exhausted.
+        if SequentialExperiment.mode == .sequential {
+            return try await runSequential(
+                goal: goal, task: task, stateMachine: stateMachine)
+        }
 
         var plannerContext = PlannerContext.initial(goal: goal)
         var plan = try await planWithRecovery(
@@ -164,10 +190,40 @@ actor AgentLoop {
                 try stateMachine.updateStep(taskId: task.id, stepIndex: stepIndex, state: .running)
 
                 if let toolName = step.toolName {
-                    var args: [String: any Sendable] = [:]
-                    for (k, v) in step.arguments { args[k] = v }
+                    // 1. Fetch current resolution records & ambient context
+                    let resolutionRecords = stateMachine.resolutionRecords(for: task.id)
+                    var envContext = stateMachine.environmentContext(for: task.id)
+                    if envContext == nil {
+                        envContext = TaskEnvironmentContext.captureLive()
+                        _ = try? stateMachine.setEnvironmentContext(envContext!, for: task.id)
+                    }
 
-                    // EXECUTE (ToolExecutor does permission gate + execute + observe + verify)
+                    // 2. Fetch tool parameter spec
+                    guard let tool = await MainActor.run(body: { ToolRegistry.shared.getTool(named: toolName) }) else {
+                        throw JarvisError.actionFailed(action: toolName, reason: "Tool '\(toolName)' is not registered")
+                    }
+
+                    // 3. Resolve arguments deterministically (Reference Resolution)
+                    let currentStepNumber = stepIndex + 1
+                    let args = try ReferenceResolver.resolveStepArguments(
+                        rawArguments: step.arguments,
+                        currentStepNumber: currentStepNumber,
+                        toolParameterSpecs: tool.parameterSpec,
+                        resolutionRecords: resolutionRecords,
+                        environmentContext: envContext
+                    )
+
+                    // 4. Sandbox re-check on resolved shell command (Permission evaluation sees resolved value)
+                    if toolName == "run_shell", let resolvedCmd = args["command"] as? String {
+                        guard await MainActor.run(body: { CommandSandbox.shared.isSafe(resolvedCmd) }) else {
+                            throw JarvisError.actionFailed(
+                                action: "run_shell",
+                                reason: "Resolved command rejected by CommandSandbox: \(resolvedCmd)"
+                            )
+                        }
+                    }
+
+                    // 5. EXECUTE (ToolExecutor does permission gate + execute + observe + verify)
                     let result = try await ToolExecutor.shared.execute(toolName: toolName, arguments: args)
 
                     // Emergency Stop / cancel may have fired during execution:
@@ -193,6 +249,17 @@ actor AgentLoop {
                     }
                     _ = try? stateMachine.markStepVerification(
                         taskId: task.id, stepIndex: stepIndex, outcome: .passed)
+
+                    // RECORD Resolution Record on stateMachine (for subsequent steps to reference)
+                    let record = StepResolutionRecord(
+                        stepNumber: currentStepNumber,
+                        toolName: toolName,
+                        rawOutput: result.output,
+                        structuredOutput: nil,
+                        completedAt: Date(),
+                        verification: .passed
+                    )
+                    _ = try? stateMachine.appendResolutionRecord(record, for: task.id)
 
                     try stateMachine.updateStep(
                         taskId: task.id,
@@ -250,6 +317,46 @@ actor AgentLoop {
                 plannerContext = plannerContext.with(
                     failure: error.localizedDescription,
                     observations: observations)
+
+                // Lossless escalation to Tier B when repeated execution replans fail
+                let isEscalationEnabled = await MainActor.run { EscalationPipeline.shared.isEnabled }
+                if replanCount >= 2 && isEscalationEnabled {
+                    let currentTask = stateMachine.getTask(id: task.id)
+                    let resolutionRecords = stateMachine.resolutionRecords(for: task.id)
+                    var verifiedOutputs: [Int: String] = [:]
+                    for rec in resolutionRecords.values where rec.verification == .passed {
+                        verifiedOutputs[rec.stepNumber] = rec.rawOutput
+                    }
+                    let env = stateMachine.environmentContext(for: task.id)
+                    let sensitivity = await MainActor.run { DataClassifier.shared.classify(goal) }
+
+                    let currentTaskStep = currentTask?.steps.indices.contains(stepIndex) == true ? currentTask?.steps[stepIndex] : nil
+                    let escalationContext = EscalationContext(
+                        taskId: task.id,
+                        originalGoal: goal,
+                        currentStepNumber: stepIndex + 1,
+                        completedSteps: currentTask?.steps.filter { $0.state == .completed } ?? [],
+                        verifiedOutputs: verifiedOutputs,
+                        failedStep: currentTaskStep,
+                        failureReason: error.localizedDescription,
+                        priorObservations: observations,
+                        environmentContext: env,
+                        sensitivity: sensitivity,
+                        triggerReason: .executionFailureReplanning,
+                        attemptCount: replanCount
+                    )
+
+                    do {
+                        plan = try await EscalationPipeline.shared.escalate(context: escalationContext)
+                        try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
+                        if stepIndex >= plan.steps.count { stepIndex = 0 }
+                        try stateMachine.transition(taskId: task.id, to: .running)
+                        continue
+                    } catch {
+                        JarvisLogger.brain.warning("Tier B execution replan escalation failed: \(error.localizedDescription)")
+                    }
+                }
+
                 plan = try await planWithRecovery(
                     goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
                 try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
@@ -268,6 +375,239 @@ actor AgentLoop {
         JarvisLogger.brain.info("AgentLoop completed goal successfully: \(response)")
 
         return response.isEmpty ? "All actions executed and verified." : response
+    }
+
+    // MARK: - Experiment A: sequential next-step execution
+
+    /// Sequential next-step execution loop (Experiment A only).
+    /// Reuses: PlanValidator/AgentPlanParser (via planNextStep), ToolExecutor
+    /// (permission + execute + observe + verify), TaskStateMachine lifecycle,
+    /// DirectComposer for tool:null composition, and the bounded recovery
+    /// chain. NOT reused: nothing is modified — this is a parallel path.
+    private func runSequential(
+        goal: String,
+        task: JarvisTask,
+        stateMachine: TaskStateMachine
+    ) async throws -> String {
+        var completedSteps: [(tool: String?, command: String?, purpose: String, output: String?)] = []
+        var observations: [String] = []
+        var replanCount = 0
+        var stepNumber = 0
+        // Bound: deterministic, per-task attempt budget (steps + margin for
+        // invalid next-step generations + recovery). Hard cap prevents loops.
+        let maxGenerations = 8
+        var generationCount = 0
+
+        try stateMachine.transition(taskId: task.id, to: .running)
+
+        while generationCount < maxGenerations {
+            try Task.checkCancellation()
+            if Self.cancellationObserved.value {
+                try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                throw CancellationError()
+            }
+            if let current = stateMachine.getTask(id: task.id), current.state == .cancelled {
+                throw CancellationError()
+            }
+
+            // Next-step generation happens while the task is RUNNING (the only
+            // legal state that can reach .failed/.recovering/.replanning and
+            // back). Planning-phase evidence lives in the ledger + snapshots.
+            generationCount += 1
+            var plan: AgentPlan
+            do {
+                plan = try await MLXPlanner.shared.planNextStep(
+                    goal: goal,
+                    completedSteps: completedSteps,
+                    nextStepIndex: stepNumber,
+                    taskID: task.id)
+            } catch is CancellationError {
+                try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                throw CancellationError()
+            } catch {
+                // Bounded recovery: one retry of the next-step generation, then
+                // fail safely (same chain shape as planWithRecovery).
+                replanCount += 1
+                lastReplanCount.value = replanCount
+                if Self.cancellationObserved.value {
+                    try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                    throw CancellationError()
+                }
+                try stateMachine.transition(taskId: task.id, to: .failed, error: "Next-step planning failed: \(error.localizedDescription)")
+                try stateMachine.transition(taskId: task.id, to: .recovering)
+                try stateMachine.transition(taskId: task.id, to: .replanning)
+                // Bug A regression guard: the retry generation must happen in
+                // RUNNING — the only state from which the loop's later
+                // failed/verifying transitions are legal. Leaving the task in
+                // REPLANNING here would make the later DONE-accept path attempt
+                // the illegal REPLANNING → VERIFYING transition.
+                try stateMachine.transition(taskId: task.id, to: .running)
+                try? stateMachine.incrementRetryCount(taskId: task.id)
+                do {
+                    plan = try await MLXPlanner.shared.planNextStep(
+                        goal: goal,
+                        completedSteps: completedSteps,
+                        nextStepIndex: stepNumber,
+                        taskID: task.id)
+                } catch {
+                    try stateMachine.transition(taskId: task.id, to: .failed, error: "Next-step planning failed after recovery: \(error.localizedDescription)")
+                    throw JarvisError.actionFailed(
+                        action: "AgentLoop.runSequential",
+                        reason: "Next-step planning failed after recovery: \(error.localizedDescription)")
+                }
+            }
+
+            // Model signaled completion — the plan is empty. Partial-plan
+            // safety (§8): DONE with ZERO completed steps can never be success
+            // (nothing was executed). Treat it as an invalid response and
+            // retry through the normal bounded path.
+            if plan.steps.isEmpty {
+                if completedSteps.isEmpty {
+                    JarvisLogger.actions.warning("Sequential: model signaled DONE with zero completed steps — rejected as invalid")
+                    try stateMachine.transition(taskId: task.id, to: .failed, error: "DONE signaled with no completed steps")
+                    try stateMachine.transition(taskId: task.id, to: .recovering)
+                    try stateMachine.transition(taskId: task.id, to: .replanning)
+                    try stateMachine.transition(taskId: task.id, to: .running)
+                    continue
+                }
+                // Deterministic completion gate (§6): the model's "DONE" text is
+                // never authority by itself. Completion additionally requires
+                // deterministic state evidence: ≥1 recorded step AND every
+                // recorded step explicitly verified .passed in task state. A
+                // premature DONE (e.g. after 1 of 3 intended steps) still lands
+                // on this accept path — goal-level completeness is judged by
+                // the benchmark harness, which reports NOT_COMPLETE, never by
+                // trusting the model's declaration.
+                let recordedSteps = stateMachine.getTask(id: task.id)?.steps ?? []
+                let allVerified = !recordedSteps.isEmpty
+                    && recordedSteps.allSatisfy { $0.verification == .passed }
+                guard allVerified else {
+                    JarvisLogger.actions.warning("Sequential: model signaled DONE without verified-step evidence — rejected as invalid")
+                    try stateMachine.transition(taskId: task.id, to: .failed, error: "DONE not backed by verified completed steps")
+                    try stateMachine.transition(taskId: task.id, to: .recovering)
+                    try stateMachine.transition(taskId: task.id, to: .replanning)
+                    try stateMachine.transition(taskId: task.id, to: .running)
+                    continue
+                }
+                try stateMachine.transition(taskId: task.id, to: .verifying)
+                try stateMachine.transition(taskId: task.id, to: .completed)
+                let response = completedSteps.compactMap(\.output).joined(separator: "\n")
+                return response.isEmpty ? "All actions executed and verified." : response
+            }
+            guard let step = plan.steps.first else {
+                throw JarvisError.actionFailed(action: "runSequential", reason: "empty plan after DONE check")
+            }
+            // Deterministic no-progress guard: if the model's "next action"
+            // exactly repeats an already-completed step (same tool + same
+            // arguments), executing it again is NOT progress. Discard this
+            // generation (budget still consumed) so the loop cannot oscillate
+            // forever on a repeating model.
+            let stepKey = (step.toolName ?? "") + "|" + step.arguments.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: ";")
+            let completedKeys = Set(completedSteps.map { ($0.tool ?? "") + "|" + ($0.command.map { "command=\($0)" } ?? "") })
+            if completedKeys.contains(stepKey) {
+                JarvisLogger.actions.warning("Sequential: model repeated completed step (\(stepKey.prefix(80))) — discarded, no progress")
+                try stateMachine.transition(taskId: task.id, to: .failed, error: "Model repeated a completed step (no progress)")
+                try stateMachine.transition(taskId: task.id, to: .recovering)
+                try stateMachine.transition(taskId: task.id, to: .replanning)
+                try stateMachine.transition(taskId: task.id, to: .running)
+                continue
+            }
+            stepNumber += 1
+            try? stateMachine.setCurrentStepIndex(taskId: task.id, index: stepNumber - 1)
+            // Replace the task's step list with executed history + the new step
+            // (append-only progress view; snapshots preserve every cycle).
+            var allSteps = stateMachine.getTask(id: task.id)?.steps ?? []
+            let newStep = TaskStep(
+                stepNumber: stepNumber,
+                description: step.purpose,
+                toolName: step.toolName,
+                arguments: step.arguments)
+            allSteps.append(newStep)
+            try? stateMachine.setSteps(taskId: task.id, steps: allSteps)
+
+            do {
+                try stateMachine.updateStep(taskId: task.id, stepIndex: allSteps.count - 1, state: .running)
+                guard let toolName = step.toolName else {
+                    throw JarvisError.actionFailed(action: "runSequential", reason: "composition step not supported in sequential mode")
+                }
+                let resolutionRecords = stateMachine.resolutionRecords(for: task.id)
+                var envContext = stateMachine.environmentContext(for: task.id)
+                if envContext == nil {
+                    envContext = TaskEnvironmentContext.captureLive()
+                    _ = try? stateMachine.setEnvironmentContext(envContext!, for: task.id)
+                }
+                guard let tool = await MainActor.run(body: { ToolRegistry.shared.getTool(named: toolName) }) else {
+                    throw JarvisError.actionFailed(action: toolName, reason: "Tool '\(toolName)' is not registered")
+                }
+                let args = try ReferenceResolver.resolveStepArguments(
+                    rawArguments: step.arguments,
+                    currentStepNumber: stepNumber,
+                    toolParameterSpecs: tool.parameterSpec,
+                    resolutionRecords: resolutionRecords,
+                    environmentContext: envContext
+                )
+                if toolName == "run_shell", let resolvedCmd = args["command"] as? String {
+                    guard await MainActor.run(body: { CommandSandbox.shared.isSafe(resolvedCmd) }) else {
+                        throw JarvisError.actionFailed(
+                            action: "run_shell",
+                            reason: "Resolved command rejected by CommandSandbox: \(resolvedCmd)"
+                        )
+                    }
+                }
+                let result = try await ToolExecutor.shared.execute(toolName: toolName, arguments: args)
+
+                if Self.cancellationObserved.value {
+                    try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                    throw CancellationError()
+                }
+                if !result.success || result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    _ = try? stateMachine.markStepVerification(
+                        taskId: task.id, stepIndex: allSteps.count - 1, outcome: .failed)
+                    throw JarvisError.verificationFailed(
+                        action: toolName, expected: "meaningful output", actual: result.output)
+                }
+                _ = try? stateMachine.markStepVerification(
+                    taskId: task.id, stepIndex: allSteps.count - 1, outcome: .passed)
+                try stateMachine.updateStep(
+                    taskId: task.id, stepIndex: allSteps.count - 1, state: .completed,
+                    output: result.output)
+                let command = step.arguments["command"]
+                completedSteps.append((tool: toolName, command: command, purpose: step.purpose, output: result.output))
+                observations.append("[\(toolName)] \(result.output)")
+            } catch is CancellationError {
+                try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                throw CancellationError()
+            } catch {
+                // RECOVER: same chain as the full-plan path (FAILED → RECOVERING
+                // → REPLANNING), then the loop plans a NEW next step with the
+                // failure context implicit in the completed-steps list (the
+                // failed step is NOT appended, so the model does not see it as
+                // completed).
+                replanCount += 1
+                lastReplanCount.value = replanCount
+                JarvisLogger.actions.warning("Sequential step '\(step.purpose)' failed (replan \(replanCount)): \(error.localizedDescription)")
+                try stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
+                try stateMachine.transition(taskId: task.id, to: .recovering)
+                try stateMachine.transition(taskId: task.id, to: .replanning)
+                try? stateMachine.incrementRetryCount(taskId: task.id)
+                try stateMachine.transition(taskId: task.id, to: .running)
+                // Drop the partially-appended step from the task's step list so
+                // the next generation plans it fresh (bounded by maxGenerations).
+                var allSteps = stateMachine.getTask(id: task.id)?.steps ?? []
+                if !allSteps.isEmpty { allSteps.removeLast() }
+                try? stateMachine.setSteps(taskId: task.id, steps: allSteps)
+            }
+        }
+
+        // Attempt budget exhausted WITHOUT the model signaling DONE: this is a
+        // partial completion. Never report success (§8 partial-plan safety):
+        // the only success exits in this loop require an explicit model DONE
+        // signal that is backed by deterministically verified task state.
+        // Budget expiry → FAILED, never success (§6 completion safety).
+        try stateMachine.transition(taskId: task.id, to: .failed, error: "Sequential planning attempt budget exhausted before DONE")
+        throw JarvisError.actionFailed(
+            action: "AgentLoop.runSequential",
+            reason: "Sequential planning exhausted \(maxGenerations) generations without completion (partial plan not reported as success)")
     }
 
     // MARK: - Planning
@@ -297,7 +637,7 @@ actor AgentLoop {
                 throw CancellationError()
             }
             // PLANNING -> FAILED -> RECOVERING -> REPLANNING -> retry, bounded.
-            // A second consecutive planning failure propagates (fail safely).
+            // A second consecutive planning failure propagates or escalates.
             try stateMachine.transition(taskId: taskId, to: .failed, error: "Planner failed: \(error.localizedDescription)")
             try stateMachine.transition(taskId: taskId, to: .recovering)
             try stateMachine.transition(taskId: taskId, to: .replanning)
@@ -311,6 +651,42 @@ actor AgentLoop {
             } catch is CancellationError {
                 _ = try? stateMachine.transition(taskId: taskId, to: .cancelled, error: "Agent task cancelled during planning")
                 throw CancellationError()
+            } catch {
+                // Tier A planning exhausted after retry: lossless escalation to Tier B if enabled
+                let isEscalationEnabled = await MainActor.run { EscalationPipeline.shared.isEnabled }
+                if isEscalationEnabled {
+                    let task = stateMachine.getTask(id: taskId)
+                    let resolutionRecords = stateMachine.resolutionRecords(for: taskId)
+                    var verifiedOutputs: [Int: String] = [:]
+                    for rec in resolutionRecords.values where rec.verification == .passed {
+                        verifiedOutputs[rec.stepNumber] = rec.rawOutput
+                    }
+                    let env = stateMachine.environmentContext(for: taskId)
+                    let sensitivity = await MainActor.run { DataClassifier.shared.classify(goal) }
+
+                    let escalationContext = EscalationContext(
+                        taskId: taskId,
+                        originalGoal: goal,
+                        currentStepNumber: 1,
+                        completedSteps: task?.steps.filter { $0.state == .completed } ?? [],
+                        verifiedOutputs: verifiedOutputs,
+                        failedStep: nil,
+                        failureReason: error.localizedDescription,
+                        priorObservations: context.priorObservations,
+                        environmentContext: env,
+                        sensitivity: sensitivity,
+                        triggerReason: .tierAPlanningExhausted,
+                        attemptCount: 2
+                    )
+
+                    do {
+                        return try await EscalationPipeline.shared.escalate(context: escalationContext)
+                    } catch {
+                        JarvisLogger.brain.warning("Tier B escalation failed: \(error.localizedDescription)")
+                        throw error
+                    }
+                }
+                throw error
             }
         }
     }

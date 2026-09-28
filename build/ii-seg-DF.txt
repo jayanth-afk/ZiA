@@ -1,0 +1,328 @@
+warning: 'zia': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Workers/mlx_worker.py
+Building for debugging...
+[1 / 3]
+Build complete! (0.48 secs)
+╔════════════════════════════════════════════════════════════════════════╗
+║   SCHEMA-CONTRACT EXPERIMENT — SEGMENT DF                                    ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+
+────────────────────── SECTION 4. D-F — D-F ×3 ──────────────────────
+  goal: "use the audit_failing_tool and then echo recovery_completed"  (audit D-F recovery goal (replan expected; final plan must execute))
+
+▶ RUN D-F#1
+  goal: "use the audit_failing_tool and then echo recovery_completed"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+  runID: 94923172  taskID: FF7DD211
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle0 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool","command":"echo recovery_completed"}},"purpose":"execute the audit tool and check the recovery status"}]}
+
+Note: The tool is "audit_failing_tool" and the argument is "reason". The purpose is "use the audit_failing_tool" to check the recovery status.<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle0 attempt2(repair)] prompt sha256: 2721b03a6d6a6f3c…
+    [cycle0 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool","command":"echo recovery_completed"}},"purpose":"execute the audit tool and check the recovery status"}]<<<
+    [cycle0 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle1 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle1 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit only"}]}
+
+Note: The purpose is incorrect as it should be "answer from knowledge" instead of "answer from audit".<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle1 attempt2(repair)] prompt sha256: fc02c43959da2c91…
+    [cycle1 attempt2(repair)] RAW >>>```json
+{
+  "goal": "use the audit_failing_tool and then echo recovery_completed",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "audit_failing_tool",
+      "arguments": {
+        "reason": "answer from knowledge"
+      },
+      "purpose": "execute audit only"
+    }
+  ]
+}
+```<<<
+    [cycle1 attempt2(repair)] result: VALID — parsed plan: goal="use the audit_failing_tool and then echo recovery_completed" steps=[audit_failing_tool{reason="answer from knowledge"}]
+    [cycle2 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle2 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute audit only"}]}
+
+Note: The tool is "audit_failing_tool" and it is used to audit the code, so it is not suitable for the purpose of recovery.<<<
+    [cycle2 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle2 attempt2(repair)] prompt sha256: c94ee231010be7e1…
+    [cycle2 attempt2(repair)] RAW >>>```json
+{
+  "goal": "use the audit_failing_tool and then echo recovery_completed",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "audit_failing_tool",
+      "arguments": {
+        "reason": "answer from knowledge"
+      },
+      "purpose": "execute audit only"
+    },
+    {
+      "id": "step_2",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo recovery_completed"
+      },
+      "purpose": "execute recovery action"
+    }
+  ]
+}
+```<<<
+    [cycle2 attempt2(repair)] result: VALID — parsed plan: goal="use the audit_failing_tool and then echo recovery_completed" steps=[audit_failing_tool{reason="answer from knowledge"} | run_shell{command="echo recovery_completed"}]
+    [cycle3 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle3 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool and then echo recovery_completed"}},"purpose":"execute audit only and then use recovery_completed"}]}
+
+Note: The tool used in the step is "audit_failing_tool", not "run_shell".<<<
+    [cycle3 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle3 attempt2(repair)] prompt sha256: 903e3c28008a78d2…
+    [cycle3 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool and then echo recovery_completed"}},"purpose":"execute audit only and then use recovery_completed"}]<<<
+    [cycle3 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle4 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle4 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool","arguments":null,"purpose":"execute the audit only"}},"purpose":"execute the audit only"}]}
+
+Note: The tool is "audit_failing_tool" and it is used to audit the code.<<<
+    [cycle4 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle4 attempt2(repair)] prompt sha256: f7f53c621c6487a0…
+    [cycle4 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool","arguments":null,"purpose":"execute the audit only"}},"purpose":"execute the audit only"}]<<<
+    [cycle4 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=true (changed)
+    repair cycle2: repair_changed_output=true (changed)
+    repair cycle3: repair_changed_output=true (changed)
+    repair cycle4: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+    plan snapshot cycle0: [audit_failing_tool]
+    plan snapshot cycle1: [audit_failing_tool, run_shell]
+  ── executed steps (current task record) ──
+    tool=audit_failing_tool state=RUNNING output='' args=["reason": "answer from knowledge"]
+    tool=run_shell state=CREATED output='' args=["command": "echo recovery_completed"]
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-F#2
+  goal: "use the audit_failing_tool and then echo recovery_completed"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Step for 'audit_failing_tool' argument 'arguments' must be a scalar
+  runID: 46FACD04  taskID: D4D28D22
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle0 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool and then echo recovery_completed"}},"purpose":"execute the audit tool and then print the reason"}]}
+
+Note: The tool is "audit_failing_tool" and the reason is "use the audit_failing_tool and then echo recovery_completed".<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle0 attempt2(repair)] prompt sha256: 1b6f0ccb05b4a65a…
+    [cycle0 attempt2(repair)] RAW >>>```json
+{
+  "goal": "use the audit_failing_tool and then echo recovery_completed",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "audit_failing_tool",
+      "arguments": {
+        "reason": "use the audit_failing_tool and then echo recovery_completed"
+      },
+      "purpose": "execute the audit tool and then print the reason"
+    }
+  ]
+}
+```<<<
+    [cycle0 attempt2(repair)] result: VALID — parsed plan: goal="use the audit_failing_tool and then echo recovery_completed" steps=[audit_failing_tool{reason="use the audit_failing_tool and then echo recovery_completed"}]
+    [cycle1 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle1 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer recovery failed","command":"echo recovery_completed"}},"purpose":"execute audit only and recover after the fact"}]}
+
+Note: This JSON object is generated based on the available tools and their specifications. The tool name is null since the goal does not specify a tool to use.<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle1 attempt2(repair)] prompt sha256: e8eb8bebe692ce0a…
+    [cycle1 attempt2(repair)] RAW >>>```json
+{
+  "goal": "use the audit_failing_tool and then echo recovery_completed",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "audit_failing_tool",
+      "arguments": {
+        "reason": "answer recovery failed",
+        "command": "echo recovery_completed"
+      },
+      "purpose": "execute audit only and recover after the fact"
+    }
+  ]
+}
+```<<<
+    [cycle1 attempt2(repair)] result: VALIDATION-FAIL — Step for 'audit_failing_tool' declares undeclared argument 'command'
+    [cycle2 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle2 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge","tool":"run_shell","arguments":{"command":"echo recovery_completed"}},"purpose":"execute audit only"}}<<<
+    [cycle2 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle2 attempt2(repair)] prompt sha256: 6efd23d87c416843…
+    [cycle2 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge","tool":"run_shell","arguments":{"command":"echo recovery_completed"}},"purpose":"execute audit only"}]}
+
+This plan adheres to the correct schema and includes the required arguments in the correct format. The tool name is correctly specified, and the arguments are provided in the correct format. The purpose is correctly specified as "execute audit only". This plan satisfies the schema requirements and accomplishes the goal exactly as requested.<<<
+    [cycle2 attempt2(repair)] result: PARSE-FAIL — Step for 'audit_failing_tool' argument 'arguments' must be a scalar
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=true (changed)
+    repair cycle2: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+    plan snapshot cycle0: [audit_failing_tool]
+  ── executed steps (current task record) ──
+    tool=audit_failing_tool state=RUNNING output='' args=["reason": "use the audit_failing_tool and then echo recovery_completed"]
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+▶ RUN D-F#3
+  goal: "use the audit_failing_tool and then echo recovery_completed"
+  completed: false | final error: mlx.planner failed: Planner output invalid after 2 attempts: Step for 'audit_failing_tool' argument 'arguments' must be a scalar
+  runID: 8C25DFD0  taskID: 304CE60E
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle0 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge"}},"purpose":"execute the audit tool and check the recovery status"}]}
+
+Note: The audit tool will fail and the recovery status will be checked.<<<
+    [cycle0 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle0 attempt2(repair)] prompt sha256: cf6487498cdaa1ec…
+    [cycle0 attempt2(repair)] RAW >>>```json
+{
+  "goal": "use the audit_failing_tool and then echo recovery_completed",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "audit_failing_tool",
+      "arguments": {
+        "reason": "answer from knowledge"
+      },
+      "purpose": "execute the audit tool and check the recovery status"
+    }
+  ]
+}
+```<<<
+    [cycle0 attempt2(repair)] result: VALID — parsed plan: goal="use the audit_failing_tool and then echo recovery_completed" steps=[audit_failing_tool{reason="answer from knowledge"}]
+    [cycle1 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle1 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool","command":"echo recovery_completed"}},"purpose":"execute the audit tool and verify the recovery process"}]}
+
+Note: The tool "audit_failing_tool" is not available in the provided list, so it's not included in the JSON object.<<<
+    [cycle1 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle1 attempt2(repair)] prompt sha256: 447aaccc289a44f0…
+    [cycle1 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool","command":"echo recovery_completed"}},"purpose":"execute the audit tool and verify the recovery process"}]<<<
+    [cycle1 attempt2(repair)] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle2 attempt1] prompt sha256: 548fe77ba4694696…
+    [cycle2 attempt1] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge","tool_name":"audit_failing_tool","arguments":{"command":"echo recovery_completed"}},"purpose":"execute the audit tool and check the recovery status"}}<<<
+    [cycle2 attempt1] result: PARSE-FAIL — Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reas
+    [cycle2 attempt2(repair)] prompt sha256: 94d9230d091a166f…
+    [cycle2 attempt2(repair)] RAW >>>{"goal":"use the audit_failing_tool and then echo recovery_completed","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"answer from knowledge","tool_name":"audit_failing_tool","arguments":{"command":"echo recovery_completed"}},"purpose":"execute the audit tool and check the recovery status"}]}<<<
+    [cycle2 attempt2(repair)] result: PARSE-FAIL — Step for 'audit_failing_tool' argument 'arguments' must be a scalar
+    repair cycle0: repair_changed_output=true (changed)
+    repair cycle1: repair_changed_output=true (changed)
+    repair cycle2: repair_changed_output=true (changed)
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → FAILED → RECOVERING → REPLANNING
+    final task state: REPLANNING
+    plan snapshot cycle0: [audit_failing_tool]
+  ── executed steps (current task record) ──
+    tool=audit_failing_tool state=RUNNING output='' args=["reason": "answer from knowledge"]
+  ── response ──
+  >>><<<
+  ── dimensions ──
+    valid plan        : FAIL
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SYNTAX
+
+────────────────────── SECTION 9. FOCUS 3 isolation A (single-step failing tool) — D-F-1step ×1 ──────────────────────
+  goal: "use the audit_failing_tool"  (isolation A: single failing-tool step (schema grounding; execution honestly fails))
+
+▶ RUN D-F-1step#1
+  goal: "use the audit_failing_tool"
+  completed: true
+  runID: A42C0573  taskID: 5A73FC36
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 5673c9f701dcab5a…
+    [cycle0 attempt1] RAW >>>{"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"audit_failing_tool","arguments":{"reason":"use the audit_failing_tool"}}]}<<<
+    [cycle0 attempt1] result: VALID — parsed plan: goal="use the audit_failing_tool" steps=[audit_failing_tool{reason="use the audit_failing_tool"}]
+    [cycle1 attempt1] prompt sha256: 5673c9f701dcab5a…
+    [cycle1 attempt1] RAW >>>{"goal":"use the audit_failing_tool","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello world"},"purpose":"print the text","reason":"use the audit_failing_tool to always fail"}]}<<<
+    [cycle1 attempt1] result: VALID — parsed plan: goal="use the audit_failing_tool" steps=[run_shell{command="echo hello world"}]
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → VERIFYING → COMPLETED
+    final task state: COMPLETED
+    plan snapshot cycle0: [audit_failing_tool]
+    plan snapshot cycle1: [run_shell]
+  ── executed steps (current task record) ──
+    tool=run_shell state=COMPLETED output='hello world
+' args=["command": "echo hello world"]
+  ── response ──
+  >>>hello world
+<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : PASS
+    verification      : PASS
+  failure class: SEMANTIC
+
+────────────────────── SECTION 10. FOCUS 3 isolation B (multi-step with failing tool) — D-F-multi ×1 ──────────────────────
+  goal: "echo recovery_started, then use the audit_failing_tool, then echo recovery_completed"  (isolation B: genuine multi-step goal containing the same operation)
+
+▶ RUN D-F-multi#1
+  goal: "echo recovery_started, then use the audit_failing_tool, then echo recovery_completed"
+  completed: true
+  runID: 93E6D342  taskID: none
+  ── planner attempt history (all cycles, attributed) ──
+    <no planner calls>
+  ── executed steps (current task record) ──
+  ── response ──
+  >>>recovery_started, then use the audit_failing_tool, then echo recovery_completed
+<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : FAIL
+    correct arguments : FAIL
+    execution         : FAIL
+    verification      : FAIL
+  failure class: SEMANTIC
+
+────────────────────── 8. PER-DIMENSION SUMMARY ──────────────────────
+  valid plan        : 2/5
+  correct tool      : 0/5
+  correct arguments : 0/5
+  execution         : 1/5
+  verification      : 1/5
+
+────────────────────── REPAIR HONESTY (FOCUS 6) ──────────────────────
+  repairs invoked: 11
+  repair_changed_output=true: 11
+  repair byte-identical retries: 0
+
+────────────────────── FAILURE CLASSES (per run) ──────────────────────
+  SYNTAX      : 3 run(s)
+  SEMANTIC    : 2 run(s)
+  EXECUTION   : 0 run(s)
+  VERIFICATION: 0 run(s)
+  PASS        : 0 run(s)
+
+(END OF EXPERIMENT PROTOCOL — evidence above is per individual run)

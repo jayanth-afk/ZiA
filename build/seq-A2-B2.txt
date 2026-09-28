@@ -1,0 +1,165 @@
+╔════════════════════════════════════════════════════════════╗
+║   TIER-A SEQUENTIAL EXPERIMENT — PHASE: EXPERIMENT A (sequential next-step)
+║   mode=sequential (next-step)
+╚════════════════════════════════════════════════════════════╝
+
+────────────────────── BENCHMARK B2 — ×5 ──────────────────────
+  goal: "echo baseline_marker_42, then echo the previous output again in uppercase form, then echo the second output with suffix done"
+  intended steps (definition-derived): 3
+  note: 3-step DEPENDENT task: step 2 uses step 1's stdout text, step 3 uses step 2's output. NOTE: true dependency requires reference resolution which is NOT implemented; the goal is phrased so each step is still literally executable (the model may substitute content). Dependency success = all 3 steps execute in order.
+▶ RUN B2#1  [mode: seq]
+  runID: 4B816F9F  taskID: 7472268A
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c1.a1: "baseline_marker_42" present=true
+    compiled c1: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c2.a1: "baseline_marker_42" present=true
+    compiled c2: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c3.a1: "baseline_marker_42" present=true
+    compiled c3: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c5.a1: "baseline_marker_42" present=true
+    compiled c5: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c6.a1: "baseline_marker_42" present=true
+    compiled c6: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c4.a1: "baseline_marker_42" present=true
+    compiled c4: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    executed+stdout: "baseline_marker_42" present=true
+  response: >>><<<
+  latency: wall=7991ms model=5360ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B2|B2|1|4B816F9F|7472268A|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=7990|modelMs=5360
+▶ RUN B2#2  [mode: seq]
+  runID: 20E6A993  taskID: ACEDAA29
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c4.a1: "baseline_marker_42" present=true
+    compiled c4: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c5.a1: "baseline_marker_42" present=true
+    compiled c5: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c2.a1: "baseline_marker_42" present=true
+    compiled c2: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c6.a1: "baseline_marker_42" present=true
+    compiled c6: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c1.a1: "baseline_marker_42" present=true
+    compiled c1: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c3.a1: "baseline_marker_42" present=true
+    compiled c3: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    executed+stdout: "baseline_marker_42" present=true
+  response: >>><<<
+  latency: wall=5396ms model=2820ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B2|B2|2|20E6A993|ACEDAA29|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5396|modelMs=2819
+▶ RUN B2#3  [mode: seq]
+  runID: C45D686B  taskID: 58E6C467
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c6.a1: "baseline_marker_42" present=true
+    compiled c6: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c4.a1: "baseline_marker_42" present=true
+    compiled c4: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c2.a1: "baseline_marker_42" present=true
+    compiled c2: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c1.a1: "baseline_marker_42" present=true
+    compiled c1: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c3.a1: "baseline_marker_42" present=true
+    compiled c3: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c5.a1: "baseline_marker_42" present=true
+    compiled c5: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    executed+stdout: "baseline_marker_42" present=true
+  response: >>><<<
+  latency: wall=5424ms model=2831ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B2|B2|3|C45D686B|58E6C467|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5424|modelMs=2831
+▶ RUN B2#4  [mode: seq]
+  runID: 1EA086B9  taskID: 04C15452
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c1.a1: "baseline_marker_42" present=true
+    compiled c1: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c3.a1: "baseline_marker_42" present=true
+    compiled c3: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c5.a1: "baseline_marker_42" present=true
+    compiled c5: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c2.a1: "baseline_marker_42" present=true
+    compiled c2: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c4.a1: "baseline_marker_42" present=true
+    compiled c4: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c6.a1: "baseline_marker_42" present=true
+    compiled c6: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    executed+stdout: "baseline_marker_42" present=true
+  response: >>><<<
+  latency: wall=5388ms model=2801ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B2|B2|4|1EA086B9|04C15452|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5387|modelMs=2801
+▶ RUN B2#5  [mode: seq]
+  runID: E924DFB2  taskID: 6CC91EF1
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c1.a1: "baseline_marker_42" present=true
+    compiled c1: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c4.a1: "baseline_marker_42" present=true
+    compiled c4: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c6.a1: "baseline_marker_42" present=true
+    compiled c6: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c3.a1: "baseline_marker_42" present=true
+    compiled c3: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c5.a1: "baseline_marker_42" present=true
+    compiled c5: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c2.a1: "baseline_marker_42" present=true
+    compiled c2: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    raw c0.a1: "baseline_marker_42" present=true
+    compiled c0: "baseline_marker_42" present=true cmd=echo baseline_marker_42
+    executed+stdout: "baseline_marker_42" present=true
+  response: >>><<<
+  latency: wall=5383ms model=2787ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B2|B2|5|E924DFB2|6CC91EF1|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5383|modelMs=2786
+── SECTION SUMMARY B2 (scored=true) ──
+  PASS: 0/5  NOT_COMPLETE: 0/5  FAILED: 5/5
+  avg plannerCalls: 8.0  avg generations: 8.0  avg generatedSteps(initial): 1.0  avg wall ms: 5916
+  failure categories: B=5
+════════════════════ PHASE SUMMARY: EXPERIMENT A (sequential next-step) ════════════════════
+  B1: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B2: PASS 0/5 NOT_COMPLETE 0/5 FAILED 5/5 | plannerCalls 40 gens 40 avgGenSteps 1.0 exec 5/5 verify 0/5 recovery 35 avgWall 5916ms
+  B3: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B4: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B5: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+══════════════════════════════════════════════════════

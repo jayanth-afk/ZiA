@@ -24,6 +24,7 @@ final class KeychainManager {
         case groq = "jarvis.groq.api_key"
         case elevenlabs = "jarvis.elevenlabs.api_key"
         case tavily = "jarvis.tavily.api_key"
+        case openrouter = "jarvis.openrouter.api_key"
 
         var displayName: String {
             switch self {
@@ -33,6 +34,7 @@ final class KeychainManager {
             case .groq: return "Groq"
             case .elevenlabs: return "ElevenLabs"
             case .tavily: return "Tavily Search"
+            case .openrouter: return "OpenRouter"
             }
         }
     }

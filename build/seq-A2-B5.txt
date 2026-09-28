@@ -1,0 +1,250 @@
+╔════════════════════════════════════════════════════════════╗
+║   TIER-A SEQUENTIAL EXPERIMENT — PHASE: EXPERIMENT A (sequential next-step)
+║   mode=sequential (next-step)
+╚════════════════════════════════════════════════════════════╝
+
+────────────────────── BENCHMARK B5 — ×5 ──────────────────────
+  goal: "echo recovery_started, then use the audit_failing_tool, then echo recovery_completed"
+  intended steps (definition-derived): 3
+  note: existing canonical D-F-multi benchmark (3 intended steps, failing tool mid-sequence)
+▶ RUN B5#1  [mode: seq]
+  runID: 24A8A900  taskID: A2F726F2
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c2.a1: "recovery_started" present=true
+    compiled c2: "recovery_started" present=true cmd=echo recovery_started
+    raw c4.a1: "recovery_started" present=true
+    compiled c4: "recovery_started" present=true cmd=echo recovery_started
+    raw c1.a1: "recovery_started" present=true
+    compiled c1: "recovery_started" present=true cmd=echo recovery_started
+    raw c5.a1: "recovery_started" present=true
+    compiled c5: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    raw c6.a1: "recovery_started" present=true
+    compiled c6: "recovery_started" present=true cmd=echo recovery_started
+    raw c3.a1: "recovery_started" present=true
+    compiled c3: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    executed+stdout: "recovery_started" present=true
+    raw c2.a1: "recovery_completed" present=false
+    compiled c2: "recovery_completed" present=false cmd=echo recovery_started
+    raw c4.a1: "recovery_completed" present=false
+    compiled c4: "recovery_completed" present=false cmd=echo recovery_started
+    raw c1.a1: "recovery_completed" present=false
+    compiled c1: "recovery_completed" present=false cmd=echo recovery_started
+    raw c5.a1: "recovery_completed" present=false
+    compiled c5: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    raw c6.a1: "recovery_completed" present=false
+    compiled c6: "recovery_completed" present=false cmd=echo recovery_started
+    raw c3.a1: "recovery_completed" present=false
+    compiled c3: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    executed: "recovery_completed" NOT found in any executed step
+  response: >>><<<
+  latency: wall=7539ms model=4934ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B5|B5|1|24A8A900|A2F726F2|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=7538|modelMs=4933
+▶ RUN B5#2  [mode: seq]
+  runID: B5C82AE0  taskID: 92827142
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c6.a1: "recovery_started" present=true
+    compiled c6: "recovery_started" present=true cmd=echo recovery_started
+    raw c3.a1: "recovery_started" present=true
+    compiled c3: "recovery_started" present=true cmd=echo recovery_started
+    raw c5.a1: "recovery_started" present=true
+    compiled c5: "recovery_started" present=true cmd=echo recovery_started
+    raw c2.a1: "recovery_started" present=true
+    compiled c2: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    raw c4.a1: "recovery_started" present=true
+    compiled c4: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    raw c1.a1: "recovery_started" present=true
+    compiled c1: "recovery_started" present=true cmd=echo recovery_started
+    executed+stdout: "recovery_started" present=true
+    raw c6.a1: "recovery_completed" present=false
+    compiled c6: "recovery_completed" present=false cmd=echo recovery_started
+    raw c3.a1: "recovery_completed" present=false
+    compiled c3: "recovery_completed" present=false cmd=echo recovery_started
+    raw c5.a1: "recovery_completed" present=false
+    compiled c5: "recovery_completed" present=false cmd=echo recovery_started
+    raw c2.a1: "recovery_completed" present=false
+    compiled c2: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    raw c4.a1: "recovery_completed" present=false
+    compiled c4: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    raw c1.a1: "recovery_completed" present=false
+    compiled c1: "recovery_completed" present=false cmd=echo recovery_started
+    executed: "recovery_completed" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5278ms model=2629ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B5|B5|2|B5C82AE0|92827142|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5277|modelMs=2629
+▶ RUN B5#3  [mode: seq]
+  runID: 6E003D88  taskID: 92F1DB04
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c5.a1: "recovery_started" present=true
+    compiled c5: "recovery_started" present=true cmd=echo recovery_started
+    raw c2.a1: "recovery_started" present=true
+    compiled c2: "recovery_started" present=true cmd=echo recovery_started
+    raw c3.a1: "recovery_started" present=true
+    compiled c3: "recovery_started" present=true cmd=echo recovery_started
+    raw c4.a1: "recovery_started" present=true
+    compiled c4: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    raw c6.a1: "recovery_started" present=true
+    compiled c6: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    raw c1.a1: "recovery_started" present=true
+    compiled c1: "recovery_started" present=true cmd=echo recovery_started
+    executed+stdout: "recovery_started" present=true
+    raw c5.a1: "recovery_completed" present=false
+    compiled c5: "recovery_completed" present=false cmd=echo recovery_started
+    raw c2.a1: "recovery_completed" present=false
+    compiled c2: "recovery_completed" present=false cmd=echo recovery_started
+    raw c3.a1: "recovery_completed" present=false
+    compiled c3: "recovery_completed" present=false cmd=echo recovery_started
+    raw c4.a1: "recovery_completed" present=false
+    compiled c4: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    raw c6.a1: "recovery_completed" present=false
+    compiled c6: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    raw c1.a1: "recovery_completed" present=false
+    compiled c1: "recovery_completed" present=false cmd=echo recovery_started
+    executed: "recovery_completed" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5234ms model=2615ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B5|B5|3|6E003D88|92F1DB04|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5233|modelMs=2614
+▶ RUN B5#4  [mode: seq]
+  runID: 40D3EF96  taskID: 45B3386D
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c3.a1: "recovery_started" present=true
+    compiled c3: "recovery_started" present=true cmd=echo recovery_started
+    raw c4.a1: "recovery_started" present=true
+    compiled c4: "recovery_started" present=true cmd=echo recovery_started
+    raw c2.a1: "recovery_started" present=true
+    compiled c2: "recovery_started" present=true cmd=echo recovery_started
+    raw c1.a1: "recovery_started" present=true
+    compiled c1: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    raw c5.a1: "recovery_started" present=true
+    compiled c5: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    raw c6.a1: "recovery_started" present=true
+    compiled c6: "recovery_started" present=true cmd=echo recovery_started
+    executed+stdout: "recovery_started" present=true
+    raw c3.a1: "recovery_completed" present=false
+    compiled c3: "recovery_completed" present=false cmd=echo recovery_started
+    raw c4.a1: "recovery_completed" present=false
+    compiled c4: "recovery_completed" present=false cmd=echo recovery_started
+    raw c2.a1: "recovery_completed" present=false
+    compiled c2: "recovery_completed" present=false cmd=echo recovery_started
+    raw c1.a1: "recovery_completed" present=false
+    compiled c1: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    raw c5.a1: "recovery_completed" present=false
+    compiled c5: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    raw c6.a1: "recovery_completed" present=false
+    compiled c6: "recovery_completed" present=false cmd=echo recovery_started
+    executed: "recovery_completed" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5284ms model=2633ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B5|B5|4|40D3EF96|45B3386D|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5283|modelMs=2633
+▶ RUN B5#5  [mode: seq]
+  runID: AF31F209  taskID: E9FAC148
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c2.a1: "recovery_started" present=true
+    compiled c2: "recovery_started" present=true cmd=echo recovery_started
+    raw c5.a1: "recovery_started" present=true
+    compiled c5: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    raw c4.a1: "recovery_started" present=true
+    compiled c4: "recovery_started" present=true cmd=echo recovery_started
+    raw c3.a1: "recovery_started" present=true
+    compiled c3: "recovery_started" present=true cmd=echo recovery_started
+    raw c6.a1: "recovery_started" present=true
+    compiled c6: "recovery_started" present=true cmd=echo recovery_started
+    raw c0.a1: "recovery_started" present=true
+    compiled c0: "recovery_started" present=true cmd=echo recovery_started
+    raw c1.a1: "recovery_started" present=true
+    compiled c1: "recovery_started" present=true cmd=echo recovery_started
+    executed+stdout: "recovery_started" present=true
+    raw c2.a1: "recovery_completed" present=false
+    compiled c2: "recovery_completed" present=false cmd=echo recovery_started
+    raw c5.a1: "recovery_completed" present=false
+    compiled c5: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    raw c4.a1: "recovery_completed" present=false
+    compiled c4: "recovery_completed" present=false cmd=echo recovery_started
+    raw c3.a1: "recovery_completed" present=false
+    compiled c3: "recovery_completed" present=false cmd=echo recovery_started
+    raw c6.a1: "recovery_completed" present=false
+    compiled c6: "recovery_completed" present=false cmd=echo recovery_started
+    raw c0.a1: "recovery_completed" present=false
+    compiled c0: "recovery_completed" present=false cmd=echo recovery_started
+    raw c1.a1: "recovery_completed" present=false
+    compiled c1: "recovery_completed" present=false cmd=echo recovery_started
+    executed: "recovery_completed" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5208ms model=2611ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B5|B5|5|AF31F209|E9FAC148|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5208|modelMs=2610
+── SECTION SUMMARY B5 (scored=true) ──
+  PASS: 0/5  NOT_COMPLETE: 0/5  FAILED: 5/5
+  avg plannerCalls: 8.0  avg generations: 8.0  avg generatedSteps(initial): 1.0  avg wall ms: 5709
+  failure categories: B=5
+════════════════════ PHASE SUMMARY: EXPERIMENT A (sequential next-step) ════════════════════
+  B1: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B2: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B3: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B4: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B5: PASS 0/5 NOT_COMPLETE 0/5 FAILED 5/5 | plannerCalls 40 gens 40 avgGenSteps 1.0 exec 5/5 verify 0/5 recovery 35 avgWall 5709ms
+══════════════════════════════════════════════════════

@@ -1,0 +1,338 @@
+╔════════════════════════════════════════════════════════════╗
+║   TIER-A SEQUENTIAL EXPERIMENT — PHASE: EXPERIMENT A (sequential next-step)
+║   mode=sequential (next-step)
+╚════════════════════════════════════════════════════════════╝
+
+────────────────────── BENCHMARK B1 — ×5 ──────────────────────
+  goal: "echo alpha_one, then echo bravo_two, then echo charlie_three"
+  intended steps (definition-derived): 3
+  note: 3-step INDEPENDENT task: three unrelated echoes
+▶ RUN B1#1  [mode: seq]
+  runID: 112CBFA5  taskID: 488E59F0
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 2
+  planValid: true  executed: 2  recovery: 6  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    plan snapshot cycle1: [run_shell, run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c3.a1: "alpha_one" present=true
+    compiled c3: "alpha_one" present=true cmd=echo alpha_one
+    raw c4.a1: "alpha_one" present=false
+    compiled c4: "alpha_one" present=false cmd=echo bravo_two
+    raw c2.a1: "alpha_one" present=true
+    compiled c2: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    raw c1.a1: "alpha_one" present=true
+    compiled c1: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c3.a1: "bravo_two" present=false
+    compiled c3: "bravo_two" present=false cmd=echo alpha_one
+    raw c4.a1: "bravo_two" present=true
+    compiled c4: "bravo_two" present=true cmd=echo bravo_two
+    raw c2.a1: "bravo_two" present=false
+    compiled c2: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    raw c1.a1: "bravo_two" present=false
+    compiled c1: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    executed+stdout: "bravo_two" present=true
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo alpha_one
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo bravo_two
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=8697ms model=5266ms
+  verdict: FAILED  completeness: 0.67  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|1|112CBFA5|488E59F0|plannerCalls=8|gens=8|genStepsInit=1|exec=2|recovery=6|verdict=FAILED|cat=B|wallMs=8697|modelMs=5265
+▶ RUN B1#2  [mode: seq]
+  runID: 1D6D7AE4  taskID: 1454A355
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 2
+  planValid: true  executed: 2  recovery: 6  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    plan snapshot cycle1: [run_shell, run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    raw c2.a1: "alpha_one" present=false
+    compiled c2: "alpha_one" present=false cmd=echo bravo_two
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c3.a1: "alpha_one" present=true
+    compiled c3: "alpha_one" present=true cmd=echo alpha_one
+    raw c1.a1: "alpha_one" present=true
+    compiled c1: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c4.a1: "alpha_one" present=true
+    compiled c4: "alpha_one" present=true cmd=echo alpha_one
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    raw c2.a1: "bravo_two" present=true
+    compiled c2: "bravo_two" present=true cmd=echo bravo_two
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c3.a1: "bravo_two" present=false
+    compiled c3: "bravo_two" present=false cmd=echo alpha_one
+    raw c1.a1: "bravo_two" present=false
+    compiled c1: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c4.a1: "bravo_two" present=false
+    compiled c4: "bravo_two" present=false cmd=echo alpha_one
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    executed+stdout: "bravo_two" present=true
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo bravo_two
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo alpha_one
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo alpha_one
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5965ms model=2641ms
+  verdict: FAILED  completeness: 0.67  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|2|1D6D7AE4|1454A355|plannerCalls=8|gens=8|genStepsInit=1|exec=2|recovery=6|verdict=FAILED|cat=B|wallMs=5965|modelMs=2640
+▶ RUN B1#3  [mode: seq]
+  runID: 99E17852  taskID: 3983577E
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c3.a1: "alpha_one" present=true
+    compiled c3: "alpha_one" present=true cmd=echo alpha_one
+    raw c4.a1: "alpha_one" present=true
+    compiled c4: "alpha_one" present=true cmd=echo alpha_one
+    raw c2.a1: "alpha_one" present=true
+    compiled c2: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c1.a1: "alpha_one" present=true
+    compiled c1: "alpha_one" present=true cmd=echo alpha_one
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c3.a1: "bravo_two" present=false
+    compiled c3: "bravo_two" present=false cmd=echo alpha_one
+    raw c4.a1: "bravo_two" present=false
+    compiled c4: "bravo_two" present=false cmd=echo alpha_one
+    raw c2.a1: "bravo_two" present=false
+    compiled c2: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c1.a1: "bravo_two" present=false
+    compiled c1: "bravo_two" present=false cmd=echo alpha_one
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    executed: "bravo_two" NOT found in any executed step
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo alpha_one
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo alpha_one
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo alpha_one
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5104ms model=2604ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|3|99E17852|3983577E|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5104|modelMs=2603
+▶ RUN B1#4  [mode: seq]
+  runID: 1DE467D3  taskID: 14626725
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 2
+  planValid: true  executed: 2  recovery: 6  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    plan snapshot cycle1: [run_shell, run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c2.a1: "alpha_one" present=true
+    compiled c2: "alpha_one" present=true cmd=echo alpha_one
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    raw c1.a1: "alpha_one" present=false
+    compiled c1: "alpha_one" present=false cmd=echo bravo_two
+    raw c4.a1: "alpha_one" present=true
+    compiled c4: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c3.a1: "alpha_one" present=true
+    compiled c3: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c2.a1: "bravo_two" present=false
+    compiled c2: "bravo_two" present=false cmd=echo alpha_one
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    raw c1.a1: "bravo_two" present=true
+    compiled c1: "bravo_two" present=true cmd=echo bravo_two
+    raw c4.a1: "bravo_two" present=false
+    compiled c4: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c3.a1: "bravo_two" present=false
+    compiled c3: "bravo_two" present=false cmd=echo alpha_one
+    executed+stdout: "bravo_two" present=true
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo alpha_one
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo bravo_two
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=6036ms model=2669ms
+  verdict: FAILED  completeness: 0.67  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|4|1DE467D3|14626725|plannerCalls=8|gens=8|genStepsInit=1|exec=2|recovery=6|verdict=FAILED|cat=B|wallMs=6036|modelMs=2669
+▶ RUN B1#5  [mode: seq]
+  runID: 579C00F8  taskID: DF42AF6B
+  intendedSteps: 3  plannerCalls: 8  generations: 8  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 7  finalState: FAILED
+  agentLoopCompleted: false | error: planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → FAILED
+  ── argument-preservation chain ──
+    raw c3.a1: "alpha_one" present=true
+    compiled c3: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    raw c2.a1: "alpha_one" present=true
+    compiled c2: "alpha_one" present=true cmd=echo alpha_one
+    raw c6.a1: "alpha_one" present=true
+    compiled c6: "alpha_one" present=true cmd=echo alpha_one
+    raw c5.a1: "alpha_one" present=true
+    compiled c5: "alpha_one" present=true cmd=echo alpha_one
+    raw c4.a1: "alpha_one" present=true
+    compiled c4: "alpha_one" present=true cmd=echo alpha_one
+    raw c1.a1: "alpha_one" present=true
+    compiled c1: "alpha_one" present=true cmd=echo alpha_one
+    raw c0.a1: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one
+    executed+stdout: "alpha_one" present=true
+    raw c3.a1: "bravo_two" present=false
+    compiled c3: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    raw c2.a1: "bravo_two" present=false
+    compiled c2: "bravo_two" present=false cmd=echo alpha_one
+    raw c6.a1: "bravo_two" present=false
+    compiled c6: "bravo_two" present=false cmd=echo alpha_one
+    raw c5.a1: "bravo_two" present=false
+    compiled c5: "bravo_two" present=false cmd=echo alpha_one
+    raw c4.a1: "bravo_two" present=false
+    compiled c4: "bravo_two" present=false cmd=echo alpha_one
+    raw c1.a1: "bravo_two" present=false
+    compiled c1: "bravo_two" present=false cmd=echo alpha_one
+    raw c0.a1: "bravo_two" present=false
+    compiled c0: "bravo_two" present=false cmd=echo alpha_one
+    executed: "bravo_two" NOT found in any executed step
+    raw c3.a1: "charlie_three" present=false
+    compiled c3: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    raw c2.a1: "charlie_three" present=false
+    compiled c2: "charlie_three" present=false cmd=echo alpha_one
+    raw c6.a1: "charlie_three" present=false
+    compiled c6: "charlie_three" present=false cmd=echo alpha_one
+    raw c5.a1: "charlie_three" present=false
+    compiled c5: "charlie_three" present=false cmd=echo alpha_one
+    raw c4.a1: "charlie_three" present=false
+    compiled c4: "charlie_three" present=false cmd=echo alpha_one
+    raw c1.a1: "charlie_three" present=false
+    compiled c1: "charlie_three" present=false cmd=echo alpha_one
+    raw c0.a1: "charlie_three" present=false
+    compiled c0: "charlie_three" present=false cmd=echo alpha_one
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=5090ms model=2574ms
+  verdict: FAILED  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|SEQA-B1|B1|5|579C00F8|DF42AF6B|plannerCalls=8|gens=8|genStepsInit=1|exec=1|recovery=7|verdict=FAILED|cat=B|wallMs=5090|modelMs=2574
+── SECTION SUMMARY B1 (scored=true) ──
+  PASS: 0/5  NOT_COMPLETE: 0/5  FAILED: 5/5
+  avg plannerCalls: 8.0  avg generations: 8.0  avg generatedSteps(initial): 1.0  avg wall ms: 6179
+  failure categories: B=5
+════════════════════ PHASE SUMMARY: EXPERIMENT A (sequential next-step) ════════════════════
+  B1: PASS 0/5 NOT_COMPLETE 0/5 FAILED 5/5 | plannerCalls 40 gens 40 avgGenSteps 1.0 exec 5/5 verify 0/5 recovery 32 avgWall 6179ms
+  B2: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B3: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B4: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B5: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+══════════════════════════════════════════════════════

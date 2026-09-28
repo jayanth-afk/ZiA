@@ -1,0 +1,166 @@
+warning: 'zia': found 1 file(s) which are unhandled; explicitly declare them as resources or exclude from the target
+    /Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Workers/mlx_worker.py
+Building for debugging...
+[Planning deferred tasks]
+[1 / 10]
+Build complete! (0.45 secs)
+╔════════════════════════════════════════════════════════════╗
+║   TIER-A SEQUENTIAL EXPERIMENT — PHASE: BASELINE (single-shot full-plan)
+║   mode=fullPlan (single-shot)
+╚════════════════════════════════════════════════════════════╝
+
+────────────────────── BENCHMARK B1 — ×5 ──────────────────────
+  goal: "echo alpha_one, then echo bravo_two, then echo charlie_three"
+  intended steps (definition-derived): 3
+  note: 3-step INDEPENDENT task: three unrelated echoes
+▶ RUN B1#1  [mode: fullPlan]
+  runID: 0EAF6E44  taskID: C3133FD6
+  intendedSteps: 3  plannerCalls: 2  generations: 4  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 1  finalState: COMPLETED
+  agentLoopCompleted: true
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"echo alpha_one, then echo bravo_tw
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING → RUNNING → VERIFYING → COMPLETED
+  ── argument-preservation chain ──
+    raw c1.a1: "alpha_one" present=true
+    raw c1.a2R: "alpha_one" present=true
+    compiled c1: "alpha_one" present=true cmd=echo alpha_one bravo_two charlie_three
+    raw c0.a1: "alpha_one" present=true
+    raw c0.a2R: "alpha_one" present=true
+    executed+stdout: "alpha_one" present=true
+    raw c1.a1: "bravo_two" present=true
+    raw c1.a2R: "bravo_two" present=true
+    compiled c1: "bravo_two" present=true cmd=echo alpha_one bravo_two charlie_three
+    raw c0.a1: "bravo_two" present=true
+    raw c0.a2R: "bravo_two" present=true
+    executed+stdout: "bravo_two" present=true
+    raw c1.a1: "charlie_three" present=true
+    raw c1.a2R: "charlie_three" present=true
+    compiled c1: "charlie_three" present=true cmd=echo alpha_one bravo_two charlie_three
+    raw c0.a1: "charlie_three" present=true
+    raw c0.a2R: "charlie_three" present=true
+    executed+stdout: "charlie_three" present=true
+  response: >>>alpha_one bravo_two charlie_three
+<<<
+  latency: wall=6292ms model=4506ms
+  verdict: NOT_COMPLETE  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|BASELINE-B1|B1|1|0EAF6E44|C3133FD6|plannerCalls=2|gens=4|genStepsInit=1|exec=1|recovery=1|verdict=NOT_COMPLETE|cat=B|wallMs=6292|modelMs=4505
+▶ RUN B1#2  [mode: fullPlan]
+  runID: 93DAA40E  taskID: BD8609C2
+  intendedSteps: 3  plannerCalls: 1  generations: 2  genStepsInitial: 1  genStepsFinal: 1
+  planValid: true  executed: 1  recovery: 0  finalState: COMPLETED
+  agentLoopCompleted: true
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"echo alpha_one, then echo bravo_tw
+    plan snapshot cycle0: [run_shell]
+    state history: CREATED → PLANNING → RUNNING → VERIFYING → COMPLETED
+  ── argument-preservation chain ──
+    raw c0.a1: "alpha_one" present=true
+    raw c0.a2R: "alpha_one" present=true
+    compiled c0: "alpha_one" present=true cmd=echo alpha_one bravo_two charlie_three
+    executed+stdout: "alpha_one" present=true
+    raw c0.a1: "bravo_two" present=true
+    raw c0.a2R: "bravo_two" present=true
+    compiled c0: "bravo_two" present=true cmd=echo alpha_one bravo_two charlie_three
+    executed+stdout: "bravo_two" present=true
+    raw c0.a1: "charlie_three" present=true
+    raw c0.a2R: "charlie_three" present=true
+    compiled c0: "charlie_three" present=true cmd=echo alpha_one bravo_two charlie_three
+    executed+stdout: "charlie_three" present=true
+  response: >>>alpha_one bravo_two charlie_three
+<<<
+  latency: wall=2791ms model=1025ms
+  verdict: NOT_COMPLETE  completeness: 0.33  category: B — planning/scaffolding: generated 1 of 3 intended steps (partial plan)
+SEQDATA|BASELINE-B1|B1|2|93DAA40E|BD8609C2|plannerCalls=1|gens=2|genStepsInit=1|exec=1|recovery=0|verdict=NOT_COMPLETE|cat=B|wallMs=2791|modelMs=1024
+▶ RUN B1#3  [mode: fullPlan]
+  runID: 9CA36A8A  taskID: 0EBEA7FF
+  intendedSteps: 3  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"echo alpha_one, then echo bravo_tw
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  ── argument-preservation chain ──
+    raw c1.a1: "alpha_one" present=true
+    raw c1.a2R: "alpha_one" present=true
+    raw c0.a1: "alpha_one" present=true
+    raw c0.a2R: "alpha_one" present=true
+    executed: "alpha_one" NOT found in any executed step
+    raw c1.a1: "bravo_two" present=true
+    raw c1.a2R: "bravo_two" present=true
+    raw c0.a1: "bravo_two" present=true
+    raw c0.a2R: "bravo_two" present=true
+    executed: "bravo_two" NOT found in any executed step
+    raw c1.a1: "charlie_three" present=true
+    raw c1.a2R: "charlie_three" present=true
+    raw c0.a1: "charlie_three" present=true
+    raw c0.a2R: "charlie_three" present=true
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=2730ms model=1857ms
+  verdict: FAILED  completeness: 0.00  category: A — model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+SEQDATA|BASELINE-B1|B1|3|9CA36A8A|0EBEA7FF|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=FAILED|cat=A|wallMs=2729|modelMs=1857
+▶ RUN B1#4  [mode: fullPlan]
+  runID: F6542C95  taskID: 0666BC40
+  intendedSteps: 3  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"echo alpha_one, then echo bravo_tw
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  ── argument-preservation chain ──
+    raw c1.a1: "alpha_one" present=true
+    raw c1.a2R: "alpha_one" present=true
+    raw c0.a1: "alpha_one" present=true
+    raw c0.a2R: "alpha_one" present=true
+    executed: "alpha_one" NOT found in any executed step
+    raw c1.a1: "bravo_two" present=true
+    raw c1.a2R: "bravo_two" present=true
+    raw c0.a1: "bravo_two" present=true
+    raw c0.a2R: "bravo_two" present=true
+    executed: "bravo_two" NOT found in any executed step
+    raw c1.a1: "charlie_three" present=true
+    raw c1.a2R: "charlie_three" present=true
+    raw c0.a1: "charlie_three" present=true
+    raw c0.a2R: "charlie_three" present=true
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=2747ms model=1884ms
+  verdict: FAILED  completeness: 0.00  category: A — model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+SEQDATA|BASELINE-B1|B1|4|F6542C95|0666BC40|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=FAILED|cat=A|wallMs=2747|modelMs=1884
+▶ RUN B1#5  [mode: fullPlan]
+  runID: 53046D6D  taskID: E74D35A2
+  intendedSteps: 3  plannerCalls: 2  generations: 4  genStepsInitial: 0  genStepsFinal: 0
+  planValid: false  executed: 0  recovery: 1  finalState: REPLANNING
+  agentLoopCompleted: false | error: model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+    validation error 1: Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"goal":"echo alpha_one, then echo bravo_tw
+    validation error 2: Plan references unknown tool 'echo' (not in ToolRegistry)
+    state history: CREATED → PLANNING → FAILED → RECOVERING → REPLANNING
+  ── argument-preservation chain ──
+    raw c0.a1: "alpha_one" present=true
+    raw c0.a2R: "alpha_one" present=true
+    raw c1.a1: "alpha_one" present=true
+    raw c1.a2R: "alpha_one" present=true
+    executed: "alpha_one" NOT found in any executed step
+    raw c0.a1: "bravo_two" present=true
+    raw c0.a2R: "bravo_two" present=true
+    raw c1.a1: "bravo_two" present=true
+    raw c1.a2R: "bravo_two" present=true
+    executed: "bravo_two" NOT found in any executed step
+    raw c0.a1: "charlie_three" present=true
+    raw c0.a2R: "charlie_three" present=true
+    raw c1.a1: "charlie_three" present=true
+    raw c1.a2R: "charlie_three" present=true
+    executed: "charlie_three" NOT found in any executed step
+  response: >>><<<
+  latency: wall=2808ms model=1745ms
+  verdict: FAILED  completeness: 0.00  category: A — model output never validated (Planner output is not valid JSON: The data couldn’t be read because it isn’t in the correct format. | raw: {"g)
+SEQDATA|BASELINE-B1|B1|5|53046D6D|E74D35A2|plannerCalls=2|gens=4|genStepsInit=0|exec=0|recovery=1|verdict=FAILED|cat=A|wallMs=2807|modelMs=1745
+── SECTION SUMMARY B1 (scored=true) ──
+  PASS: 0/5  NOT_COMPLETE: 2/5  FAILED: 3/5
+  avg plannerCalls: 1.8  avg generations: 3.6  avg generatedSteps(initial): 0.4  avg wall ms: 3473
+  failure categories: A=3 B=2
+════════════════════ PHASE SUMMARY: BASELINE (single-shot full-plan) ════════════════════
+  B1: PASS 0/5 NOT_COMPLETE 2/5 FAILED 3/5 | plannerCalls 9 gens 18 avgGenSteps 0.4 exec 2/5 verify 2/5 recovery 4 avgWall 3473ms
+  B2: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B3: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B4: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+  B5: PASS 0/5 NOT_COMPLETE 0/5 FAILED 0/5 | plannerCalls 0 gens 0 avgGenSteps 0.0 exec 0/5 verify 0/5 recovery 0 avgWall 0ms
+══════════════════════════════════════════════════════

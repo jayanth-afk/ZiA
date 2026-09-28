@@ -46,6 +46,7 @@ enum PlanValidationError: Error, Sendable, Equatable {
     case wrongArgumentType(tool: String, argument: String, expected: String)
     case unsafeOperation(tool: String, reason: String)
     case stepLimitArgument(tool: String)
+    case invalidReference(tool: String, argument: String, reason: String)
 
     var description: String {
         switch self {
@@ -74,6 +75,8 @@ enum PlanValidationError: Error, Sendable, Equatable {
             return "Step for '\(tool)' rejected as unsafe: \(reason)"
         case .stepLimitArgument(let tool):
             return "Step for '\(tool)' uses the reserved internal argument"
+        case .invalidReference(let tool, let argument, let reason):
+            return "Step for '\(tool)' argument '\(argument)' has invalid reference: \(reason)"
         }
     }
 }
@@ -336,7 +339,8 @@ enum PlanValidator {
         let registry = ToolRegistry.shared
         let stepLimitArguments: Set<String> = ["jarvis_step_limit"]
 
-        for step in plan.steps {
+        for (stepIndex, step) in plan.steps.enumerated() {
+            let currentStepNumber = stepIndex + 1
             // Steps without a tool are composition-only (final answer synthesis).
             guard let toolName = step.toolName else { continue }
 
@@ -361,12 +365,33 @@ enum PlanValidator {
                 guard let spec = declared[argName] else {
                     return .failure(.unknownArgument(tool: toolName, argument: argName))
                 }
-                switch spec.kind {
-                case .int:
-                    guard Int(value) != nil else {
-                        return .failure(.wrongArgumentType(tool: toolName, argument: argName, expected: "an integer"))
+
+                // Reference validation vs scalar type validation
+                let taskArg: TaskArgument
+                do {
+                    taskArg = try ReferenceResolver.parseArgument(value)
+                } catch {
+                    return .failure(.invalidReference(tool: toolName, argument: argName, reason: error.localizedDescription))
+                }
+
+                do {
+                    try ReferenceResolver.validateArgument(taskArg, currentStepNumber: currentStepNumber)
+                } catch {
+                    return .failure(.invalidReference(tool: toolName, argument: argName, reason: error.localizedDescription))
+                }
+
+                switch taskArg {
+                case .literal(let literalStr):
+                    switch spec.kind {
+                    case .int:
+                        guard Int(literalStr) != nil else {
+                            return .failure(.wrongArgumentType(tool: toolName, argument: argName, expected: "an integer"))
+                        }
+                    case .string:
+                        break
                     }
-                case .string:
+                case .reference, .template:
+                    // References and templates will be validated for scalar types at execution time after resolution
                     break
                 }
             }
@@ -382,8 +407,10 @@ enum PlanValidator {
             // (ToolExecutor re-checks permissions at execution time; this check
             // rejects unsafe commands at plan time with a clear reason.)
             if toolName == "run_shell", let command = step.arguments["command"] {
-                guard CommandSandbox.shared.isSafe(command) else {
-                    return .failure(.unsafeOperation(tool: toolName, reason: "command rejected by CommandSandbox"))
+                if !command.contains("$step") && !command.contains("$ambient") {
+                    guard CommandSandbox.shared.isSafe(command) else {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "command rejected by CommandSandbox"))
+                    }
                 }
             }
         }

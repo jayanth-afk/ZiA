@@ -1,0 +1,229 @@
+╔════════════════════════════════════════════════════════════════════════╗
+║   SCHEMA-CONTRACT EXPERIMENT — SEGMENT CONTROLS                              ║
+╚════════════════════════════════════════════════════════════════════════╝
+
+
+────────────────────── SECTION 6. Known-good web — web-good ×3 ──────────────────────
+  goal: "search the web for Swift 6 release notes"  (known-good web control)
+
+▶ RUN web-good#1
+  goal: "search the web for Swift 6 release notes"
+  completed: true
+  runID: 7D040ED9  taskID: 670B1D0E
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 715e8f40c3912f5c…
+    [cycle0 attempt1] RAW >>>{"goal":"search the web for Swift 6 release notes","steps":[{"id":"step_1","tool":"web_search","arguments":{"query":"Swift 6 release notes"}}]}<<<
+    [cycle0 attempt1] result: VALID — parsed plan: goal="search the web for Swift 6 release notes" steps=[web_search{query="Swift 6 release notes"}]
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → VERIFYING → COMPLETED
+    final task state: COMPLETED
+    plan snapshot cycle0: [web_search]
+  ── executed steps (current task record) ──
+    tool=web_search state=COMPLETED output='[1] Announcing Swift 6 | Swift.org
+URL: https://www.swift.org/blog/announcing-sw' args=["query": "Swift 6 release notes"]
+  ── response ──
+  >>>[1] Announcing Swift 6 | Swift.org
+URL: https://www.swift.org/blog/announcing-swift-6/
+Snippet: We&#x27;re delighted to announce the general availability of Swift 6. This is a major new release that expands Swift to more platforms and domains.
+
+[2] Swift 6.4 Released | Swift.org
+URL: https://www.swift.org/blog/swift-6.4-released/
+Snippet: Swift 6.4 is now available. Swift aims to be a great choice<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : PASS
+    correct arguments : PASS
+    execution         : PASS
+    verification      : PASS
+  failure class: PASS
+
+▶ RUN web-good#2
+  goal: "search the web for Swift 6 release notes"
+  completed: true
+  runID: 96318A1E  taskID: 50CAF74F
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 715e8f40c3912f5c…
+    [cycle0 attempt1] RAW >>>{"goal":"search the web for Swift 6 release notes","steps":[{"id":"step_1","tool":"web_search","arguments":{"query":"swift 6 release notes"}}]}<<<
+    [cycle0 attempt1] result: VALID — parsed plan: goal="search the web for Swift 6 release notes" steps=[web_search{query="swift 6 release notes"}]
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → VERIFYING → COMPLETED
+    final task state: COMPLETED
+    plan snapshot cycle0: [web_search]
+  ── executed steps (current task record) ──
+    tool=web_search state=COMPLETED output='[1] Announcing Swift 6 | Swift.org
+URL: https://www.swift.org/blog/announcing-sw' args=["query": "swift 6 release notes"]
+  ── response ──
+  >>>[1] Announcing Swift 6 | Swift.org
+URL: https://www.swift.org/blog/announcing-swift-6/
+Snippet: We&#x27;re delighted to announce the general availability of Swift 6. This is a major new release that expands Swift to more platforms and domains.
+
+[2] Swift 6.4 Released | Swift.org
+URL: https://www.swift.org/blog/swift-6.4-released/
+Snippet: Swift 6.4 is now available. Swift aims to be a great choice<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : PASS
+    correct arguments : PASS
+    execution         : PASS
+    verification      : PASS
+  failure class: PASS
+
+▶ RUN web-good#3
+  goal: "search the web for Swift 6 release notes"
+  completed: true
+  runID: 7ED09CC2  taskID: 7E5F1E9D
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 715e8f40c3912f5c…
+    [cycle0 attempt1] RAW >>>{"goal":"search the web for Swift 6 release notes","steps":[{"id":"step_1","tool":"web_search","arguments":{"query":"swift 6 release notes"}}]}<<<
+    [cycle0 attempt1] result: VALID — parsed plan: goal="search the web for Swift 6 release notes" steps=[web_search{query="swift 6 release notes"}]
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → VERIFYING → COMPLETED
+    final task state: COMPLETED
+    plan snapshot cycle0: [web_search]
+  ── executed steps (current task record) ──
+    tool=web_search state=COMPLETED output='[1] Announcing Swift 6 | Swift.org
+URL: https://www.swift.org/blog/announcing-sw' args=["query": "swift 6 release notes"]
+  ── response ──
+  >>>[1] Announcing Swift 6 | Swift.org
+URL: https://www.swift.org/blog/announcing-swift-6/
+Snippet: We&#x27;re delighted to announce the general availability of Swift 6. This is a major new release that expands Swift to more platforms and domains.
+
+[2] Swift 6.4 Released | Swift.org
+URL: https://www.swift.org/blog/swift-6.4-released/
+Snippet: Swift 6.4 is now available. Swift aims to be a great choice<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : PASS
+    correct arguments : PASS
+    execution         : PASS
+    verification      : PASS
+  failure class: PASS
+
+────────────────────── SECTION 7. Known-good shell — sh-good ×3 ──────────────────────
+  goal: "print hello benchmark via the shell"  (known-good shell control)
+
+▶ RUN sh-good#1
+  goal: "print hello benchmark via the shell"
+  completed: true
+  runID: 8A49EEF2  taskID: F36FFEE1
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 1a30f2c4c812c4cb…
+    [cycle0 attempt1] RAW >>>{"goal":"print hello benchmark via the shell","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello benchmark"}}],"purpose":"execute a shell command"}<<<
+    [cycle0 attempt1] result: VALID — parsed plan: goal="print hello benchmark via the shell" steps=[run_shell{command="echo hello benchmark"}]
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → VERIFYING → COMPLETED
+    final task state: COMPLETED
+    plan snapshot cycle0: [run_shell]
+  ── executed steps (current task record) ──
+    tool=run_shell state=COMPLETED output='hello benchmark
+' args=["command": "echo hello benchmark"]
+  ── argument-preservation chain ──
+    raw cycle0.attempt1: tokenPresent=true
+    compiled cycle0: command=echo hello benchmark tokenPresent=true
+    executed: command=echo hello benchmark tokenPresent=true
+    stdout: output=hello benchmark tokenPresent=true
+  ── response ──
+  >>>hello benchmark
+<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : PASS
+    correct arguments : PASS
+    execution         : PASS
+    verification      : PASS
+  failure class: PASS
+
+▶ RUN sh-good#2
+  goal: "print hello benchmark via the shell"
+  completed: true
+  runID: 96CFF89F  taskID: DE4A67B9
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 1a30f2c4c812c4cb…
+    [cycle0 attempt1] RAW >>>{"goal":"print hello benchmark via the shell","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo hello"},"purpose":"print the text"}]}<<<
+    [cycle0 attempt1] result: VALID — parsed plan: goal="print hello benchmark via the shell" steps=[run_shell{command="echo hello"}]
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → VERIFYING → COMPLETED
+    final task state: COMPLETED
+    plan snapshot cycle0: [run_shell]
+  ── executed steps (current task record) ──
+    tool=run_shell state=COMPLETED output='hello
+' args=["command": "echo hello"]
+  ── argument-preservation chain ──
+    raw cycle0.attempt1: tokenPresent=true
+    compiled cycle0: command=echo hello tokenPresent=false
+    executed: command=echo hello tokenPresent=false
+    stdout: output=hello tokenPresent=false
+  ── response ──
+  >>>hello
+<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : PASS
+    correct arguments : FAIL
+    execution         : PASS
+    verification      : PASS
+  failure class: SEMANTIC
+
+▶ RUN sh-good#3
+  goal: "print hello benchmark via the shell"
+  completed: true
+  runID: BA16A08B  taskID: 6545E6C9
+  ── planner attempt history (all cycles, attributed) ──
+    [cycle0 attempt1] prompt sha256: 1a30f2c4c812c4cb…
+    [cycle0 attempt1] RAW >>>{
+  "goal": "print hello benchmark via the shell",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo hello benchmark"
+      },
+      "purpose": "execute the shell command"
+    }
+  ]
+}<<<
+    [cycle0 attempt1] result: VALID — parsed plan: goal="print hello benchmark via the shell" steps=[run_shell{command="echo hello benchmark"}]
+  ── task phases ──
+    state history: CREATED → PLANNING → RUNNING → VERIFYING → COMPLETED
+    final task state: COMPLETED
+    plan snapshot cycle0: [run_shell]
+  ── executed steps (current task record) ──
+    tool=run_shell state=COMPLETED output='hello benchmark
+' args=["command": "echo hello benchmark"]
+  ── argument-preservation chain ──
+    raw cycle0.attempt1: tokenPresent=true
+    compiled cycle0: command=echo hello benchmark tokenPresent=true
+    executed: command=echo hello benchmark tokenPresent=true
+    stdout: output=hello benchmark tokenPresent=true
+  ── response ──
+  >>>hello benchmark
+<<<
+  ── dimensions ──
+    valid plan        : PASS
+    correct tool      : PASS
+    correct arguments : PASS
+    execution         : PASS
+    verification      : PASS
+  failure class: PASS
+
+────────────────────── 8. PER-DIMENSION SUMMARY ──────────────────────
+  valid plan        : 6/6
+  correct tool      : 6/6
+  correct arguments : 5/6
+  execution         : 6/6
+  verification      : 6/6
+
+────────────────────── REPAIR HONESTY (FOCUS 6) ──────────────────────
+  repairs invoked: 0
+  repair_changed_output=true: 0
+  repair byte-identical retries: 0
+
+────────────────────── FAILURE CLASSES (per run) ──────────────────────
+  SYNTAX      : 0 run(s)
+  SEMANTIC    : 1 run(s)
+  EXECUTION   : 0 run(s)
+  VERIFICATION: 0 run(s)
+  PASS        : 5 run(s)
+
+(END OF EXPERIMENT PROTOCOL — evidence above is per individual run)

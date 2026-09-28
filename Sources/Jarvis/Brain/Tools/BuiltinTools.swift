@@ -172,6 +172,46 @@ struct RunShellTool: JarvisTool {
     }
 }
 
+// MARK: - Safe File Writing Tool
+
+struct WriteFileTool: JarvisTool {
+    let name = "write_file"
+    let description = "Writes UTF-8 text to a user-authorized non-system file and verifies exact content"
+    let impact: PermissionGate.ActionImpact = .safeMutation
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "path", kind: .string, required: true, description: "Target file path within the user-writable filesystem"),
+        ToolParameterSpec(name: "content", kind: .string, required: true, description: "Exact UTF-8 content to write")
+    ]
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let path = arguments["path"] as? String, !path.isEmpty,
+              let content = arguments["content"] as? String else {
+            throw JarvisError.actionFailed(action: name, reason: "Missing path or content")
+        }
+        let output = try await MainActor.run { try FileManagerJarvis.shared.writeFile(at: path, content: content) }
+        return ToolResult(success: true, output: output, sideEffects: ["file_written"], metadata: ["path": path, "expectedContent": content])
+    }
+
+    func observe() async throws -> ObservationResult { .unavailable(reason: "File observation requires execution metadata") }
+
+    func observe(expected: ToolResult) async throws -> ObservationResult {
+        guard let path = expected.metadata["path"] else { return .unavailable(reason: "Target path was not recorded") }
+        let state = FileSystemObserver.shared.observe(path: path)
+        guard state.exists, state.isRegularFile else { return ObservationResult(observations: ["exists": "false"]) }
+        guard let content = FileSystemObserver.shared.readText(path: path) else { return .unavailable(reason: "File content could not be observed") }
+        return ObservationResult(observations: ["exists": "true", "content": content])
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else { return .failed("File write failed") }
+        guard observed.isAvailable else { return .unavailable(observed.reason ?? "File observation unavailable") }
+        guard let target = expected.metadata["expectedContent"], observed.observations["exists"] == "true", let actual = observed.observations["content"] else {
+            return .failed("Written file is missing", expected: expected.metadata["path"], observed: "missing")
+        }
+        return actual == target ? .passed(expected: target, observed: actual) : .failed("Written file content differs", expected: target, observed: actual)
+    }
+}
+
 // MARK: - Web Search Tool
 
 struct WebSearchTool: JarvisTool {

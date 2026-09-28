@@ -35,5 +35,13 @@ final class FileSystemObserver: Sendable {
             isReadable: manager.isReadableFile(atPath: expanded)
         )
     }
-}
 
+    /// Bounded UTF-8 read for declared text-file verification only.
+    func readText(path: String, maximumBytes: Int = 1_048_576) -> String? {
+        let expanded = (path as NSString).expandingTildeInPath
+        guard let handle = FileHandle(forReadingAtPath: expanded) else { return nil }
+        defer { try? handle.close() }
+        let data = handle.readData(ofLength: maximumBytes)
+        return String(data: data, encoding: .utf8)
+    }
+}

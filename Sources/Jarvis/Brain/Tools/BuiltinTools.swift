@@ -288,11 +288,43 @@ struct OpenBrowserTool: JarvisTool {
         return ToolResult(
             success: opened,
             output: "Opened \(url.absoluteString) in \(browserType.rawValue)",
-            sideEffects: ["browser_opened"]
+            sideEffects: ["browser_opened"],
+            metadata: ["targetURL": url.absoluteString, "browser": browserType.rawValue]
         )
     }
 
     func observe() async throws -> ObservationResult {
-        return ObservationResult(observations: ["browser": "opened"])
+        return .unavailable(reason: "Browser observation requires the execution metadata")
+    }
+
+    func observe(expected: ToolResult) async throws -> ObservationResult {
+        guard let browserName = expected.metadata["browser"], let browser = BrowserType(rawValue: browserName) else {
+            return .unavailable(reason: "Browser identity was not recorded")
+        }
+        guard browser == .safari || browser == .chrome else {
+            return .unavailable(reason: "Active-tab observation is unavailable for \(browser.rawValue)")
+        }
+        guard let tab = try await BrowserManager.shared.getActiveTabInfo(browser: browser) else {
+            return .unavailable(reason: "Could not observe an active \(browser.rawValue) tab")
+        }
+        return ObservationResult(observations: ["url": tab.url, "title": tab.title, "browser": browser.rawValue])
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            return .failed("Browser navigation request failed", expected: expected.metadata["targetURL"], observed: "execution failure")
+        }
+        guard observed.isAvailable else {
+            return .unavailable(observed.reason ?? "Browser state is unavailable", expected: expected.metadata["targetURL"])
+        }
+        guard let target = expected.metadata["targetURL"], let actual = observed.observations["url"] else {
+            return .inconclusive("Navigation URL evidence is incomplete")
+        }
+        // The browser may append a trailing slash for a bare origin; normalize only that harmless representation.
+        let normalizedTarget = target.hasSuffix("/") ? String(target.dropLast()) : target
+        let normalizedActual = actual.hasSuffix("/") ? String(actual.dropLast()) : actual
+        return normalizedTarget == normalizedActual
+            ? .passed(reason: "Observed active-tab URL matches navigation target", expected: target, observed: actual)
+            : .failed("Observed active-tab URL differs from navigation target", expected: target, observed: actual)
     }
 }

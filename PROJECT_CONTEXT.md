@@ -20,7 +20,9 @@
 - `RunShellTool` supports declared `expected_file`, `expected_file_non_empty`, and `expected_directory` postconditions using the bounded one-shot `FileSystemObserver`.
 - AX observations re-resolve elements after actions to avoid stale element handles. No OCR, screenshot, or model inference is used as verification evidence.
 
-**Regression evidence:** `swift build` completed and `.build/debug/Jarvis --self-test` reported **544 passed, 0 failed**. Phase 19 includes adversarial mismatched app/text/filesystem cases plus downstream ReferenceResolver rejection. The filesystem coverage uses a controlled temporary file. Actual browser frontmost state was observed as `Brave Browser`; no arbitrary UI mutation was performed outside controlled test paths.
+**Regression evidence:** `swift build` completed and `.build/debug/Jarvis --self-test` reported **547 passed, 0 failed**. Phase 19 includes adversarial mismatched app/text/filesystem/browser-navigation cases plus downstream ReferenceResolver rejection. The filesystem coverage uses a controlled temporary file. Actual browser frontmost state was observed as `Brave Browser`; no arbitrary UI mutation was performed outside controlled test paths.
+
+`OpenBrowserTool` now records the requested URL/browser and verifies Safari or Chrome navigation through active-tab observation. Default, Arc, and Brave browser tab inspection remains explicitly `unavailable` rather than being treated as successful navigation.
 
 Known environment limitation: `swift test` remains unavailable under the Command Line Tools-only environment; the in-process `SelfTest` executable is the canonical suite.
 

@@ -2557,6 +2557,16 @@ enum SelfTest {
         )
         check(!shellSideEffectResult.isSuccess && shellSideEffectResult.outcome == VerificationOutcome.failed, "TEST G: RunShell fails verification when expected side-effect file does not exist despite exit code 0")
 
+        // 19.7a Browser navigation follows the same state-over-transcript rule.
+        let browserTool = OpenBrowserTool()
+        let browserExpected = ToolResult(success: true, output: "Opened", metadata: ["targetURL": "https://example.com", "browser": BrowserType.safari.rawValue])
+        let browserMatch = browserTool.verifyDetailed(expected: browserExpected, observed: ObservationResult(observations: ["url": "https://example.com/"], isAvailable: true))
+        let browserMismatch = browserTool.verifyDetailed(expected: browserExpected, observed: ObservationResult(observations: ["url": "https://wrong.example"], isAvailable: true))
+        let browserUnavailable = browserTool.verifyDetailed(expected: browserExpected, observed: .unavailable(reason: "Automation permission denied"))
+        check(browserMatch.outcome == .passed, "TEST G.0.1: Browser navigation passes only when the observed URL matches")
+        check(browserMismatch.outcome == .failed, "TEST G.0.2: Browser navigation rejects a mismatched observed URL")
+        check(browserUnavailable.outcome == .unavailable, "TEST G.0.3: Browser navigation reports unavailable observation honestly")
+
         // 19.7b Filesystem observations are one-shot, typed state rather than
         // process-return-code evidence. Use a controlled temporary path only.
         let verificationTemp = FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-verification-\(UUID().uuidString)")

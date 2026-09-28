@@ -67,6 +67,7 @@ final class ToolRegistry {
         register(InspectBrowserPageTool())
         register(ExtractBrowserTextTool())
         register(ClickBrowserLinkTool())
+        register(FillBrowserTextTool())
         register(InspectUITool())
         register(ClickElementTool())
         register(SetTextTool())

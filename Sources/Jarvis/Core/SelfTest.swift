@@ -2615,6 +2615,12 @@ enum SelfTest {
         check(browserClickTool.verifyDetailed(expected: browserClickExpected, observed: ObservationResult(observations: ["url": "https://example.com"], isAvailable: true)).outcome == .failed, "TEST G.0.9: Browser link click fails when the active page did not navigate")
         check(browserClickTool.verifyDetailed(expected: browserClickExpected, observed: .unavailable(reason: "Browser automation permission denied")).outcome == .unavailable, "TEST G.0.10: Browser link click preserves unavailable AX/automation state")
 
+        let fillBrowserTextTool = FillBrowserTextTool()
+        let fillExpected = ToolResult(success: true, output: "Text entered", metadata: ["expectedText": "Jarvis search"])
+        check(fillBrowserTextTool.verifyDetailed(expected: fillExpected, observed: ObservationResult(observations: ["value": "Jarvis search"], isAvailable: true)).outcome == .passed, "TEST G.0.11: Browser text entry passes only on exact live value match")
+        check(fillBrowserTextTool.verifyDetailed(expected: fillExpected, observed: ObservationResult(observations: ["value": "different"], isAvailable: true)).outcome == .failed, "TEST G.0.12: Browser text entry fails when the live field differs")
+        check(fillBrowserTextTool.verifyDetailed(expected: fillExpected, observed: .unavailable(reason: "Safari JavaScript from Apple Events is disabled")).outcome == .unavailable, "TEST G.0.13: Browser text entry reports unavailable observation honestly")
+
         // 19.7b Filesystem observations are one-shot, typed state rather than
         // process-return-code evidence. Use a controlled temporary path only.
         let verificationTemp = FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-verification-\(UUID().uuidString)")

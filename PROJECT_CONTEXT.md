@@ -28,6 +28,8 @@ Bounded DOM tools are now registered: `inspect_browser_page` returns a capped ti
 
 Physical browser limitation: Safari active-tab URL observation succeeded, but Safari DOM JavaScript is blocked until the user enables “Allow JavaScript from Apple Events” in Safari Settings → Developer. Chrome’s active tab was on a sign-in page; its DOM was not inspected. Browser DOM behavior therefore has offline regression evidence but no physical DOM pass yet.
 
+Browser text entry is now available through `fill_browser_text`. It accepts one unique CSS match on Safari or Chrome, supports only ordinary text/search/url/tel inputs and textareas, caps selector/text sizes, uses JSON-safe script arguments, dispatches input/change events, and never submits the form. Post-action verification reads the same field and requires an exact value match; unavailable browser automation remains explicitly unavailable. Regression coverage advances the latest full self-test run to **560 passed, 0 failed**. Physical DOM entry remains unverified until Safari’s JavaScript-from-Apple-Events setting is enabled; no live sign-in page was modified.
+
 The `write_file` tool provides bounded UTF-8 file creation and verifies exact read-back. `FileManagerJarvis` resolves canonical parent paths before writes/deletes so path-prefix lookalikes do not cause false blocks and symlink traversal into protected system directories is denied. Tests exercise a controlled `~/Library/Caches` file and a symlink to `/System`. Latest suite: **550 passed, 0 failed** after these additions.
 
 Known environment limitation: `swift test` remains unavailable under the Command Line Tools-only environment; the in-process `SelfTest` executable is the canonical suite.

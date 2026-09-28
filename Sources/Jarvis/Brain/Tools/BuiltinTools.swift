@@ -497,3 +497,53 @@ struct ClickBrowserLinkTool: JarvisTool {
         return .passed(reason: "Observed active tab reached the selected link destination", expected: destination, observed: actual)
     }
 }
+
+struct FillBrowserTextTool: JarvisTool {
+    let name = "fill_browser_text"
+    let description = "Enters text into one uniquely selected plain text field or textarea without submitting the form"
+    let impact: PermissionGate.ActionImpact = .safeMutation
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "browser", kind: .string, required: true, description: "Safari or Google Chrome"),
+        ToolParameterSpec(name: "selector", kind: .string, required: true, description: "CSS selector matching exactly one text/search/url/tel field or textarea"),
+        ToolParameterSpec(name: "text", kind: .string, required: true, description: "Text to enter; password and email fields are not supported")
+    ]
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let raw = arguments["browser"] as? String, let browser = BrowserType(rawValue: raw), browser == .safari || browser == .chrome,
+              let selector = arguments["selector"] as? String,
+              let text = arguments["text"] as? String else {
+            throw JarvisError.actionFailed(action: name, reason: "A supported browser, selector, and text are required")
+        }
+        try await BrowserManager.shared.fillText(selector: selector, text: text, browser: browser)
+        return ToolResult(success: true, output: "Text entered in the selected browser field", sideEffects: ["browser_text_entered"], metadata: ["browser": browser.rawValue, "selector": selector, "expectedText": text])
+    }
+
+    func observe() async throws -> ObservationResult { .unavailable(reason: "Field value observation requires execution metadata") }
+
+    func observe(expected: ToolResult) async throws -> ObservationResult {
+        guard let raw = expected.metadata["browser"], let browser = BrowserType(rawValue: raw),
+              let selector = expected.metadata["selector"] else {
+            return .unavailable(reason: "Browser or selector was not recorded")
+        }
+        let response = try await BrowserManager.shared.readTextValue(selector: selector, browser: browser)
+        guard let data = response.data(using: .utf8),
+              let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return .unavailable(reason: "Browser field value could not be observed")
+        }
+        guard result["available"] as? Bool == true, let value = result["value"] as? String else {
+            return .unavailable(reason: result["error"] as? String ?? "Selected field value is unavailable")
+        }
+        return ObservationResult(observations: ["value": value])
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else { return .failed("Browser text entry failed") }
+        guard observed.isAvailable else { return .unavailable(observed.reason ?? "Browser field observation unavailable") }
+        guard let expectedText = expected.metadata["expectedText"], let actual = observed.observations["value"] else {
+            return .inconclusive("Expected or observed field value is missing")
+        }
+        return expectedText == actual
+            ? .passed(reason: "Observed browser field value exactly matches the requested text", expected: expectedText, observed: actual)
+            : .failed("Observed browser field value differs from the requested text", expected: expectedText, observed: actual)
+    }
+}

@@ -213,6 +213,66 @@ public actor BrowserManager {
         return try await executeJavaScript(script: script, browser: browser)
     }
 
+    /// Fill one uniquely selected non-sensitive text input or textarea. This does
+    /// not submit forms and rejects password/email/other specialized controls.
+    public func fillText(selector: String, text: String, browser: BrowserType) async throws {
+        guard browser == .safari || browser == .chrome,
+              !selector.isEmpty, selector.count <= 512, text.utf8.count <= 8192,
+              let selectorData = try? JSONSerialization.data(withJSONObject: [selector]),
+              let selectorJSON = String(data: selectorData, encoding: .utf8),
+              let textData = try? JSONSerialization.data(withJSONObject: [text]),
+              let textJSON = String(data: textData, encoding: .utf8) else {
+            throw JarvisError.actionFailed(action: "fillBrowserText", reason: "Unsupported browser or invalid selector/text size")
+        }
+        let encodedSelector = String(selectorJSON.dropFirst().dropLast())
+        let encodedText = String(textJSON.dropFirst().dropLast())
+        let script = """
+        (() => {
+          const matches = document.querySelectorAll(\(encodedSelector));
+          if (matches.length !== 1) return JSON.stringify({updated: false, error: "selector must match exactly one element", count: matches.length});
+          const e = matches[0];
+          if (e instanceof HTMLTextAreaElement) {
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(e, \(encodedText));
+          } else if (e instanceof HTMLInputElement && ["text", "search", "url", "tel"].includes((e.type || "text").toLowerCase())) {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(e, \(encodedText));
+          } else {
+            return JSON.stringify({updated: false, error: "target is not an allowed text field"});
+          }
+          e.dispatchEvent(new InputEvent("input", {bubbles: true, inputType: "insertText", data: \(encodedText)}));
+          e.dispatchEvent(new Event("change", {bubbles: true}));
+          return JSON.stringify({updated: true});
+        })()
+        """
+        let response = try await executeJavaScript(script: script, browser: browser)
+        guard let data = response.data(using: .utf8),
+              let result = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              result["updated"] as? Bool == true else {
+            let reason = (try? JSONSerialization.jsonObject(with: Data(response.utf8)) as? [String: Any])?["error"] as? String ?? "Text field was not updated"
+            throw JarvisError.actionFailed(action: "fillBrowserText", reason: reason)
+        }
+    }
+
+    /// Read the current value of one supported text field after mutation.
+    public func readTextValue(selector: String, browser: BrowserType) async throws -> String {
+        guard browser == .safari || browser == .chrome,
+              !selector.isEmpty, selector.count <= 512,
+              let data = try? JSONSerialization.data(withJSONObject: [selector]),
+              let json = String(data: data, encoding: .utf8) else {
+            throw JarvisError.actionFailed(action: "observeBrowserText", reason: "Unsupported browser or invalid selector")
+        }
+        let encodedSelector = String(json.dropFirst().dropLast())
+        let script = """
+        (() => {
+          const matches = document.querySelectorAll(\(encodedSelector));
+          if (matches.length !== 1) return JSON.stringify({available: false, error: "selector must match exactly one element", count: matches.length});
+          const e = matches[0];
+          if (!(e instanceof HTMLTextAreaElement) && !(e instanceof HTMLInputElement && ["text", "search", "url", "tel"].includes((e.type || "text").toLowerCase()))) return JSON.stringify({available: false, error: "target is not an allowed text field"});
+          return JSON.stringify({available: true, value: e.value});
+        })()
+        """
+        return try await executeJavaScript(script: script, browser: browser)
+    }
+
     /// Click a uniquely identified link only; arbitrary buttons and form controls
     /// are intentionally outside this bounded navigation primitive.
     public func clickLink(selector: String, browser: BrowserType, expectedDestinationContains: String) async throws -> String {

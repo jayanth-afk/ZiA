@@ -2983,6 +2983,12 @@ enum SelfTest {
         check(oa27 == nil,
               "open_app det extraction 20.27: 'please open ' (empty name after prefix) → nil (empty guard)")
 
+        // 20.27b False-positive: "open the app I was using" → nil (state/relative reference guard)
+        check(PlannerExtraction.explicitOpenAppExtraction(goal: "open the app I was using") == nil,
+              "open_app det extraction 20.27b: relative clause 'I was using' rejected")
+        check(PlannerExtraction.explicitOpenAppExtraction(goal: "open the app from earlier") == nil,
+              "open_app det extraction 20.27c: temporal reference 'from earlier' rejected")
+
         // 20.28 Compile gate: a well-formed open_app ExtractedAction compiles
         // cleanly and passes PlanValidator without any modification of the arg.
         let oa28Extraction = ExtractedAction(

@@ -396,6 +396,19 @@ enum PlannerExtraction {
                 || lowerAppName.hasSuffix(".net") || lowerAppName.hasSuffix(".io") {
                 return nil
             }
+
+            // Relative clause / pronoun / state reference guard:
+            // "open the app I was using", "open the app that was active",
+            // "open the app from earlier" are semantic/state references,
+            // not literal application names.
+            let referenceStarters = ["i ", "that ", "which ", "we ", "you ", "the ", "my ", "it "]
+            if referenceStarters.contains(where: { lowerAppName.hasPrefix($0) }) {
+                return nil
+            }
+            let referenceKeywords = [" was ", " were ", " used", " using", " earlier", " recently", " yesterday"]
+            if referenceKeywords.contains(where: { lowerAppName.contains($0) }) {
+                return nil
+            }
             // The app name is the literal anchor: the compiler's adoption gate
             // will verify it is a contiguous span of the original goal.
             return ExtractedAction(

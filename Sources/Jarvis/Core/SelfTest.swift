@@ -4177,6 +4177,68 @@ enum SelfTest {
         }
         check(intermediateFailurePreserved, "agent loop 20.163: intermediate step failure preserves Step 1 completed state, marks Step 2 failed, and reports truthful partial state")
 
+        // 20.164: partialCompletionReport() states partial completion truthfully —
+        // the completed-and-verified step count and the actual failed step, never
+        // a success claim (final-response accuracy).
+        let partialReport = AgentLoop.partialCompletionReport(
+            completedStepCount: 1,
+            lastFailure: (stepNumber: 2, purpose: "write the word probe using run_shell", tool: "run_shell", error: "Verification failed for run_shell: expected meaningful output, got ''"))
+        let partialReportOK = partialReport.contains("Partial completion: 1 step completed and verified before failure")
+            && partialReport.contains("Step 2 ('write the word probe using run_shell') failed:")
+            && !partialReport.lowercased().contains("completed successfully")
+        check(partialReportOK, "agent loop 20.164: partialCompletionReport states completed count + actual failed step, never success")
+
+        // 20.165: recovery-failure reporting — when execution made real progress
+        // (Step 1 completed+verified) but the replan itself cannot continue, the
+        // run must close FAILED with a truthful PARTIAL report (completed-and-
+        // verified count + the ACTUAL failed step), never success and never a
+        // bare recovery-infrastructure error. Pins the exact semantics of the
+        // AgentLoop recovery-failure exit: report built from recorded TaskState
+        // verification evidence + the legal REPLANNING → FAILED transition.
+        var recoveryFailureClosesFailedWithPartialReport = false
+        do {
+            let smRecovery = TaskStateMachine.shared
+            let recTask = smRecovery.createTask(
+                title: "RecoveryFailReport",
+                goal: "recovery failure reporting probe",
+                steps: [
+                    TaskStep(stepNumber: 1, description: "read clipboard", toolName: "read_clipboard", arguments: [:]),
+                    TaskStep(stepNumber: 2, description: "write the word probe using run_shell", toolName: "run_shell", arguments: ["command": "cat build/does_not_exist_recovery_probe.txt"])
+                ])
+            try smRecovery.transition(taskId: recTask.id, to: .running)
+            try smRecovery.updateStep(taskId: recTask.id, stepIndex: 0, state: .completed, output: "clipboard text")
+            try smRecovery.markStepVerification(taskId: recTask.id, stepIndex: 0, outcome: .passed)
+            try smRecovery.updateStep(taskId: recTask.id, stepIndex: 1, state: .failed, error: "Verification failed for run_shell: expected meaningful output, got ''")
+            try smRecovery.markStepVerification(taskId: recTask.id, stepIndex: 1, outcome: .failed)
+            // Exact production recovery chain: RUNNING -> FAILED -> RECOVERING ->
+            // REPLANNING — the state AgentLoop's recovery-failure branch observes
+            // when planWithRecovery throws after a mid-task step failure.
+            try smRecovery.transition(taskId: recTask.id, to: .failed, error: "Step 2 failed")
+            try smRecovery.transition(taskId: recTask.id, to: .recovering)
+            try smRecovery.transition(taskId: recTask.id, to: .replanning)
+
+            let completedStepCount = smRecovery.getTask(id: recTask.id)?.steps.filter {
+                $0.state == .completed && ($0.verification?.isVerified == true || $0.verification == .notApplicable)
+            }.count ?? 0
+            let lastFailure = (stepNumber: 2, purpose: "write the word probe using run_shell", tool: Optional("run_shell"), error: "Verification failed for run_shell: expected meaningful output, got ''")
+            let reason = AgentLoop.partialCompletionReport(
+                completedStepCount: completedStepCount, lastFailure: lastFailure)
+            try smRecovery.transition(taskId: recTask.id, to: .failed, error: reason)
+
+            let closed = smRecovery.getTask(id: recTask.id)
+            if closed?.state == .failed,
+               closed?.steps[0].state == .completed, closed?.steps[0].verification?.isVerified == true,
+               closed?.steps[1].state == .failed,
+               closed?.error?.contains("Partial completion: 1 step completed and verified before failure") == true,
+               closed?.error?.contains("Step 2 ('write the word probe using run_shell') failed:") == true,
+               closed?.error?.lowercased().contains("nojsonfound") != true {
+                recoveryFailureClosesFailedWithPartialReport = true
+            }
+        } catch {
+            recoveryFailureClosesFailedWithPartialReport = false
+        }
+        check(recoveryFailureClosesFailedWithPartialReport, "agent loop 20.165: recovery-failure exit closes task FAILED with truthful partial report (completed count + actual failed step)")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

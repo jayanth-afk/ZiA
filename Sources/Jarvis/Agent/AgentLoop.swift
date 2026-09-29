@@ -11,17 +11,34 @@ enum AgentStepOutcomePolicy {
     }
 }
 
-/// Core autonomous agent loop implementing:
-/// SENSE -> UNDERSTAND -> PLAN -> EXECUTE -> OBSERVE -> VERIFY -> RESPOND -> RECOVER
-/// Preserves the fundamental JARVIS architecture.
-///
-/// Phase D: planning is now REAL — the goal goes to the local MLX model
-/// (MLXPlanner -> MLXProvider -> persistent mlx_lm worker), which returns a
-/// structured plan that PlanValidator grounds against the live ToolRegistry.
-/// Simple deterministic commands still bypass the LLM entirely via
-/// DeterministicRouter. The task state machine, ToolExecutor recovery chain,
-/// and Emergency Stop semantics are unchanged.
 actor AgentLoop {
+    /// Truthful final report for a run that made real execution progress but
+    /// whose recovery/replan could not continue. States the PARTIAL completion
+    /// (how many steps completed and verified) and the ACTUAL failed step —
+    /// never success — so the user's final response matches the recorded
+    /// TaskState/verification evidence instead of surfacing only the raw
+    /// recovery-infrastructure error.
+    nonisolated static func partialCompletionReport(
+        completedStepCount: Int,
+        lastFailure: (stepNumber: Int, purpose: String, tool: String?, error: String)?
+    ) -> String {
+        let stepWord = completedStepCount == 1 ? "step" : "steps"
+        let completedPart = "Partial completion: \(completedStepCount) \(stepWord) completed and verified before failure"
+        let failurePart = lastFailure.map { "; Step \($0.stepNumber) ('\($0.purpose)') failed: \($0.error)" }
+            ?? "; Task incomplete: no step failure recorded"
+        return completedPart + failurePart
+    }
+
+    /// Core autonomous agent loop implementing:
+    /// SENSE -> UNDERSTAND -> PLAN -> EXECUTE -> OBSERVE -> VERIFY -> RESPOND -> RECOVER
+    /// Preserves the fundamental JARVIS architecture.
+    ///
+    /// Phase D: planning is now REAL — the goal goes to the local MLX model
+    /// (MLXPlanner -> MLXProvider -> persistent mlx_lm worker), which returns a
+    /// structured plan that PlanValidator grounds against the live ToolRegistry.
+    /// Simple deterministic commands still bypass the LLM entirely via
+    /// DeterministicRouter. The task state machine, ToolExecutor recovery chain,
+    /// and Emergency Stop semantics are unchanged.
     static let shared = AgentLoop()
 
     /// Real planner metrics from the most recent run (for audit + UI).
@@ -504,8 +521,32 @@ actor AgentLoop {
                     }
                 }
 
-                plan = try await planWithRecovery(
-                    goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+                do {
+                    plan = try await planWithRecovery(
+                        goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // RECOVERY-FAILED REPORTING (final-response accuracy): the
+                    // replan itself failed, so the run cannot continue. The raw
+                    // recovery error (e.g. a Tier-B infrastructure failure)
+                    // says nothing about what the task actually DID. Report the
+                    // PARTIAL completion — completed-step count plus the actual
+                    // failed step — from the TaskState recorded before the
+                    // replan, and close the task out as FAILED (it is in
+                    // REPLANNING here, from which FAILED is the legal exit).
+                    // The recovery chain above is unchanged; only the final
+                    // user-facing report is fixed here.
+                    JarvisLogger.brain.warning("Recovery after step failure failed: \(error.localizedDescription)")
+                    let completedStepCount = stateMachine.getTask(id: task.id)?.steps.filter {
+                        $0.state == .completed && ($0.verification?.isVerified == true || $0.verification == .notApplicable)
+                    }.count ?? completedOutputs.count
+                    let reason = Self.partialCompletionReport(
+                        completedStepCount: completedStepCount, lastFailure: lastFailure)
+                    try stateMachine.transition(taskId: task.id, to: .failed, error: reason)
+                    throw JarvisError.actionFailed(
+                        action: lastFailure?.tool ?? "AgentLoop.run", reason: reason)
+                }
                 let existingSteps = stateMachine.getTask(id: task.id)?.steps ?? []
                 try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan, preservingCompletedFrom: existingSteps))
                 // A replan preserves completed steps and continues execution;

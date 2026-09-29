@@ -20,6 +20,19 @@ final class FileManagerJarvis {
         "/var"
     ]
 
+    // Sensitive credential subpaths that cannot be read
+    private let blockedReadSensitiveSubpaths = [
+        ".ssh",
+        ".gnupg",
+        ".aws",
+        ".kube",
+        ".config/gcloud",
+        ".env",
+        ".netrc",
+        ".zsh_history",
+        ".bash_history"
+    ]
+
     private init() {}
 
     // MARK: - Public API
@@ -42,6 +55,16 @@ final class FileManagerJarvis {
     /// Read text content from a file.
     func readFile(at path: String) throws -> String {
         let resolved = resolvePath(path)
+        let lower = resolved.lowercased()
+        for subpath in blockedReadSensitiveSubpaths {
+            if lower.contains(subpath) {
+                JarvisLogger.security.fault("Blocked sensitive file read on \(resolved)")
+                throw JarvisError.commandBlocked(
+                    command: "readFile",
+                    reason: "Reading sensitive credentials file '\(subpath)' is forbidden"
+                )
+            }
+        }
         guard fileManager.fileExists(atPath: resolved) else {
             throw JarvisError.actionFailed(action: "readFile", reason: "File not found: \(path)")
         }

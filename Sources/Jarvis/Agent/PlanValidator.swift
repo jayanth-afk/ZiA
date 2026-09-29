@@ -423,6 +423,11 @@ enum PlanValidator {
                     if trimmed.contains("..") {
                         return .failure(.unsafeOperation(tool: toolName, reason: "directory traversal '..' forbidden"))
                     }
+                    let lower = trimmed.lowercased()
+                    let sensitiveSubpaths = [".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud", ".env", ".netrc", ".zsh_history", ".bash_history"]
+                    if sensitiveSubpaths.contains(where: { lower.contains($0) }) {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "access to sensitive subpath forbidden"))
+                    }
                 }
             }
         }

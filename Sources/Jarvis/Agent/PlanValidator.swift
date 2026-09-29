@@ -446,6 +446,25 @@ enum PlanValidator {
                     }
                 }
             }
+
+            if toolName == "open_app", let appName = step.arguments["app_name"] {
+                if !appName.contains("$step") && !appName.contains("$ambient") {
+                    let trimmed = appName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "empty app name"))
+                    }
+                    let lower = trimmed.lowercased()
+                    let unresolvedReferences = [
+                        "that_app", "that app", "the app", "this app", "my app", "an app",
+                        "that_application", "the_application", "this_application",
+                        "<app>", "<app_name>", "<application>", "app_name", "application",
+                        "that", "the_app", "this_app"
+                    ]
+                    if unresolvedReferences.contains(lower) || lower.hasPrefix("that_") || lower.hasPrefix("<app") {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "unresolved application reference '\(appName)' (argument fabrication rejected)"))
+                    }
+                }
+            }
         }
 
         return .success(plan)

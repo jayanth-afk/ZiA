@@ -35,6 +35,7 @@ enum DirectAnswerRouter {
         case unsupportedCapability
         case unsafeRequest
         case malformedRequest
+        case unresolvedReference
 
         var userFacingMessage: String {
             switch self {
@@ -44,6 +45,8 @@ enum DirectAnswerRouter {
                 return "Refused: that request is unsafe or destructive, so I won't act on it."
             case .malformedRequest:
                 return "Refused: the request was empty or malformed, so there is nothing to act on."
+            case .unresolvedReference:
+                return "Which app would you like to open? Please specify the application name."
             }
         }
     }
@@ -98,6 +101,16 @@ enum DirectAnswerRouter {
         ]
         if unsafePatterns.contains(where: { g.contains($0) }) {
             return .refusal(.unsafeRequest)
+        }
+
+        // 1b. Unresolved / underspecified app reference: clarify/reject before
+        // app launch or planner retry so the model does not fabricate 'that_app'.
+        let unresolvedAppPatterns = [
+            "open that app", "launch that app", "switch to that app",
+            "open the app", "launch the app"
+        ]
+        if unresolvedAppPatterns.contains(g) {
+            return .refusal(.unresolvedReference)
         }
 
         // 2. Obvious knowledge/conversational question → direct answer.

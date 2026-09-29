@@ -476,6 +476,7 @@ enum SelfTest {
         check(DirectAnswerRouter.refusalReason(for: "wipe the disk and delete everything") == .unsafeRequest, "Unsafe request → explicit unsafeRequest refusal")
         check(DirectAnswerRouter.refusalReason(for: "send an email to alice") == .unsupportedCapability, "Unsupported capability → explicit unsupportedCapability refusal")
         check(DirectAnswerRouter.refusalReason(for: "   ") == .malformedRequest, "Empty/malformed request → explicit malformedRequest refusal")
+        check(DirectAnswerRouter.refusalReason(for: "open that app") == .unresolvedReference, "Unresolved reference 'open that app' → explicit unresolvedReference refusal/clarification")
         check(DirectAnswerRouter.decide(goal: "what is the capital of France") == .directAnswer, "Knowledge question → direct answer")
         check(DirectAnswerRouter.decide(goal: "explain recursion") == .directAnswer, "Explanation request → direct answer")
         check(DirectAnswerRouter.decide(goal: "What is a search engine?") == .directAnswer, "Question about a search engine does not trigger web-action routing")
@@ -1596,6 +1597,15 @@ enum SelfTest {
             rejectedSystemRead = true
         }
         check(rejectedSystemRead, "Protected system path rejected for read_file by PlanValidator")
+
+        // 13.7d Unresolved application reference rejected for open_app at plan time ('open that app' regression)
+        let unresolvedAppPlan = AgentPlan(goal: "open that app", steps: [PlanStep(id: "s1", toolName: "open_app", arguments: ["app_name": "that_app"], purpose: "Open the specified app")])
+        var rejectedUnresolvedApp = false
+        if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(unresolvedAppPlan),
+           tool == "open_app", reason.contains("unresolved application reference") {
+            rejectedUnresolvedApp = true
+        }
+        check(rejectedUnresolvedApp, "Unresolved application reference 'that_app' rejected by PlanValidator ('open that app' regression)")
 
         // 13.8 Garbage (no JSON) fails with noJSONFound
         if case .failure(.noJSONFound) = AgentPlanParser.parse("I cannot do that, sorry!") {

@@ -358,6 +358,24 @@ enum PlannerRoutingBenchmark {
                 preserved = false
                 notes += " | executed output missing the expected literal"
             }
+            if preserved == true && routingCase.kind == .plannerTool && routingCase.toolFamily == "file" {
+                let targetPath: String
+                if let r = routingCase.goal.range(of: " to file ") {
+                    targetPath = String(routingCase.goal[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                } else if let r = routingCase.goal.range(of: " to ") {
+                    targetPath = String(routingCase.goal[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                } else {
+                    targetPath = ""
+                }
+                if !targetPath.isEmpty {
+                    let diskContent = FileSystemObserver.shared.readText(path: targetPath)
+                    if diskContent == nil || !diskContent!.contains(expectedLiteral) {
+                        preserved = false
+                        notes += " | physical file missing or content mismatch"
+                    }
+                    try? FileManager.default.removeItem(atPath: (targetPath as NSString).expandingTildeInPath)
+                }
+            }
         }
 
         return RunResult(

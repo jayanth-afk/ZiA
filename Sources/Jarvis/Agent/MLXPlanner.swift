@@ -233,7 +233,7 @@ actor MLXPlanner {
                     previousAttempt: previous,
                     context: context)
             } else {
-                prompt = Self.buildPrompt(goal: goal, tools: promptTools)
+                prompt = Self.buildPrompt(goal: goal, tools: promptTools, conversationTurns: context.conversationTurns)
             }
 
             let raw = try await generate(prompt: prompt, maxTokens: Self.plannerMaxTokens)
@@ -1085,7 +1085,32 @@ actor MLXPlanner {
     /// Change A: the schema contract is explicit and generated from the live
     /// ToolRegistry (see schemaSection), including the run_shell CORRECT/WRONG
     /// contrast.
-    private static func buildPrompt(goal: String, tools: [any JarvisTool]) -> String {
+    /// Rendered cross-turn conversation section for the planner prompt (nil
+    /// when there is no recent conversation). CONTEXT ONLY — the rendered note
+    /// tells the model the conversation may clarify what the user means, but
+    /// plan arguments must come from the goal text itself.
+    static func conversationSection(from turns: [String]) -> String? {
+        guard !turns.isEmpty else { return nil }
+        var section = "\nRecent conversation (context only — may clarify what the user refers to):\n"
+        for turn in turns {
+            section += "\(String(turn.prefix(160)))\n"
+        }
+        section += "Use the conversation only to understand the request. Arguments must come from the goal text itself."
+        return section
+    }
+
+    /// Test/diagnostic hook: SHA-256 of the whole-plan prompt for a given
+    /// goal/tools/conversation configuration — lets SelfTest prove the
+    /// conversation section changes the actual prompt without a model call.
+    nonisolated static func promptSHA256Hex(
+        goal: String,
+        tools: [any JarvisTool],
+        conversationTurns: [String]
+    ) -> String {
+        sha256Hex(buildPrompt(goal: goal, tools: tools, conversationTurns: conversationTurns))
+    }
+
+    private static func buildPrompt(goal: String, tools: [any JarvisTool], conversationTurns: [String] = []) -> String {
         let catalog = renderCatalog(tools)
         let schema = schemaSection(from: tools)
         var prompt = """
@@ -1131,6 +1156,9 @@ actor MLXPlanner {
 
         Goal: \(goal)
         """
+        if let conversation = conversationSection(from: conversationTurns) {
+            prompt += conversation
+        }
         prompt += "\nJSON: "
         return prompt
     }
@@ -1237,24 +1265,37 @@ actor MLXPlanner {
 
 /// Everything the planner needs for a replan: the original goal plus the real
 /// failure observation, so the model can adjust instead of repeating itself.
+///
+/// Two distinct context kinds, deliberately kept separate:
+/// - `conversationTurns` (cross-turn, CONTEXT ONLY): what was said in recent
+///   interactions — helps the planner interpret what the user MEANS. Never
+///   authority: concrete arguments still come only from the goal text and
+///   pass through ReferenceResolver/PlanValidator/PermissionGate unchanged.
+/// - `previousFailure` / `priorObservations` (in-task, deterministic): this
+///   task's own verified execution evidence for replanning.
 struct PlannerContext: Sendable {
     let goal: String
     /// Human-readable summary of what failed and why (real error text).
     let previousFailure: String?
     /// Real output observed from tools already executed this task.
     let priorObservations: [String]
+    /// Recent conversation turns, pre-rendered oldest→newest ("User: …" /
+    /// "You: …"), bounded by the caller. Empty = no conversation context.
+    var conversationTurns: [String] = []
 
     static func initial(goal: String) -> PlannerContext {
         PlannerContext(goal: goal, previousFailure: nil, priorObservations: [])
     }
 
     /// Truncate observations/failures — context stays compact for the 0.5B model.
+    /// Cross-turn conversation context is preserved across replan cycles.
     func with(failure: String, observations: [String]) -> PlannerContext {
         let clippedObservations = observations.suffix(2).map { String($0.prefix(160)) }
         return PlannerContext(
             goal: goal,
             previousFailure: String(failure.prefix(160)),
-            priorObservations: clippedObservations)
+            priorObservations: clippedObservations,
+            conversationTurns: conversationTurns)
     }
 
     /// Rendered into the repair feedback so the replan uses real context.

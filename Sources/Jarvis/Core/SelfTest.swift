@@ -1694,6 +1694,43 @@ enum SelfTest {
         check((ctx.previousFailure?.count ?? 0) <= 160, "Replan failure context clipped to 160 chars")
         check(ctx.priorObservations.count <= 2, "Replan keeps at most 2 prior observations")
 
+        // 13.13 Planner conversation context: bounded turns survive replan
+        // context derivation and are preserved in chronological order.
+        var convoCtx = PlannerContext.initial(goal: "g")
+        convoCtx.conversationTurns = ["User: run echo alpha", "You: alpha", "User: why"]
+        let ctxAfterReplan = convoCtx.with(
+            failure: "some failure",
+            observations: ["obs"])
+        check(ctxAfterReplan.conversationTurns.count == 3, "Planner conversation turns survive replan context derivation")
+        check(ctxAfterReplan.conversationTurns == convoCtx.conversationTurns, "Planner conversation turns preserve chronological order across replans")
+
+        // 13.14 Planner prompt embeds the conversation section only when turns
+        // exist — and the section carries the context-only caveat. No planner
+        // model call: the section builder is deterministic.
+        let promptWithHistory = MLXPlanner.conversationSection(from: convoCtx.conversationTurns)
+        let promptWithoutHistory = MLXPlanner.conversationSection(from: [])
+        check(promptWithHistory?.contains("User: run echo alpha") == true, "Planner conversation section embeds rendered turns")
+        check(promptWithHistory?.contains("You: alpha") == true, "Planner conversation section keeps assistant turns")
+        check(promptWithHistory?.contains("context only") == true, "Planner conversation section is marked context-only")
+        check(promptWithoutHistory == nil, "Planner prompt has no conversation section when history is empty")
+
+        // 13.15 Prompt SHA differs with vs without conversation context
+        // (same goal, same tools → the section is the only prompt delta).
+        var shaWith: String?
+        var shaWithout: String?
+        let semSHA = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let tools = ToolRegistry.shared.allTools.sorted { $0.name < $1.name }
+            shaWithout = MLXPlanner.promptSHA256Hex(goal: "same goal", tools: tools, conversationTurns: [])
+            shaWith = MLXPlanner.promptSHA256Hex(goal: "same goal", tools: tools, conversationTurns: convoCtx.conversationTurns)
+            semSHA.signal()
+        }
+        while semSHA.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(shaWith != shaWithout, "Planner prompt SHA changes when conversation context is present")
+        check(shaWith != nil && shaWithout != nil, "Planner prompt SHA computation succeeds for both variants")
+
         // ── Phase 14: Planner Reliability Hardening (Phase D.5 components) ──
         print("\n─── Phase 14: Planner Reliability Hardening (D.5) ───")
 

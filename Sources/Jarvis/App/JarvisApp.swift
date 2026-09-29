@@ -117,7 +117,7 @@ struct JarvisApp: App {
                 // Planner ledger: raw outputs of this run's attempts (diagnostics).
                 let ledger = await MLXPlanner.shared.allLedgerRecords()
                 for rec in ledger.suffix(4) {
-                    print("[planner-attempt \(rec.attempt)] parseFailed=\(rec.parseStageFailed) validatorError=\(rec.validatorError ?? "none") repair=\(rec.isRepair)")
+                    print("[planner-attempt \(rec.attempt)] parseFailed=\(rec.parseStageFailed) validatorError=\(rec.validatorError ?? "none") repair=\(rec.isRepair) prompt=\(rec.promptSHA256.prefix(8))")
                     print("[raw] \(rec.rawOutput)")
                 }
                 // Allow the detached conversation-persist write to land before

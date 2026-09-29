@@ -151,6 +151,37 @@ actor AgentLoop {
         }
     }
 
+    /// Cross-turn conversation memory for the planner: the bounded recent
+    /// conversation window rendered oldest→newest, with the new request last so
+    /// the model sees what "that"/"it" refers to. CONTEXT ONLY — interpretation
+    /// aid for what the user means; it never supplies deterministic argument
+    /// values and never bypasses ReferenceResolver/PlanValidator/PermissionGate
+    /// (unresolved-reference refusals fire BEFORE planning and stay fail-closed).
+    private static func conversationTurnsForPlanner(goal: String) async -> [String] {
+        let turns = await MainActor.run { () -> [Message] in
+            var msgs = ConversationManager.shared.messages.filter { $0.role == .user || $0.role == .assistant }
+            if msgs.isEmpty {
+                // Fresh lifecycle: the persisted window is the same source of truth.
+                msgs = ConversationStore.shared.loadMessages(limit: 12)
+                    .filter { $0.role == .user || $0.role == .assistant }
+            }
+            return Array(msgs.suffix(6))
+        }
+        let rendered = turns.map { message -> String in
+            let who = message.role == .user ? "User" : "You"
+            return "\(who): \(message.content.prefix(160))"
+        }
+        return rendered + ["User: \(goal.prefix(160))"]
+    }
+
+    /// Initial planner context: in-task planning evidence plus the bounded
+    /// cross-turn conversation window (context only).
+    private static func initialPlannerContext(goal: String) async -> PlannerContext {
+        var context = PlannerContext.initial(goal: goal)
+        context.conversationTurns = await conversationTurnsForPlanner(goal: goal)
+        return context
+    }
+
     private func runInternal(goal: String) async throws -> String {
         let timer = PipelineTimer()
         timer.mark(.actionStart)
@@ -245,7 +276,7 @@ actor AgentLoop {
         }
 
         attribute(.planner)
-        var plannerContext = PlannerContext.initial(goal: goal)
+        var plannerContext = await Self.initialPlannerContext(goal: goal)
         // Decomposed planning first for SINGLE-ACTION goals (planner
         // reliability milestone): the model selects ONE tool and extracts the
         // user's literal; the deterministic compiler builds the plan.

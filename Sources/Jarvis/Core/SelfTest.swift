@@ -3232,6 +3232,79 @@ enum SelfTest {
         }
         check(physicalE2ESuccess, "write_file physical E2E 20.66: extraction → compile → validate → execute → verify matches disk byte-for-byte")
 
+        // ── fetch_url bounded extraction tests (20.67 - 20.84) ──
+        let fu67 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch the url https://example.com")
+        check(fu67?.toolName == "fetch_url" && fu67?.arguments["url"] == "https://example.com" && fu67?.literal == "https://example.com",
+              "fetch_url det extraction 20.67: 'fetch the url https://example.com' extracted")
+
+        let fu68 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch url https://api.github.com/status")
+        check(fu68?.toolName == "fetch_url" && fu68?.arguments["url"] == "https://api.github.com/status",
+              "fetch_url det extraction 20.68: 'fetch url https://api.github.com/status' extracted")
+
+        let fu69 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch https://swift.org/download")
+        check(fu69?.toolName == "fetch_url" && fu69?.arguments["url"] == "https://swift.org/download",
+              "fetch_url det extraction 20.69: 'fetch https://swift.org/download' extracted")
+
+        let fu70 = PlannerExtraction.explicitFetchURLExtraction(goal: "read the url https://raw.githubusercontent.com/test.json")
+        check(fu70?.toolName == "fetch_url" && fu70?.arguments["url"] == "https://raw.githubusercontent.com/test.json",
+              "fetch_url det extraction 20.70: 'read the url ...' extracted")
+
+        let fu71 = PlannerExtraction.explicitFetchURLExtraction(goal: "download url http://example.com/archive.zip")
+        check(fu71?.toolName == "fetch_url" && fu71?.arguments["url"] == "http://example.com/archive.zip",
+              "fetch_url det extraction 20.71: 'download url http://...' extracted")
+
+        let complexURL = "https://example.com/page?query=1&sort=asc#frag"
+        let fu72 = PlannerExtraction.explicitFetchURLExtraction(goal: "please fetch the url \(complexURL)")
+        check(fu72?.toolName == "fetch_url" && fu72?.arguments["url"] == complexURL && fu72?.literal == complexURL,
+              "fetch_url det extraction 20.72: complex query & fragment preserved byte-for-byte")
+
+        let fu73 = PlannerExtraction.explicitFetchURLExtraction(goal: "can you fetch https://news.ycombinator.com")
+        check(fu73?.toolName == "fetch_url" && fu73?.arguments["url"] == "https://news.ycombinator.com",
+              "fetch_url det extraction 20.73: polite 'can you fetch ...' extracted")
+
+        let fu74 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch the url 'https://example.com/single'")
+        check(fu74?.toolName == "fetch_url" && fu74?.arguments["url"] == "https://example.com/single",
+              "fetch_url det extraction 20.74: single-quoted URL stripped and extracted")
+
+        let fu75 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch the url \"https://example.com/double\"")
+        check(fu75?.toolName == "fetch_url" && fu75?.arguments["url"] == "https://example.com/double",
+              "fetch_url det extraction 20.75: double-quoted URL stripped and extracted")
+
+        let fu76 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch the url <https://example.com/angle>")
+        check(fu76?.toolName == "fetch_url" && fu76?.arguments["url"] == "https://example.com/angle",
+              "fetch_url det extraction 20.76: angle-bracketed URL stripped and extracted")
+
+        let fu77 = PlannerExtraction.explicitFetchURLExtraction(goal: "don't fetch https://example.com")
+        check(fu77 == nil, "fetch_url det extraction 20.77: negation rejected")
+
+        let fu78 = PlannerExtraction.explicitFetchURLExtraction(goal: "what is the url of google?")
+        check(fu78 == nil, "fetch_url det extraction 20.78: question rejected")
+
+        let fu79 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch https://example.com and then open Safari")
+        check(fu79 == nil, "fetch_url det extraction 20.79: compound command rejected")
+
+        let fu80 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch the url ")
+        check(fu80 == nil, "fetch_url det extraction 20.80: missing url rejected")
+
+        let fu81 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch file:///etc/passwd")
+        check(fu81 == nil, "fetch_url det extraction 20.81: non-http scheme file:// rejected")
+
+        let fu82 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch javascript:alert(1)")
+        check(fu82 == nil, "fetch_url det extraction 20.82: javascript: scheme rejected")
+
+        let fu83 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch http://169.254.169.254/latest/meta-data")
+        check(fu83 == nil, "fetch_url det extraction 20.83: metadata SSRF IP rejected")
+
+        if let fu84Extracted = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch the url https://swift.org"),
+           case .success(let plan) = PlannerExtraction.compile(fu84Extracted, goal: "fetch the url https://swift.org"),
+           case .success(let validated) = PlanValidator.validate(plan),
+           let step = validated.steps.first {
+            check(step.toolName == "fetch_url" && step.arguments["url"] == "https://swift.org",
+                  "fetch_url det extraction 20.84: compile gate passes, url preserved in plan")
+        } else {
+            check(false, "fetch_url det extraction 20.84: compile gate failed")
+        }
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

@@ -644,6 +644,26 @@ actor MLXPlanner {
             }
         }
 
+        // Deterministic fetch_url extraction for explicit HTTP/HTTPS URL fetch requests
+        // ("fetch the url https://...", "download url https://...").
+        if let extractedFetch = PlannerExtraction.explicitFetchURLExtraction(goal: goal) {
+            let compileResultFetch = await MainActor.run { PlannerExtraction.compile(extractedFetch, goal: goal) }
+            switch compileResultFetch {
+            case .success(let plan):
+                await MainActor.run {
+                    ArgumentPreservationRecorder.shared.recordCompilation(
+                        originalGoal: goal,
+                        extractedLiteral: extractedFetch.literal,
+                        compiledLiteral: PlannerExtraction.compiledValue(carrying: extractedFetch.literal, in: plan))
+                }
+                JarvisLogger.brain.info("MLXPlanner used fetch_url deterministic extraction (0 model calls)")
+                return plan
+            case .failure(let error):
+                // Soft fall-through: the model gets a chance at an unusual request.
+                JarvisLogger.brain.warning("fetch_url det extraction compile failed (\(error.description)) — falling through to model")
+            }
+        }
+
         // Catalog: identical deterministic hint + forced-inclusion logic as
         // plan(), plus the recency web hint so freshness-sensitive goals see
         // the web tools.

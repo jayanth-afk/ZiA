@@ -472,6 +472,123 @@ enum PlannerExtraction {
         )
     }
 
+    // MARK: Deterministic fetch_url extraction (0 model calls)
+
+    /// Bounded, deterministic extraction for explicit, unambiguous URL fetch requests.
+    ///
+    /// Forms accepted:
+    ///   - "fetch the url https://..."
+    ///   - "fetch url https://..."
+    ///   - "fetch https://..."
+    ///   - "read the url https://..."
+    ///   - "download url https://..."
+    ///   - "please fetch the url https://..."
+    ///   - "can you fetch https://..."
+    ///
+    /// Safety & extraction constraints:
+    ///   - Must target an unambiguous http:// or https:// URL.
+    ///   - URL delimiters (single quotes, double quotes, angle brackets) stripped cleanly.
+    ///   - Valid URL scheme (http or https) and non-empty host required.
+    ///   - SSRF guards: blocked cloud metadata IPs (169.254.169.254, metadata.google.internal).
+    ///   - Rejects question starters, negations, compound commands, multi-URL commands.
+    ///
+    /// Returns nil when ambiguous or unsupported (fall through to MLXPlanner model path).
+    static func explicitFetchURLExtraction(goal: String) -> ExtractedAction? {
+        let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGoal.isEmpty else { return nil }
+        let lower = trimmedGoal.lowercased()
+
+        // Compound guard
+        let compoundMarkers = [" and then", ", then", " then ", " & ", " also ", " or "]
+        if compoundMarkers.contains(where: { lower.contains($0) }) { return nil }
+
+        // Negation guard
+        let negations = ["don't", "do not", "never ", "not fetch", "not download", "without fetching"]
+        if negations.contains(where: { lower.contains($0) }) { return nil }
+
+        // Question guard (except polite "can you ...")
+        let questionStarters = ["what ", "why ", "how ", "when ", "is ", "are ",
+                                "does ", "which ", "who ", "where ", "can i "]
+        if questionStarters.contains(where: { lower.hasPrefix($0) }) { return nil }
+
+        // Discussion/meta query guard
+        if lower.contains("how to") || lower.contains("fetch_url") || lower.contains("explain") {
+            return nil
+        }
+
+        // Grammar pattern:
+        // Prefixes: (please | can you)? (fetch|download|read|get) (the url|url|page|content from)?
+        let pattern = #"^\s*(?:please\s+|can\s+you\s+)?(?:fetch|download|read|get)(?:\s+the\s+(?:url|web\s+page|webpage|page|content\s+at|content\s+from)|\s+url|\s+web\s+page|\s+webpage)?\s+(?:'([^']*)'|"([^"]*)"|<([^>]*)>|([^\s'"]+))\s*[.!]?\s*$"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let nsGoal = trimmedGoal as NSString
+        let fullRange = NSRange(location: 0, length: nsGoal.length)
+        guard let match = regex.firstMatch(in: trimmedGoal, range: fullRange), match.numberOfRanges == 5 else {
+            return nil
+        }
+
+        let rawURL: String
+        let r1 = match.range(at: 1)
+        let r2 = match.range(at: 2)
+        let r3 = match.range(at: 3)
+        let r4 = match.range(at: 4)
+        if r1.location != NSNotFound {
+            rawURL = nsGoal.substring(with: r1)
+        } else if r2.location != NSNotFound {
+            rawURL = nsGoal.substring(with: r2)
+        } else if r3.location != NSNotFound {
+            rawURL = nsGoal.substring(with: r3)
+        } else if r4.location != NSNotFound {
+            rawURL = nsGoal.substring(with: r4)
+        } else {
+            return nil
+        }
+
+        let urlString = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !urlString.isEmpty else { return nil }
+
+        // Must be http or https
+        let lowerURL = urlString.lowercased()
+        guard lowerURL.hasPrefix("http://") || lowerURL.hasPrefix("https://") else {
+            return nil
+        }
+
+        // Must parse as valid URL with a host
+        guard let urlObj = URL(string: urlString),
+              let host = urlObj.host,
+              !host.isEmpty,
+              let scheme = urlObj.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return nil
+        }
+
+        // SSRF / internal metadata protection
+        let lowerHost = host.lowercased()
+        let blockedHosts = [
+            "169.254.169.254",
+            "metadata.google.internal",
+            "instance-data"
+        ]
+        if blockedHosts.contains(lowerHost) {
+            return nil
+        }
+
+        // Control characters / newline protection
+        guard !urlString.contains("\n"),
+              !urlString.contains("\r"),
+              !urlString.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            return nil
+        }
+
+        return ExtractedAction(
+            toolName: "fetch_url",
+            arguments: ["url": urlString],
+            literal: urlString
+        )
+    }
+
     // MARK: Parsing
 
     /// Parse the bounded extraction JSON the decomposition prompt requests:

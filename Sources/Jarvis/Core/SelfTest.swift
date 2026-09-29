@@ -4086,6 +4086,20 @@ enum SelfTest {
         }
         check(zeroToolActionRejected, "plan validator 20.159: plan with zero executable tools for action goal rejected")
 
+        // 20.160: Multi-step plan with fetch_url and write_file referencing $step.1.output validates cleanly
+        let fetchAndWritePlan = AgentPlan(
+            goal: "fetch the url https://httpbin.org/get and write the output to build/http_get.json",
+            steps: [
+                PlanStep(id: "step_1", toolName: "fetch_url", arguments: ["url": "https://httpbin.org/get"], purpose: "fetch web page content"),
+                PlanStep(id: "step_2", toolName: "write_file", arguments: ["content": "$step.1.output", "path": "build/http_get.json"], purpose: "write content to file")
+            ]
+        )
+        var fetchAndWriteOK = false
+        if case .success = PlanValidator.validate(fetchAndWritePlan, originalGoal: "fetch the url https://httpbin.org/get and write the output to build/http_get.json") {
+            fetchAndWriteOK = true
+        }
+        check(fetchAndWriteOK, "plan validator 20.160: multi-step fetch_url -> write_file with reference validates against compound goal")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

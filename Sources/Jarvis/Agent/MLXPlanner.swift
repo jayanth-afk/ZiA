@@ -1071,6 +1071,8 @@ actor MLXPlanner {
             case "query": return "\"weather in Tokyo\""
             case "url": return "\"https://example.com\""
             case "browser": return "\"Safari\""
+            case "path": return "\"build/output.txt\""
+            case "content": return "\"$step.1.output\""
             default: return "\"...\""
             }
         }
@@ -1097,6 +1099,8 @@ actor MLXPlanner {
 
         Rules:
         - Use only tools from the list. Do not use "tool": null for actions like write, save, run, read, or open. For questions without tools: use "tool": null.
+        - To save or write text or output to a file, use write_file with "path" and "content". To read a file, use read_file.
+        - To fetch or download web URL content, use fetch_url. To search the web, use web_search. To open a site in a browser window, use open_browser.
         - Copy argument names and value shapes EXACTLY from the schema above. Numbers without quotes. Never invent argument fields that are not in the schema.
         - If the goal asks to run a shell command, use run_shell and put the ENTIRE command text into one "command" string.
         - command is ONE scalar string containing the complete shell command. Never create an args field.
@@ -1120,6 +1124,10 @@ actor MLXPlanner {
         Example 4:
         Goal: run git branch and write output to build/branch.txt
         {"goal":"run git branch and write output to build/branch.txt","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"git branch"},"purpose":"get branch"},{"id":"step_2","tool":"write_file","arguments":{"content":"$step.1.output","path":"build/branch.txt"},"purpose":"write branch to file"}]}
+
+        Example 5:
+        Goal: fetch the url https://example.com and write output to output.txt
+        {"goal":"fetch the url https://example.com and write output to output.txt","steps":[{"id":"step_1","tool":"fetch_url","arguments":{"url":"https://example.com"},"purpose":"fetch web page"},{"id":"step_2","tool":"write_file","arguments":{"content":"$step.1.output","path":"output.txt"},"purpose":"write content to file"}]}
 
         Goal: \(goal)
         """

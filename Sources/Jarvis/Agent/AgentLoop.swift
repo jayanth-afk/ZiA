@@ -137,6 +137,24 @@ actor AgentLoop {
         return try await runInternal(goal: goal)
     }
 
+    /// CROSS-TURN MEMORY (production connection): record one interaction so
+    /// the next user turn can reference it. Uses the existing
+    /// ConversationManager — no new architecture, no new state system. Only
+    /// COMPLETED interactions are recorded: failures surface their own truthful
+    /// partial-state report, and a refusal is not something the assistant "did"
+    /// — replaying it as a completed turn would fabricate a false action in
+    /// memory. The user's request itself is still remembered either way.
+    private func recordConversationTurn(goal: String, response: String?) {
+        Task { @MainActor in
+            ConversationManager.shared.addUserMessage(goal)
+            if let response {
+                let finalText = response.isEmpty ? "All actions executed and verified." : response
+                ConversationManager.shared.addAssistantMessage(finalText)
+                ConversationStore.shared.saveMessage(Message(role: .assistant, content: finalText))
+            }
+        }
+    }
+
     private func runInternal(goal: String) async throws -> String {
         let timer = PipelineTimer()
         timer.mark(.actionStart)
@@ -168,6 +186,7 @@ actor AgentLoop {
                 action: match.action)
             lastReplanCount.value = 0
             lastPlannerMetrics.value = nil
+            recordConversationTurn(goal: goal, response: output)
             return output
         }
         // 3. DIRECT-ANSWER / REFUSAL ROUTE: narrow deterministic decision before
@@ -182,6 +201,11 @@ actor AgentLoop {
             attribute(.refusal)
             lastReplanCount.value = 0
             lastPlannerMetrics.value = nil
+            // Memory records the REQUEST (never a fake assistant action), so a
+            // follow-up clarification ("what can you do instead?") has context.
+            Task { @MainActor in
+                ConversationManager.shared.addUserMessage(goal)
+            }
             return reason.userFacingMessage
         case .directAnswer:
             JarvisLogger.brain.info("AgentLoop: direct-answer route for '\(goal, privacy: .public)'")
@@ -190,6 +214,7 @@ actor AgentLoop {
                 attribute(.directAnswer)
                 lastReplanCount.value = 0
                 lastPlannerMetrics.value = nil
+                recordConversationTurn(goal: goal, response: answer)
                 return answer
             } catch is CancellationError {
                 throw CancellationError()
@@ -585,6 +610,11 @@ actor AgentLoop {
         let response = completedOutputs.joined(separator: "\n")
         JarvisLogger.brain.info("AgentLoop completed goal successfully: \(response)")
 
+        // CROSS-TURN MEMORY (production connection): record this interaction so
+        // the next user turn can reference it. Response text only; nothing is
+        // inferred from state or output text.
+        recordConversationTurn(goal: goal, response: response)
+
         return response.isEmpty ? "All actions executed and verified." : response
     }
 
@@ -703,6 +733,10 @@ actor AgentLoop {
                 try stateMachine.transition(taskId: task.id, to: .verifying)
                 try stateMachine.transition(taskId: task.id, to: .completed)
                 let response = completedSteps.compactMap(\.output).joined(separator: "\n")
+                // CROSS-TURN MEMORY: record the sequential-path interaction so
+                // the next user turn can reference it (same contract as the
+                // whole-plan path's success exit).
+                recordConversationTurn(goal: goal, response: response)
                 return response.isEmpty ? "All actions executed and verified." : response
             }
             guard let step = plan.steps.first else {

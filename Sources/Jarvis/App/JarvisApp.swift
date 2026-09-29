@@ -45,6 +45,42 @@ struct JarvisApp: App {
             Config.shared.autonomyLevel = lvl
         }
 
+        // Handle --goals <g1> <| <g2> <| ...: run MULTIPLE goals through the
+        // SAME production pipeline in ONE process, so the cross-turn conversation
+        // memory (ConversationManager) behaves exactly as in the running app.
+        // Used to verify follow-up turns ("why?") can reference the prior turn.
+        if CommandLine.arguments.firstIndex(of: "--goals") != nil {
+            setbuf(stdout, nil)
+            let goalsIdx = CommandLine.arguments.firstIndex(of: "--goals")!
+            let goals = CommandLine.arguments[(goalsIdx + 1)...]
+                .joined(separator: " ")
+                .components(separatedBy: "<|")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                ArgumentPreservationRecorder.shared.reset()
+                for (i, goal) in goals.enumerated() {
+                    print("── turn \(i + 1): \(goal)")
+                    do {
+                        let response = try await AgentLoop.shared.run(goal: goal)
+                        let route = await AgentLoop.shared.latestRoute()
+                        print("[route] \(route?.rawValue ?? "unknown")")
+                        print("[response] \(response)")
+                    } catch {
+                        let route = await AgentLoop.shared.latestRoute()
+                        print("[route] \(route?.rawValue ?? "unknown")")
+                        print("[error] \(error.localizedDescription)")
+                    }
+                }
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(0)
+        }
+
         // Handle --goal <goal>: run ONE goal through the full production
         // pipeline (AgentLoop.run → router | direct answer | planner →
         // validation → execution → verification) and print route + response.

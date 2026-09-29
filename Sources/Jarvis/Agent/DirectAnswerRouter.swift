@@ -215,6 +215,35 @@ enum DirectAnswerRouter {
             return .directAnswer
         }
 
+        // 2b. Bare conversational follow-ups (CROSS-TURN MEMORY): terse one-word
+        // follow-ups after a completed task ("why?", "when?", "explain") are
+        // conversation-about-context, not tool tasks. Routing them to the
+        // planner makes the 0.5B model hallucinate an unrelated tool call for a
+        // question only the conversation history can answer. Exact-match on the
+        // normalized whole goal — deliberately tiny, no grammar, no sprawl.
+        let bareFollowUps: Set<String> = ["why", "why?", "how", "how?", "when", "when?", "explain", "elaborate", "what happened", "what happened?"]
+        if bareFollowUps.contains(normalized) {
+            return .directAnswer
+        }
+
+        // 2c. Conversation-processing instructions (CROSS-TURN MEMORY): short
+        // instructions whose object is the conversation itself — "summarize
+        // that in one sentence", "repeat your previous output". The referent
+        // (that/this/it/previous/last) lives in conversation memory, which only
+        // the direct-answer composer sees; the planner would hallucinate a tool
+        // call for it. Bounded: first word must be a processing verb, a
+        // conversation referent must be present, and the goal must be short.
+        // Action verbs ("delete that file") never match — the verb list has no
+        // execution/system verbs.
+        let words = normalized.split(separator: " ")
+        let processVerbs: Set<String> = ["summarize", "summarise", "repeat", "restate", "rephrase", "rewrite", "shorten", "explain", "translate", "spell"]
+        let conversationReferents: Set<String> = ["that", "this", "it", "them", "those", "these", "previous", "last"]
+        if let first = words.first, processVerbs.contains(String(first)),
+           words.count <= 10,
+           words.contains(where: { conversationReferents.contains(String($0)) }) {
+            return .directAnswer
+        }
+
         // 3. Unsupported capabilities in imperative phrasing: no registered
         // tool can serve these (no email/chat/media/commerce tools exist), so
         // planning would either hallucinate a tool or misuse an unrelated one.

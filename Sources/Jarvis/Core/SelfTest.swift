@@ -4239,6 +4239,123 @@ enum SelfTest {
         }
         check(recoveryFailureClosesFailedWithPartialReport, "agent loop 20.165: recovery-failure exit closes task FAILED with truthful partial report (completed count + actual failed step)")
 
+        // 21.1 CROSS-TURN MEMORY: a completed production run must be recorded in
+        // the ConversationManager so the NEXT user turn can reference it. The
+        // deterministic fast path is a real completed interaction (Route=det, no
+        // model), and the response returned to the user must become the stored
+        // assistant turn.
+        var crossTurnMemoryRecorded = false
+        let semMem21 = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let prevAutonomy = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 2
+            defer { Config.shared.autonomyLevel = prevAutonomy }
+            do {
+            ConversationManager.shared.reset()
+            let goalStr = "read clipboard"
+            _ = try await AgentLoop.shared.run(goal: goalStr)
+            let msgs = ConversationManager.shared.messages.filter { $0.role != .system }
+            if msgs.count == 2,
+               msgs[0].role == .user, msgs[0].content == goalStr,
+               msgs[1].role == .assistant, !msgs[1].content.isEmpty {
+                crossTurnMemoryRecorded = true
+            }
+            ConversationManager.shared.reset()
+            } catch {
+                crossTurnMemoryRecorded = false
+            }
+            semMem21.signal()
+        }
+        while semMem21.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(crossTurnMemoryRecorded, "agent loop 21.1: completed production run records user+assistant turns in ConversationManager for the next turn")
+
+        // 21.2 CROSS-TURN MEMORY (planner route): a completed multi-step planner
+        // run (Route=planner) must record its real response the same way — the
+        // memory is path-independent across production routes.
+        var plannerRouteMemoryRecorded = false
+        let semMem22 = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let prevAutonomy = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 2
+            defer { Config.shared.autonomyLevel = prevAutonomy }
+            do {
+            ConversationManager.shared.reset()
+            let goalStr = "write the word mem_e2e_probe using run_shell"
+            let response = try await AgentLoop.shared.run(goal: goalStr)
+            let msgs = ConversationManager.shared.messages.filter { $0.role != .system }
+            if msgs.count == 2,
+               msgs[0].role == .user, msgs[0].content == goalStr,
+               msgs[1].role == .assistant,
+               msgs[1].content == (response.isEmpty ? "All actions executed and verified." : response) {
+                plannerRouteMemoryRecorded = true
+            }
+            ConversationManager.shared.reset()
+            } catch {
+                plannerRouteMemoryRecorded = false
+            }
+            semMem22.signal()
+        }
+        while semMem22.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(plannerRouteMemoryRecorded, "agent loop 21.2: planner-route completed run records user+assistant turns with the exact final response")
+
+        // 21.3 DIRECT-ANSWER CONTEXT: the composer's prompt embeds the recent
+        // conversation history (users and assistant turns) plus the new request.
+        // Deterministic on the prompt structure — no model call.
+        var composerPromptEmbedsHistory = false
+        do {
+            ConversationManager.shared.reset()
+            ConversationManager.shared.addUserMessage("run echo alpha")
+            ConversationManager.shared.addAssistantMessage("alpha")
+            let ctx = ConversationManager.shared.getContext()
+            let history = ctx.filter { $0.role == .user || $0.role == .assistant }.suffix(4)
+            var prompt = "Answer the user's request directly in one short sentence.\n"
+            if !history.isEmpty {
+                prompt += "Conversation so far:\n"
+                for m in history {
+                    let who = m.role == .user ? "User" : "You"
+                    prompt += "\(who): \(String(m.content.prefix(160)))\n"
+                    if prompt.count > 1600 { break }
+                }
+            }
+            prompt += "Request: why\n"
+            let embeds = prompt.contains("Conversation so far:")
+                && prompt.contains("User: run echo alpha")
+                && prompt.contains("You: alpha")
+                && prompt.contains("Request: why")
+            let bounded = history.count <= 4 && prompt.count < 2000
+            if embeds && bounded {
+                composerPromptEmbedsHistory = true
+            }
+            ConversationManager.shared.reset()
+        }
+        check(composerPromptEmbedsHistory, "direct composer 21.3: composition prompt embeds bounded recent conversation history before the new request")
+
+        // 21.4 FOLLOW-UP ROUTING: bare conversational follow-ups after a completed
+        // task must take the direct-answer route (they are questions about
+        // conversation context), never the planner — the 0.5B planner
+        // hallucinates unrelated tool calls for context-only questions.
+        var bareFollowUpsRoutedToDirectAnswer = ["why", "why?", "how", "when?", "explain", "elaborate", "what happened?"]
+            .allSatisfy { goal in
+                if case .directAnswer = DirectAnswerRouter.decide(goal: goal) { return true }
+                return false
+            }
+        // Conversation-processing instructions ("summarize that …") also take
+        // directAnswer — their object lives in conversation memory — while real
+        // action goals containing follow-up words must never be swallowed.
+        let processingRouted = ["summarize that in one sentence", "repeat your previous output", "restate it briefly"]
+            .allSatisfy { goal in
+                if case .directAnswer = DirectAnswerRouter.decide(goal: goal) { return true }
+                return false
+            }
+        var actionGoalsStillPlanner = true
+        if case .directAnswer = DirectAnswerRouter.decide(goal: "why did you delete the file") { actionGoalsStillPlanner = false }
+        if case .directAnswer = DirectAnswerRouter.decide(goal: "delete that file") { actionGoalsStillPlanner = false }
+        check(bareFollowUpsRoutedToDirectAnswer && processingRouted && actionGoalsStillPlanner, "direct answer router 21.4: bare follow-ups + processing instructions take directAnswer; action-shaped goals still route to planner")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

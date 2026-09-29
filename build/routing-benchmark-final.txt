@@ -1,0 +1,216 @@
+── segment: case1-direct-fact ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [case1-direct-fact #1] route=directAnswer struct=✓ sem=✓ arg=n/a 3534ms — direct-answer route, planner not called
+  [case1-direct-fact #2] route=directAnswer struct=✓ sem=✓ arg=n/a 2779ms — direct-answer route, planner not called
+  [case1-direct-fact #3] route=directAnswer struct=✓ sem=✓ arg=n/a 2925ms — direct-answer route, planner not called
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  DIRECT-ANSWER ROUTE (route=directAnswer, n=3): semantic 3/3
+
+  Per-case:
+    case1-direct-fact (n=3, routes=directAnswer): semantic 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: case2-explicit-search ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [case2-explicit-search #1] route=planner struct=✓ sem=✓ arg=n/a 5454ms — web/tool path engaged (recency-safe)
+  [case2-explicit-search #2] route=planner struct=✓ sem=✓ arg=n/a 3482ms — web/tool path engaged (recency-safe)
+  [case2-explicit-search #3] route=planner struct=✓ sem=✓ arg=n/a 3453ms — web/tool path engaged (recency-safe)
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3
+  planner latency (n=3): median 3482ms  min 3453ms  max 5453ms
+  planner repair (structural) usage: 0/3 runs
+
+  Per-case:
+    case2-explicit-search (n=3, routes=planner): semantic 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: case3-recency-fact ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [case3-recency-fact #1] route=planner struct=✓ sem=✓ arg=n/a 6210ms — web/tool path engaged (recency-safe)
+  [case3-recency-fact #2] route=planner struct=✓ sem=✓ arg=n/a 3448ms — web/tool path engaged (recency-safe)
+  [case3-recency-fact #3] route=planner struct=✓ sem=✓ arg=n/a 3834ms — web/tool path engaged (recency-safe)
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3
+  planner latency (n=3): median 3833ms  min 3447ms  max 6210ms
+  planner repair (structural) usage: 0/3 runs
+
+  Per-case:
+    case3-recency-fact (n=3, routes=planner): semantic 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: ctrl-det-time ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [ctrl-det-time #1] route=deterministic struct=✓ sem=✓ arg=n/a 1147ms — deterministic route, no model calls
+  [ctrl-det-time #2] route=deterministic struct=✓ sem=✓ arg=n/a 1142ms — deterministic route, no model calls
+  [ctrl-det-time #3] route=deterministic struct=✓ sem=✓ arg=n/a 1144ms — deterministic route, no model calls
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  DETERMINISTIC ROUTE (route=deterministic, n=3): semantic 3/3
+  deterministic latency (n=3): median 1143ms  max 1146ms
+
+  Per-case:
+    ctrl-det-time (n=3, routes=deterministic): semantic 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: ctrl-det-open ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [ctrl-det-open #1] route=deterministic struct=✓ sem=✓ arg=n/a 1504ms — deterministic route, no model calls
+  [ctrl-det-open #2] route=deterministic struct=✓ sem=✓ arg=n/a 1234ms — deterministic route, no model calls
+  [ctrl-det-open #3] route=deterministic struct=✓ sem=✓ arg=n/a 1234ms — deterministic route, no model calls
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  DETERMINISTIC ROUTE (route=deterministic, n=3): semantic 3/3
+  deterministic latency (n=3): median 1234ms  max 1503ms
+
+  Per-case:
+    ctrl-det-open (n=3, routes=deterministic): semantic 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: ctrl-planner-shell ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [ctrl-planner-shell #1] route=planner struct=✓ sem=✓ arg=preserved 2093ms — planner route + tool family 'shell' executed
+  [ctrl-planner-shell #2] route=planner struct=✓ sem=✓ arg=preserved 2081ms — planner route + tool family 'shell' executed
+  [ctrl-planner-shell #3] route=planner struct=✓ sem=✓ arg=preserved 2074ms — planner route + tool family 'shell' executed
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 2081ms  min 2073ms  max 2092ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    ctrl-planner-shell (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: arg-spaces ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [arg-spaces #1] route=planner struct=✓ sem=✓ arg=preserved 2075ms — planner route + tool family 'shell' executed
+  [arg-spaces #2] route=planner struct=✓ sem=✓ arg=preserved 2058ms — planner route + tool family 'shell' executed
+  [arg-spaces #3] route=planner struct=✓ sem=✓ arg=preserved 2066ms — planner route + tool family 'shell' executed
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 2065ms  min 2058ms  max 2074ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    arg-spaces (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: arg-numbers ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [arg-numbers #1] route=planner struct=✓ sem=✓ arg=preserved 2079ms — planner route + tool family 'shell' executed
+  [arg-numbers #2] route=planner struct=✓ sem=✓ arg=preserved 2084ms — planner route + tool family 'shell' executed
+  [arg-numbers #3] route=planner struct=✓ sem=✓ arg=preserved 2059ms — planner route + tool family 'shell' executed
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 2079ms  min 2059ms  max 2084ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    arg-numbers (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: arg-punct ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [arg-punct #1] route=planner struct=✓ sem=✓ arg=preserved 2081ms — planner route + tool family 'shell' executed
+  [arg-punct #2] route=planner struct=✓ sem=✓ arg=preserved 2067ms — planner route + tool family 'shell' executed
+  [arg-punct #3] route=planner struct=✓ sem=✓ arg=preserved 2072ms — planner route + tool family 'shell' executed
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 2072ms  min 2067ms  max 2081ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    arg-punct (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: arg-unusual ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [arg-unusual #1] route=planner struct=✓ sem=✓ arg=preserved 2071ms — planner route + tool family 'shell' executed
+  [arg-unusual #2] route=escalation struct=✓ sem=✓ arg=SUBSTITUTED 53202ms — planner route + tool family 'shell' executed | PRESERVATION FAILURE: expected 'jarvis_planner_e2e_verified' chain=extracted=jarvis_planner_e2e_verified compiled=echo 'jarvis_planner_e2e_verified' executed=echo jarvis_planner_e2e_verified
+  [arg-unusual #3] route=planner struct=✓ sem=✓ arg=preserved 2090ms — planner route + tool family 'shell' executed
+  [arg-unusual #4] route=planner struct=✓ sem=✓ arg=preserved 2095ms — planner route + tool family 'shell' executed
+  [arg-unusual #5] route=planner struct=✓ sem=✓ arg=preserved 2077ms — planner route + tool family 'shell' executed
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 5 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=4): semantic 4/4, argument preservation 4/4 byte-exact
+  TIER-B ESCALATION ROUTE (route=escalation, n=1): semantic 1/1, argument preservation 0/1 byte-exact
+  planner latency (n=5): median 2089ms  min 2071ms  max 53202ms
+  planner repair (structural) usage: 0/5 runs
+  ARGUMENT PRESERVATION (explicit metric): 4/5 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    arg-unusual (n=5, routes=planner,escalation): semantic 5/5, preserved 4/5
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+
+── segment: arg-unusual (rerun) ──
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [arg-unusual #1] route=planner struct=✓ sem=✓ arg=preserved 2081ms — planner route + tool family 'shell' executed
+  [arg-unusual #2] route=planner struct=✓ sem=✓ arg=preserved 2071ms — planner route + tool family 'shell' executed
+  [arg-unusual #3] route=planner struct=✓ sem=✓ arg=preserved 2133ms — planner route + tool family 'shell' executed
+  [arg-unusual #4] route=planner struct=✓ sem=✓ arg=preserved 2077ms — planner route + tool family 'shell' executed
+  [arg-unusual #5] route=planner struct=✓ sem=✓ arg=preserved 2081ms — planner route + tool family 'shell' executed
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 5 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=5): semantic 5/5, argument preservation 5/5 byte-exact
+  planner latency (n=5): median 2081ms  min 2071ms  max 2133ms
+  planner repair (structural) usage: 0/5 runs
+  ARGUMENT PRESERVATION (explicit metric): 5/5 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    arg-unusual (n=5, routes=planner): semantic 5/5, preserved 5/5
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

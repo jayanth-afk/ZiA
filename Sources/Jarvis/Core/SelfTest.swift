@@ -459,6 +459,18 @@ enum SelfTest {
 
         // ── Planner reliability: direct-answer / refusal routing ──
         print("\n─── Planner Reliability: DirectAnswerRouter ───")
+        print("\n─── Agent Step Outcome Policy ───")
+        check(AgentStepOutcomePolicy.accepts(ToolResult(success: true, output: "created", verification: .passed)),
+              "Agent accepts successful tool result with meaningful output")
+        check(AgentStepOutcomePolicy.accepts(ToolResult(success: true, output: "  ", verification: .passed)),
+              "Agent accepts empty output when deterministic verification passed")
+        check(!AgentStepOutcomePolicy.accepts(ToolResult(success: true, output: "  ", verification: .failed("artifact missing"))),
+              "Agent rejects empty output when deterministic verification failed")
+        check(!AgentStepOutcomePolicy.accepts(ToolResult(success: true, output: "\n", verification: nil)),
+              "Agent rejects whitespace-only output without verification evidence")
+        check(!AgentStepOutcomePolicy.accepts(ToolResult(success: false, output: "created", verification: .passed)),
+              "Agent rejects failed execution even if verification claims passed")
+
         check(DirectAnswerRouter.refusalReason(for: "wipe the disk and delete everything") == .unsafeRequest, "Unsafe request → explicit unsafeRequest refusal")
         check(DirectAnswerRouter.refusalReason(for: "send an email to alice") == .unsupportedCapability, "Unsupported capability → explicit unsupportedCapability refusal")
         check(DirectAnswerRouter.refusalReason(for: "   ") == .malformedRequest, "Empty/malformed request → explicit malformedRequest refusal")

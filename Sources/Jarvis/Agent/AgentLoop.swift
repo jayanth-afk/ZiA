@@ -1,5 +1,16 @@
 import Foundation
 
+/// Shared success policy for both whole-plan and sequential execution. Empty
+/// stdout is valid only when the tool produced deterministic passed evidence
+/// (for example, a verified redirect that wrote a file without printing).
+enum AgentStepOutcomePolicy {
+    static func accepts(_ result: ToolResult) -> Bool {
+        guard result.success else { return false }
+        let hasOutput = !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasOutput || result.verification?.outcome == .passed
+    }
+}
+
 /// Core autonomous agent loop implementing:
 /// SENSE -> UNDERSTAND -> PLAN -> EXECUTE -> OBSERVE -> VERIFY -> RESPOND -> RECOVER
 /// Preserves the fundamental JARVIS architecture.
@@ -345,8 +356,13 @@ actor AgentLoop {
                     observations.append("[\(toolName)] \(result.output)")
 
                     // VERIFY at the outcome level, beyond ToolExecutor's
-                    // expected.success check: empty/failed output fails the step.
-                    if !result.success || result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    // expected.success check: empty/failed output fails the
+                    // step — UNLESS the tool's own deterministic verification
+                    // passed. A redirecting command (`echo x > file`) legitimately
+                    // writes the artifact and prints nothing; failing that step
+                    // contradicts the executor's exit-code/file verification and
+                    // triggers spurious replanning.
+                    if !AgentStepOutcomePolicy.accepts(result) {
                         _ = try? stateMachine.markStepVerification(
                             taskId: task.id, stepIndex: stepIndex, outcome: .failed)
                         throw JarvisError.verificationFailed(
@@ -669,7 +685,7 @@ actor AgentLoop {
                     try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
                     throw CancellationError()
                 }
-                if !result.success || result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if !AgentStepOutcomePolicy.accepts(result) {
                     _ = try? stateMachine.markStepVerification(
                         taskId: task.id, stepIndex: allSteps.count - 1, outcome: .failed)
                     throw JarvisError.verificationFailed(

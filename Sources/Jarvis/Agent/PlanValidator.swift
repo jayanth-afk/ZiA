@@ -100,13 +100,20 @@ enum AgentPlanParser {
         // a skeleton echo is never a plan (it has a placeholder tool value).
         let boundedRaw = String(text.prefix(maxPlannerOutputCharacters))
         let bounded = stripJSONTerminatorEcho(stripSkeletonEcho(boundedRaw))
-        let candidates = extractJSONObjectCandidates(in: bounded)
+        let repaired = repairGoalQuotes(in: bounded)
+        var candidates = extractJSONObjectCandidates(in: repaired)
+        if repaired != bounded {
+            for c in extractJSONObjectCandidates(in: bounded) where !candidates.contains(c) {
+                candidates.append(c)
+            }
+        }
         guard !candidates.isEmpty else {
             return .failure(.noJSONFound)
         }
 
         var firstFailure: PlanValidationError?
-        for jsonText in candidates {
+        for rawJsonText in candidates {
+            let jsonText = repairGoalQuotes(in: rawJsonText)
             guard let data = jsonText.data(using: .utf8) else { continue }
             do {
                 let raw = try JSONSerialization.jsonObject(with: data)
@@ -223,6 +230,59 @@ enum AgentPlanParser {
         return head
     }
 
+    /// When a user request contains double quotes (e.g. `search for "OpenAI"`),
+    /// a 0.5B model frequently echoes the goal verbatim into `"goal": "..."`
+    /// without escaping the inner quotes. This causes RFC 8259 JSON parsers to
+    /// reject the entire plan object even when all plan steps are perfectly valid.
+    /// This repair sanitizes unescaped quotes inside the `"goal"` value only.
+    static func repairGoalQuotes(in text: String) -> String {
+        guard let goalRange = text.range(of: "\"goal\"") else { return text }
+        guard let colonRange = text.range(of: ":", range: goalRange.upperBound..<text.endIndex) else { return text }
+        guard let openQuoteRange = text.range(of: "\"", range: colonRange.upperBound..<text.endIndex) else { return text }
+
+        let closeQuoteRange: Range<String.Index>
+        if let stepsRange = text.range(of: "\"steps\"", range: openQuoteRange.upperBound..<text.endIndex) {
+            guard let commaRange = text.range(of: ",", options: .backwards, range: openQuoteRange.upperBound..<stepsRange.lowerBound),
+                  let qRange = text.range(of: "\"", options: .backwards, range: openQuoteRange.upperBound..<commaRange.lowerBound) else {
+                return text
+            }
+            closeQuoteRange = qRange
+        } else if let endBrace = text.range(of: "}", options: .backwards, range: openQuoteRange.upperBound..<text.endIndex) {
+            guard let qRange = text.range(of: "\"", options: .backwards, range: openQuoteRange.upperBound..<endBrace.lowerBound) else {
+                return text
+            }
+            closeQuoteRange = qRange
+        } else {
+            return text
+        }
+
+        guard openQuoteRange.upperBound < closeQuoteRange.lowerBound else { return text }
+        let innerGoalRange = openQuoteRange.upperBound..<closeQuoteRange.lowerBound
+        let innerGoal = String(text[innerGoalRange])
+
+        guard innerGoal.contains("\"") else { return text }
+
+        var escapedInner = ""
+        var isEscaped = false
+        for char in innerGoal {
+            if isEscaped {
+                escapedInner.append(char)
+                isEscaped = false
+            } else if char == "\\" {
+                escapedInner.append(char)
+                isEscaped = true
+            } else if char == "\"" {
+                escapedInner.append("\\\"")
+            } else {
+                escapedInner.append(char)
+            }
+        }
+
+        var result = text
+        result.replaceSubrange(innerGoalRange, with: escapedInner)
+        return result
+    }
+
     // MARK: Schema-level validation (shape only; tool semantics live in the validator)
 
     private static func validateSchema(_ object: [String: Any]) -> Result<AgentPlan, PlanValidationError> {
@@ -261,6 +321,15 @@ enum AgentPlanParser {
                     return .failure(.wrongType(field: "arguments"))
                 }
                 for (key, value) in args {
+                    // Small models sometimes repeat top-level step keys like "tool", "id", "purpose"
+                    // inside the arguments dictionary. Ignore them so they are not treated as unknown arguments.
+                    if ["tool", "id", "purpose"].contains(key) {
+                        continue
+                    }
+                    // Explicit null values in arguments represent omitted optional arguments.
+                    if value is NSNull {
+                        continue
+                    }
                     // Scalar arguments only; nested structures are rejected
                     // so no object ever reaches tool execution unvalidated.
                     switch value {

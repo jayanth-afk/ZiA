@@ -3968,6 +3968,40 @@ enum SelfTest {
         check(verifiedFileRefSuccess, "verified file reference E2E 20.149: written file → ReferenceResolver resolution → read_file execution → verified content")
         check(unresolvedFileRefSuccess, "unresolved file reference E2E 20.150: unresolved file reference → clarification, never fabricates or executes")
 
+        // 20.151: AgentPlanParser repairs unescaped quotes in echoed goal
+        let unescapedGoalJSON = #"{"goal": "search for "OpenAI" and open https://openai.com", "steps": [{"id": "step_1", "tool": "web_search", "arguments": {"query": "OpenAI"}, "purpose": "search for OpenAI"}]}"#
+        var unescapedGoalOK = false
+        if case .success(let p) = AgentPlanParser.parse(unescapedGoalJSON),
+           p.steps.first?.toolName == "web_search",
+           p.steps.first?.arguments["query"] == "OpenAI" {
+            unescapedGoalOK = true
+        }
+        check(unescapedGoalOK, "plan parser 20.151: unescaped quotes in echoed goal repaired and parsed cleanly")
+
+        // 20.152: Redundant step keys inside arguments ignored
+        let redundantArgsJSON = #"{"goal": "search", "steps": [{"id": "step_1", "tool": "web_search", "arguments": {"query": "OpenAI", "tool": "web_search", "id": "step_1"}, "purpose": "search"}]}"#
+        var redundantArgsOK = false
+        if case .success(let p) = AgentPlanParser.parse(redundantArgsJSON),
+           p.steps.first?.toolName == "web_search",
+           p.steps.first?.arguments["query"] == "OpenAI",
+           p.steps.first?.arguments["tool"] == nil,
+           case .success = PlanValidator.validate(p) {
+            redundantArgsOK = true
+        }
+        check(redundantArgsOK, "plan parser 20.152: redundant step keys inside arguments ignored during validation")
+
+        // 20.153: Explicit null in arguments treated as omitted optional argument
+        let nullArgJSON = #"{"goal": "read", "steps": [{"id": "step_1", "tool": "read_file", "arguments": {"path": "build/test.txt", "content": null}, "purpose": "read"}]}"#
+        var nullArgOK = false
+        if case .success(let p) = AgentPlanParser.parse(nullArgJSON),
+           p.steps.first?.toolName == "read_file",
+           p.steps.first?.arguments["path"] == "build/test.txt",
+           p.steps.first?.arguments["content"] == nil,
+           case .success = PlanValidator.validate(p) {
+            nullArgOK = true
+        }
+        check(nullArgOK, "plan parser 20.153: explicit null in arguments treated as omitted optional argument")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

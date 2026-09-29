@@ -418,6 +418,15 @@ enum PlanValidator {
             // rejects unsafe commands at plan time with a clear reason.)
             if toolName == "run_shell", let command = step.arguments["command"] {
                 if !command.contains("$step") && !command.contains("$ambient") {
+                    let trimmed = command.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let lower = trimmed.lowercased()
+                    let unresolvedCommandPlaceholders = [
+                        "your_command", "<command>", "command", "that command", "that",
+                        "that_command", "placeholder", "my_command", "some_command"
+                    ]
+                    if unresolvedCommandPlaceholders.contains(lower) || lower.hasPrefix("your_") || lower.hasPrefix("<command") {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "unresolved command reference '\(command)' (argument fabrication rejected)"))
+                    }
                     guard CommandSandbox.shared.isSafe(command) else {
                         return .failure(.unsafeOperation(tool: toolName, reason: "command rejected by CommandSandbox"))
                     }
@@ -430,10 +439,19 @@ enum PlanValidator {
                     if trimmed.isEmpty {
                         return .failure(.unsafeOperation(tool: toolName, reason: "empty file path"))
                     }
+                    let lower = trimmed.lowercased()
+                    let unresolvedPathPlaceholders = [
+                        "/path/to/non-system/file", "/path/to/file", "path/to/file",
+                        "path/to/non-system/file.txt", "that_file", "that file", "the_file",
+                        "the file", "<path>", "<filepath>", "<file>", "filename", "file.txt",
+                        "that", "placeholder"
+                    ]
+                    if unresolvedPathPlaceholders.contains(lower) || lower.hasPrefix("/path/to/") || lower.hasPrefix("path/to/") || lower.hasPrefix("that_") || lower.hasPrefix("<path") {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "unresolved file reference '\(path)' (argument fabrication rejected)"))
+                    }
                     if trimmed.contains("..") {
                         return .failure(.unsafeOperation(tool: toolName, reason: "directory traversal '..' forbidden"))
                     }
-                    let lower = trimmed.lowercased()
                     let sensitiveSubpaths = [".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud", ".env", ".netrc", ".zsh_history", ".bash_history"]
                     if sensitiveSubpaths.contains(where: { lower.contains($0) }) {
                         return .failure(.unsafeOperation(tool: toolName, reason: "access to sensitive subpath forbidden"))
@@ -443,6 +461,20 @@ enum PlanValidator {
                     ]
                     if protectedSystemPrefixes.contains(where: { lower == $0 || lower.hasPrefix($0 + "/") }) {
                         return .failure(.unsafeOperation(tool: toolName, reason: "access to system path forbidden"))
+                    }
+                }
+            }
+
+            if toolName == "write_file", let content = step.arguments["content"] {
+                if !content.contains("$step") && !content.contains("$ambient") {
+                    let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let lower = trimmed.lowercased()
+                    let unresolvedContentPlaceholders = [
+                        "that", "this", "<content>", "content", "placeholder",
+                        "this is the content.", "this is the content of the file."
+                    ]
+                    if unresolvedContentPlaceholders.contains(lower) || lower.hasPrefix("<content") {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "unresolved write content reference '\(content)' (argument fabrication rejected)"))
                     }
                 }
             }
@@ -458,10 +490,40 @@ enum PlanValidator {
                         "that_app", "that app", "the app", "this app", "my app", "an app",
                         "that_application", "the_application", "this_application",
                         "<app>", "<app_name>", "<application>", "app_name", "application",
-                        "that", "the_app", "this_app"
+                        "that", "the_app", "this_app", "open"
                     ]
                     if unresolvedReferences.contains(lower) || lower.hasPrefix("that_") || lower.hasPrefix("<app") {
                         return .failure(.unsafeOperation(tool: toolName, reason: "unresolved application reference '\(appName)' (argument fabrication rejected)"))
+                    }
+                }
+            }
+
+            if toolName == "fetch_url", let url = step.arguments["url"] {
+                if !url.contains("$step") && !url.contains("$ambient") {
+                    let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let lower = trimmed.lowercased()
+                    let unresolvedURLPlaceholders = [
+                        "that_url", "that url", "the url", "that", "this", "<url>", "url", "placeholder"
+                    ]
+                    if unresolvedURLPlaceholders.contains(lower) || lower.hasPrefix("that_") || lower.hasPrefix("<url") {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "unresolved URL reference '\(url)' (argument fabrication rejected)"))
+                    }
+                    if lower.contains("example.com") && !plan.goal.lowercased().contains("example.com") {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "fabricated URL placeholder '\(url)' not present in goal (argument fabrication rejected)"))
+                    }
+                }
+            }
+
+            if toolName == "web_search", let query = step.arguments["query"] {
+                if !query.contains("$step") && !query.contains("$ambient") {
+                    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let lower = trimmed.lowercased()
+                    let unresolvedSearchPlaceholders = [
+                        "that", "it", "this", "<query>", "<search_query>", "search query",
+                        "query", "that topic", "something", "placeholder"
+                    ]
+                    if unresolvedSearchPlaceholders.contains(lower) || lower.hasPrefix("that_") || lower.hasPrefix("<query") {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "unresolved search query '\(query)' (argument fabrication rejected)"))
                     }
                 }
             }

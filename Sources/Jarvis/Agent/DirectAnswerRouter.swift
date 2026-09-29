@@ -36,6 +36,12 @@ enum DirectAnswerRouter {
         case unsafeRequest
         case malformedRequest
         case unresolvedReference
+        case unresolvedFileReference
+        case unresolvedURLReference
+        case unresolvedCommandReference
+        case unresolvedSearchReference
+        case unresolvedWriteReference
+        case unresolvedVolumeReference
 
         var userFacingMessage: String {
             switch self {
@@ -47,6 +53,18 @@ enum DirectAnswerRouter {
                 return "Refused: the request was empty or malformed, so there is nothing to act on."
             case .unresolvedReference:
                 return "Which app would you like to open? Please specify the application name."
+            case .unresolvedFileReference:
+                return "Which file would you like me to read? Please specify the file path."
+            case .unresolvedURLReference:
+                return "Which URL would you like me to fetch? Please provide the URL."
+            case .unresolvedCommandReference:
+                return "Which command would you like me to run? Please specify the command."
+            case .unresolvedSearchReference:
+                return "What would you like me to search for? Please specify the search query."
+            case .unresolvedWriteReference:
+                return "What content and file path would you like to write to? Please specify both."
+            case .unresolvedVolumeReference:
+                return "What volume level would you like to set? Please specify a level (e.g. 50%)."
             }
         }
     }
@@ -103,14 +121,79 @@ enum DirectAnswerRouter {
             return .refusal(.unsafeRequest)
         }
 
-        // 1b. Unresolved / underspecified app reference: clarify/reject before
-        // app launch or planner retry so the model does not fabricate 'that_app'.
+        // 1b. Unresolved / underspecified references: clarify/reject before
+        // planner invocation or retry so the model does not fabricate arguments.
+        var normalized = g
+        while let last = normalized.last, ".?!".contains(last) {
+            normalized.removeLast()
+        }
+        normalized = normalized.trimmingCharacters(in: .whitespaces)
+        for prefix in ["please ", "can you please ", "can you ", "could you please ", "could you "] {
+            if normalized.hasPrefix(prefix) {
+                normalized = String(normalized.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+
         let unresolvedAppPatterns = [
             "open that app", "launch that app", "switch to that app",
-            "open the app", "launch the app"
+            "open the app", "launch the app", "switch to the app",
+            "open that", "launch that", "switch to that",
+            "open that application", "launch that application"
         ]
-        if unresolvedAppPatterns.contains(g) {
+        if unresolvedAppPatterns.contains(normalized) {
             return .refusal(.unresolvedReference)
+        }
+
+        let unresolvedFilePatterns = [
+            "read that file", "read that", "read the file", "read the file i mentioned",
+            "read this file", "read that document", "read the document", "view that file",
+            "show that file", "cat that file"
+        ]
+        if unresolvedFilePatterns.contains(normalized) {
+            return .refusal(.unresolvedFileReference)
+        }
+
+        let unresolvedWritePatterns = [
+            "write that to the file", "write that to a file", "write it to the file",
+            "write that", "save that to the file", "save that to a file", "save that file",
+            "write to that file", "write to the file"
+        ]
+        if unresolvedWritePatterns.contains(normalized) {
+            return .refusal(.unresolvedWriteReference)
+        }
+
+        let unresolvedURLPatterns = [
+            "fetch that url", "fetch that", "fetch the url", "download that url",
+            "download that", "fetch that website", "download the url", "fetch that page",
+            "fetch that link"
+        ]
+        if unresolvedURLPatterns.contains(normalized) {
+            return .refusal(.unresolvedURLReference)
+        }
+
+        let unresolvedCommandPatterns = [
+            "run that command", "run that", "execute that command", "execute that",
+            "run the command", "execute the command", "run that script", "execute that script"
+        ]
+        if unresolvedCommandPatterns.contains(normalized) {
+            return .refusal(.unresolvedCommandReference)
+        }
+
+        let unresolvedSearchPatterns = [
+            "search for that", "search for it", "look that up", "search that",
+            "search for this", "look it up", "search it", "google that", "google it"
+        ]
+        if unresolvedSearchPatterns.contains(normalized) {
+            return .refusal(.unresolvedSearchReference)
+        }
+
+        let unresolvedVolumePatterns = [
+            "set it to that", "set volume to that", "increase it", "decrease it",
+            "turn it up", "turn it down", "turn volume to that", "set the volume to that"
+        ]
+        if unresolvedVolumePatterns.contains(normalized) {
+            return .refusal(.unresolvedVolumeReference)
         }
 
         // 2. Obvious knowledge/conversational question → direct answer.

@@ -477,6 +477,14 @@ enum SelfTest {
         check(DirectAnswerRouter.refusalReason(for: "send an email to alice") == .unsupportedCapability, "Unsupported capability → explicit unsupportedCapability refusal")
         check(DirectAnswerRouter.refusalReason(for: "   ") == .malformedRequest, "Empty/malformed request → explicit malformedRequest refusal")
         check(DirectAnswerRouter.refusalReason(for: "open that app") == .unresolvedReference, "Unresolved reference 'open that app' → explicit unresolvedReference refusal/clarification")
+        check(DirectAnswerRouter.refusalReason(for: "read that file") == .unresolvedFileReference, "Unresolved reference 'read that file' → explicit unresolvedFileReference refusal")
+        check(DirectAnswerRouter.refusalReason(for: "read the file I mentioned") == .unresolvedFileReference, "Unresolved reference 'read the file I mentioned' → explicit unresolvedFileReference refusal")
+        check(DirectAnswerRouter.refusalReason(for: "write that to the file") == .unresolvedWriteReference, "Unresolved reference 'write that to the file' → explicit unresolvedWriteReference refusal")
+        check(DirectAnswerRouter.refusalReason(for: "fetch that URL") == .unresolvedURLReference, "Unresolved reference 'fetch that URL' → explicit unresolvedURLReference refusal")
+        check(DirectAnswerRouter.refusalReason(for: "search for that") == .unresolvedSearchReference, "Unresolved reference 'search for that' → explicit unresolvedSearchReference refusal")
+        check(DirectAnswerRouter.refusalReason(for: "run that command") == .unresolvedCommandReference, "Unresolved reference 'run that command' → explicit unresolvedCommandReference refusal")
+        check(DirectAnswerRouter.refusalReason(for: "increase it") == .unresolvedVolumeReference, "Unresolved reference 'increase it' → explicit unresolvedVolumeReference refusal")
+        check(DirectAnswerRouter.refusalReason(for: "set it to that") == .unresolvedVolumeReference, "Unresolved reference 'set it to that' → explicit unresolvedVolumeReference refusal")
         check(DirectAnswerRouter.decide(goal: "what is the capital of France") == .directAnswer, "Knowledge question → direct answer")
         check(DirectAnswerRouter.decide(goal: "explain recursion") == .directAnswer, "Explanation request → direct answer")
         check(DirectAnswerRouter.decide(goal: "What is a search engine?") == .directAnswer, "Question about a search engine does not trigger web-action routing")
@@ -1606,6 +1614,51 @@ enum SelfTest {
             rejectedUnresolvedApp = true
         }
         check(rejectedUnresolvedApp, "Unresolved application reference 'that_app' rejected by PlanValidator ('open that app' regression)")
+
+        // 13.7e Unresolved command reference rejected for run_shell at plan time ('run that command' regression)
+        let unresolvedCmdPlan = AgentPlan(goal: "run that command", steps: [PlanStep(id: "s1", toolName: "run_shell", arguments: ["command": "your_command"], purpose: "run shell")])
+        var rejectedUnresolvedCmd = false
+        if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(unresolvedCmdPlan),
+           tool == "run_shell", reason.contains("unresolved command reference") {
+            rejectedUnresolvedCmd = true
+        }
+        check(rejectedUnresolvedCmd, "Unresolved command reference 'your_command' rejected by PlanValidator ('run that command' regression)")
+
+        // 13.7f Unresolved file path rejected for read_file at plan time ('read that file' regression)
+        let unresolvedReadPlan = AgentPlan(goal: "read that file", steps: [PlanStep(id: "s1", toolName: "read_file", arguments: ["path": "/path/to/non-system/file"], purpose: "read file")])
+        var rejectedUnresolvedRead = false
+        if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(unresolvedReadPlan),
+           tool == "read_file", reason.contains("unresolved file reference") {
+            rejectedUnresolvedRead = true
+        }
+        check(rejectedUnresolvedRead, "Unresolved file reference '/path/to/non-system/file' rejected by PlanValidator ('read that file' regression)")
+
+        // 13.7g Fabricated URL placeholder rejected for fetch_url at plan time ('fetch that URL' regression)
+        let unresolvedURLPlan = AgentPlan(goal: "fetch that URL", steps: [PlanStep(id: "s1", toolName: "fetch_url", arguments: ["url": "https://example.com"], purpose: "fetch URL")])
+        var rejectedUnresolvedURL = false
+        if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(unresolvedURLPlan),
+           tool == "fetch_url", reason.contains("fabricated URL placeholder") {
+            rejectedUnresolvedURL = true
+        }
+        check(rejectedUnresolvedURL, "Fabricated URL placeholder 'https://example.com' rejected by PlanValidator ('fetch that URL' regression)")
+
+        // 13.7h Unresolved search query rejected for web_search at plan time ('search for that' regression)
+        let unresolvedSearchPlan = AgentPlan(goal: "search for that", steps: [PlanStep(id: "s1", toolName: "web_search", arguments: ["query": "that"], purpose: "search web")])
+        var rejectedUnresolvedSearch = false
+        if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(unresolvedSearchPlan),
+           tool == "web_search", reason.contains("unresolved search query") {
+            rejectedUnresolvedSearch = true
+        }
+        check(rejectedUnresolvedSearch, "Unresolved search query 'that' rejected by PlanValidator ('search for that' regression)")
+
+        // 13.7i Fabricated write content rejected for write_file at plan time ('write that to the file' regression)
+        let unresolvedWritePlan = AgentPlan(goal: "write that to the file", steps: [PlanStep(id: "s1", toolName: "write_file", arguments: ["path": "output.txt", "content": "this is the content of the file."], purpose: "write file")])
+        var rejectedUnresolvedWrite = false
+        if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(unresolvedWritePlan),
+           tool == "write_file", reason.contains("unresolved write content reference") {
+            rejectedUnresolvedWrite = true
+        }
+        check(rejectedUnresolvedWrite, "Unresolved write content reference rejected by PlanValidator ('write that to the file' regression)")
 
         // 13.8 Garbage (no JSON) fails with noJSONFound
         if case .failure(.noJSONFound) = AgentPlanParser.parse("I cannot do that, sorry!") {

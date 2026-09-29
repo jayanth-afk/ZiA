@@ -1,0 +1,227 @@
+[route] planner
+[error] TierBPlanValidation failed: failure(Jarvis.PlanValidationError.missingArgument(tool: "run_shell", argument: "command"))
+[planner-attempt 1] parseFailed=false validatorError=Step for 'run_shell' argument 'command' has invalid reference: Self-reference error: Step 1 cannot reference its own output repair=false
+[raw] ```json
+{
+  "goal": "write the words hello routing benchmark world",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.1.output"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```
+[planner-attempt 2] parseFailed=false validatorError=Step for 'run_shell' argument 'command' has invalid reference: Self-reference error: Step 1 cannot reference its own output repair=true
+[raw] ```json
+{
+  "goal": "write the words hello routing benchmark world",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.1.output"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the words hello routing benchmark world",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo hello world"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the words hello routing benchmark world",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo hello world"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the words hello routing benchmark world",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo hello world"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the words hello routing benchmark world",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo hello world"
+      },
+      "purpose": "print the text"
+    }
+  ]
+}
+```json
+```json
+{
+  "goal": "write the
+[planner-attempt 1] parseFailed=true validatorError=No JSON object found in planner output repair=false
+[raw] ```json
+{
+  "goal": "write the words hello routing benchmark world",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.1.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_2",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.2.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_3",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.3.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_4",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.4.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_5",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.5.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_6",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.6.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_7",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.7.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_8",
+      "tool": "run_shell",
+
+[planner-attempt 2] parseFailed=true validatorError=No JSON object found in planner output repair=true
+[raw] ```json
+{
+  "goal": "write the words hello routing benchmark world",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.1.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_2",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.2.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_3",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.3.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_4",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.4.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_5",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.5.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_6",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.6.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_7",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.7.output"
+      },
+      "purpose": "print the text"
+    },
+    {
+      "id": "step_8",
+      "tool": "run_shell",
+

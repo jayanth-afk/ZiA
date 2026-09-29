@@ -1,0 +1,43 @@
+
+─── Escalation Audit: Milestone 3 Edge Cases (peer contribution) ───
+  ✓ C1a: L0 authorizes read-only impact
+  ✓ C1b: L0 denies destructive impact (escalation never confers authority)
+  ✓ C2a: CommandSandbox accepts benign echo
+  ✓ C2b: CommandSandbox rejects destructive command
+  ✓ S1a: password text classifies HIGHLY_SENSITIVE
+  ✓ S1b: local path + financial text classifies SENSITIVE
+  ✓ S1c: general knowledge classifies PUBLIC
+  ✓ S1d: HIGHLY_SENSITIVE never cloud-allowed
+  ✓ S1e: SENSITIVE not cloud-allowed by default
+  ✓ S1f: PUBLIC cloud-allowed
+  ✓ S1g: PERSONAL cloud-allowed (documented standard policy)
+  ✓ H1a: Tier B mock invoked offline; structured plan returned through provider boundary
+  ✓ H1b: exactly one Tier B invocation
+  ✓ H1c: original user goal arrives byte-for-byte
+  ✓ H1d: completed VERIFIED step crosses the boundary intact
+  ✓ H1e: verified output map crosses the boundary intact
+  ✓ H1f: failed step (tool + state) crosses the boundary intact
+  ✓ H1g: exact structured validation error crosses the boundary (not paraphrased)
+  ✓ H1h: repair/observation history crosses the boundary intact
+  ✓ H1i: environment context crosses the boundary intact
+  ✓ H1j: trigger reason and attempt count cross the boundary intact
+  ✓ H1k: task identity (run→task attribution) crosses the boundary intact
+  ✓ H2a: LOCAL Tier B permitted for SENSITIVE context (on-device by design)
+  ✓ H2b: CLOUD Tier B blocked for SENSITIVE context; provider never invoked (no Tier A failure leaks data to cloud)
+  ✓ H3: unavailable Tier B provider fails explicitly and is never invoked
+  ✓ H4a: Tier B plan with unregistered tool rejected (Intelligence != Authority preserved at Tier B)
+  ✓ H4b: rejected Tier B attempt remains recorded in escalation accounting (evidence before green)
+  ✓ H5: disabled pipeline fails closed with zero provider invocations
+  ✓ H6a: emergency stop latches deterministically
+  ✓ H6b: PIN — pipeline itself has no Emergency Stop gate (enforcement lives in AgentLoop/TaskWorkerPool)
+  ✓ H6c: emergency stop resets cleanly
+  ✓ H7: escalation completes under cancellation plumbing with no spurious cancellation
+  ✓ L1: step states, resolution records, and environment context survive provider invocation without erasure
+  ✓ L2: ambient reference resolves from environment context carried across the escalation boundary
+  ✓ L3: stale ambient snapshot fails deterministically post-escalation (system never fabricates values)
+
+══════════════════════════════════════════
+  Escalation Audit Results: 35 passed, 0 failed
+══════════════════════════════════════════
+
+✅ ALL ESCALATION AUDIT CHECKS PASSED

@@ -1,0 +1,28 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [case1-direct-fact #1] route=directAnswer struct=✓ sem=✓ arg=n/a 3114ms — direct-answer route, planner not called
+  [case1-direct-fact #2] route=directAnswer struct=✓ sem=✓ arg=n/a 2638ms — direct-answer route, planner not called
+  [case1-direct-fact #3] route=directAnswer struct=✓ sem=✓ arg=n/a 2655ms — direct-answer route, planner not called
+  [case2-explicit-search #1] route=planner struct=✓ sem=✓ arg=n/a 6089ms — web/tool path engaged (recency-safe)
+  [case2-explicit-search #2] route=planner struct=✓ sem=✓ arg=n/a 5736ms — web/tool path engaged (recency-safe)
+  [case2-explicit-search #3] route=planner struct=✓ sem=✓ arg=n/a 3362ms — web/tool path engaged (recency-safe)
+  [case3-recency-fact #1] route=planner struct=✓ sem=✓ arg=n/a 3470ms — web/tool path engaged (recency-safe)
+  [case3-recency-fact #2] route=planner struct=✓ sem=✓ arg=n/a 3454ms — web/tool path engaged (recency-safe)
+  [case3-recency-fact #3] route=planner struct=✓ sem=✓ arg=n/a 3382ms — web/tool path engaged (recency-safe)
+  [ctrl-det-time #1] route=deterministic struct=✓ sem=✓ arg=n/a 1180ms — deterministic route, no model calls
+  [ctrl-det-time #2] route=deterministic struct=✓ sem=✓ arg=n/a 1181ms — deterministic route, no model calls
+  [ctrl-det-time #3] route=deterministic struct=✓ sem=✓ arg=n/a 1180ms — deterministic route, no model calls
+  [ctrl-det-open #1] route=deterministic struct=✓ sem=✓ arg=n/a 1806ms — deterministic route, no model calls
+  [ctrl-det-open #2] route=deterministic struct=✓ sem=✓ arg=n/a 1651ms — deterministic route, no model calls
+  [ctrl-det-open #3] route=deterministic struct=✓ sem=✓ arg=n/a 1652ms — deterministic route, no model calls
+  [ctrl-planner-shell #1] route=deterministic struct=✓ sem=✗ arg=n/a 1429ms — expected planner route (observed deterministic)
+  [ctrl-planner-shell #2] route=deterministic struct=✓ sem=✗ arg=n/a 1423ms — expected planner route (observed deterministic)
+  [ctrl-planner-shell #3] route=deterministic struct=✓ sem=✗ arg=n/a 1428ms — expected planner route (observed deterministic)
+  [arg-unusual #1] route=planner struct=✓ sem=✓ arg=preserved 2427ms — planner route + tool family 'shell' executed
+  [arg-unusual #2] route=planner struct=✓ sem=✓ arg=preserved 2405ms — planner route + tool family 'shell' executed
+  [arg-unusual #3] route=planner struct=✓ sem=✓ arg=preserved 2398ms — planner route + tool family 'shell' executed
+  [arg-unusual #4] route=planner struct=✓ sem=✓ arg=preserved 2395ms — planner route + tool family 'shell' executed
+  [arg-unusual #5] route=planner struct=✓ sem=✓ arg=preserved 2388ms — planner route + tool family 'shell' executed
+  [arg-spaces #1] route=deterministic struct=✓ sem=✗ arg=n/a 1418ms — expected planner route (observed deterministic)
+  [arg-spaces #2] route=deterministic struct=✓ sem=✗ arg=n/a 1426ms — expected planner route (observed deterministic)
+  [arg-spaces #3] route=deterministic struct=✓ sem=✗ arg=n/a 1425ms — expected planner route (observed deterministic)

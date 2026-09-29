@@ -100,7 +100,7 @@ enum AgentPlanParser {
         // a skeleton echo is never a plan (it has a placeholder tool value).
         let boundedRaw = String(text.prefix(maxPlannerOutputCharacters))
         let bounded = stripJSONTerminatorEcho(stripSkeletonEcho(boundedRaw))
-        let repaired = repairGoalQuotes(in: bounded)
+        let repaired = repairMissingStepBraces(in: repairGoalQuotes(in: bounded))
         var candidates = extractJSONObjectCandidates(in: repaired)
         if repaired != bounded {
             for c in extractJSONObjectCandidates(in: bounded) where !candidates.contains(c) {
@@ -113,7 +113,7 @@ enum AgentPlanParser {
 
         var firstFailure: PlanValidationError?
         for rawJsonText in candidates {
-            let jsonText = repairGoalQuotes(in: rawJsonText)
+            let jsonText = repairMissingStepBraces(in: repairGoalQuotes(in: rawJsonText))
             guard let data = jsonText.data(using: .utf8) else { continue }
             do {
                 let raw = try JSONSerialization.jsonObject(with: data)
@@ -283,6 +283,27 @@ enum AgentPlanParser {
         return result
     }
 
+    /// When generating multi-step plans, small models (0.5B) frequently emit
+    /// a closing brace `}` followed by `,"id":` or `,"tool":` without the
+    /// opening brace `{` for the next step object in the steps array:
+    /// `[{"id":"step_1", ... },"id":"step_2", ... }]`
+    /// This repair inserts the missing `{` so the step object is valid JSON.
+    static func repairMissingStepBraces(in text: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: #"\}\s*,?\s*"(id|tool)"\s*:"#) else {
+            return text
+        }
+        let range = NSRange(text.startIndex..., in: text)
+        var result = text
+        let matches = regex.matches(in: text, range: range)
+        for match in matches.reversed() {
+            guard let matchRange = Range(match.range, in: result) else { continue }
+            let matchedSubstring = String(result[matchRange])
+            let key = matchedSubstring.contains("\"id\"") ? "id" : "tool"
+            result.replaceSubrange(matchRange, with: "}, {\"\(key)\":")
+        }
+        return result
+    }
+
     // MARK: Schema-level validation (shape only; tool semantics live in the validator)
 
     private static func validateSchema(_ object: [String: Any]) -> Result<AgentPlan, PlanValidationError> {
@@ -409,10 +430,38 @@ enum PlanValidator {
     /// Hard ceiling on plan length — a 0.5B model looping on steps must be cut off.
     static let maxPlanSteps = 6
 
-    static func validate(_ plan: AgentPlan) -> Result<AgentPlan, PlanValidationError> {
+    static func validate(_ plan: AgentPlan, originalGoal: String? = nil) -> Result<AgentPlan, PlanValidationError> {
         guard !plan.steps.isEmpty else { return .failure(.emptySteps) }
         guard plan.steps.count <= maxPlanSteps else {
             return .failure(.tooManySteps(limit: maxPlanSteps))
+        }
+
+        let effectiveGoal = originalGoal ?? plan.goal
+        let lowerGoal = effectiveGoal.lowercased()
+        let goalActionVerbs = ["run ", "execute ", "write ", "save ", "read ", "open ", "set ", "download", "fetch "]
+        let isActionGoal = goalActionVerbs.contains(where: { lowerGoal.contains($0) })
+
+        // Invariant: An action goal cannot have zero executable tools.
+        if isActionGoal && plan.toolNames.isEmpty {
+            return .failure(.unsafeOperation(tool: "none", reason: "goal '\(effectiveGoal)' requires executable tools, but plan contains none"))
+        }
+
+        // Invariant: A compound action goal must not drop requested actions into a single step.
+        let compoundActionMarkers = [" and then ", ", then ", " and read ", " and write ", " and open ", " and set ", " and fetch ", " and search ", " and run ", " and execute "]
+        if compoundActionMarkers.contains(where: { lowerGoal.contains($0) }) && plan.steps.count < 2 {
+            return .failure(.unsafeOperation(tool: "none", reason: "compound action goal '\(effectiveGoal)' requires multiple steps, but plan contains only \(plan.steps.count)"))
+        }
+
+        // Invariant: Compound action goals with write clause must contain a write tool.
+        if (lowerGoal.contains(" and write ") || lowerGoal.contains(" and save ") || lowerGoal.contains(" and then write "))
+            && !plan.steps.contains(where: { $0.toolName == "write_file" || ($0.toolName == "run_shell" && (($0.arguments["command"]?.contains(">") == true) || ($0.arguments["command"]?.contains("tee") == true))) }) {
+            return .failure(.unsafeOperation(tool: "none", reason: "plan does not contain a step to write output as requested in compound goal '\(effectiveGoal)'"))
+        }
+
+        // Invariant: Compound action goals with read clause must contain a read tool.
+        if (lowerGoal.contains(" and read ") || lowerGoal.contains(" and then read "))
+            && !plan.steps.contains(where: { $0.toolName == "read_file" || ($0.toolName == "run_shell" && (($0.arguments["command"]?.contains("cat") == true) || ($0.arguments["command"]?.contains("head") == true) || ($0.arguments["command"]?.contains("tail") == true))) }) {
+            return .failure(.unsafeOperation(tool: "none", reason: "plan does not contain a step to read as requested in compound goal '\(effectiveGoal)'"))
         }
 
         let registry = ToolRegistry.shared
@@ -420,8 +469,30 @@ enum PlanValidator {
 
         for (stepIndex, step) in plan.steps.enumerated() {
             let currentStepNumber = stepIndex + 1
+
+            // Invariant: Reject duplicate consecutive steps (hallucinated repetition loop).
+            if stepIndex > 0 {
+                let prev = plan.steps[stepIndex - 1]
+                if let tool = step.toolName, tool == prev.toolName, step.arguments == prev.arguments {
+                    return .failure(.unsafeOperation(tool: tool, reason: "duplicate consecutive step '\(step.id)' (hallucinated loop rejected)"))
+                }
+            }
+
             // Steps without a tool are composition-only (final answer synthesis).
-            guard let toolName = step.toolName else { continue }
+            guard let toolName = step.toolName else {
+                // Invariant: A composition step (tool: null) cannot precede executable tool steps.
+                if stepIndex < plan.steps.count - 1 {
+                    return .failure(.unsafeOperation(tool: "none", reason: "composition step '\(step.id)' cannot precede executable tool steps"))
+                }
+
+                // Invariant: A composition step (tool: null) cannot claim an unexecuted action purpose.
+                let lowerPurpose = step.purpose.lowercased()
+                let stepActionVerbs = ["execute", "run ", "write", "save", "read", "open ", "set ", "download", "fetch", "search"]
+                if stepActionVerbs.contains(where: { lowerPurpose.contains($0) }) {
+                    return .failure(.unsafeOperation(tool: "none", reason: "step '\(step.id)' requires an executable tool for action '\(step.purpose)' (null tool rejected)"))
+                }
+                continue
+            }
 
             guard let tool = registry.getTool(named: toolName) else {
                 return .failure(.unknownTool(toolName))
@@ -493,7 +564,7 @@ enum PlanValidator {
                         "your_command", "<command>", "command", "that command", "that",
                         "that_command", "placeholder", "my_command", "some_command"
                     ]
-                    if unresolvedCommandPlaceholders.contains(lower) || lower.hasPrefix("your_") || lower.hasPrefix("<command") {
+                    if unresolvedCommandPlaceholders.contains(lower) || lower.hasPrefix("your_") || lower.hasPrefix("<command") || lower.contains("yourusername") || lower.contains("<username>") {
                         return .failure(.unsafeOperation(tool: toolName, reason: "unresolved command reference '\(command)' (argument fabrication rejected)"))
                     }
                     guard CommandSandbox.shared.isSafe(command) else {
@@ -602,7 +673,7 @@ enum PlanValidator {
     }
 
     /// Awaitable entry point for non-MainActor callers (MLXPlanner actor).
-    nonisolated static func validateAsync(_ plan: AgentPlan) async -> Result<AgentPlan, PlanValidationError> {
-        await MainActor.run { validate(plan) }
+    nonisolated static func validateAsync(_ plan: AgentPlan, originalGoal: String? = nil) async -> Result<AgentPlan, PlanValidationError> {
+        await MainActor.run { validate(plan, originalGoal: originalGoal) }
     }
 }

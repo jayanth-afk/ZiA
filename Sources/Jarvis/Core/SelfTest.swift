@@ -4002,6 +4002,90 @@ enum SelfTest {
         }
         check(nullArgOK, "plan parser 20.153: explicit null in arguments treated as omitted optional argument")
 
+        // 20.154: AgentPlanParser repairs missing step braces in multi-step plans
+        let missingBraceJSON = #"{"goal": "run and read", "steps": [{"id": "step_1", "tool": "run_shell", "arguments": {"command": "pwd"}, "purpose": "pwd"},"id": "step_2", "tool": "read_file", "arguments": {"path": "Package.swift"}, "purpose": "read"}]}"#
+        var missingBraceOK = false
+        if case .success(let p) = AgentPlanParser.parse(missingBraceJSON),
+           p.steps.count == 2,
+           p.steps[0].toolName == "run_shell",
+           p.steps[1].toolName == "read_file" {
+            missingBraceOK = true
+        }
+        check(missingBraceOK, "plan parser 20.154: missing step braces in multi-step plan repaired and parsed into 2 steps")
+
+        // 20.155: PlanValidator rejects composition step (tool: null) preceding an executable tool step
+        let compPrecedesToolPlan = AgentPlan(
+            goal: "execute and run",
+            steps: [
+                PlanStep(id: "s1", toolName: nil, arguments: [:], purpose: "answer before tool"),
+                PlanStep(id: "s2", toolName: "run_shell", arguments: ["command": "pwd"], purpose: "run pwd")
+            ]
+        )
+        var compPrecedesToolRejected = false
+        if case .failure(.unsafeOperation(_, let reason)) = PlanValidator.validate(compPrecedesToolPlan),
+           reason.contains("cannot precede executable tool steps") {
+            compPrecedesToolRejected = true
+        }
+        check(compPrecedesToolRejected, "plan validator 20.155: composition step preceding tool step rejected")
+
+        // 20.156: PlanValidator rejects composition step (tool: null) claiming an unexecuted action purpose
+        let compActionPurposePlan = AgentPlan(
+            goal: "question about branch",
+            steps: [
+                PlanStep(id: "s1", toolName: nil, arguments: [:], purpose: "write the output to 'build/current_branch.txt'")
+            ]
+        )
+        var compActionPurposeRejected = false
+        if case .failure(.unsafeOperation(_, let reason)) = PlanValidator.validate(compActionPurposePlan),
+           reason.contains("requires an executable tool for action") {
+            compActionPurposeRejected = true
+        }
+        check(compActionPurposeRejected, "plan validator 20.156: composition step with action purpose rejected")
+
+        // 20.157: PlanValidator rejects single-step plan for compound action goal
+        let singleStepCompoundPlan = AgentPlan(
+            goal: "run command 'pwd' and then read Package.swift",
+            steps: [
+                PlanStep(id: "s1", toolName: "run_shell", arguments: ["command": "pwd"], purpose: "run pwd")
+            ]
+        )
+        var singleStepCompoundRejected = false
+        if case .failure(.unsafeOperation(_, let reason)) = PlanValidator.validate(singleStepCompoundPlan),
+           reason.contains("compound action goal") {
+            singleStepCompoundRejected = true
+        }
+        check(singleStepCompoundRejected, "plan validator 20.157: single-step plan for compound action goal rejected")
+
+        // 20.158: PlanValidator rejects consecutive duplicate steps (hallucinated repetition loop)
+        let dupStepPlan = AgentPlan(
+            goal: "open app twice",
+            steps: [
+                PlanStep(id: "s1", toolName: "open_app", arguments: ["app_name": "Calculator"], purpose: "open calc"),
+                PlanStep(id: "s2", toolName: "open_app", arguments: ["app_name": "Calculator"], purpose: "open calc again")
+            ]
+        )
+        var dupStepRejected = false
+        if case .failure(.unsafeOperation(_, let reason)) = PlanValidator.validate(dupStepPlan),
+           reason.contains("duplicate consecutive step") {
+            dupStepRejected = true
+        }
+        check(dupStepRejected, "plan validator 20.158: consecutive duplicate steps rejected as hallucinated loop")
+
+        // 20.159: PlanValidator rejects plan with zero executable tools for action goal
+        let zeroToolActionPlan = AgentPlan(
+            goal: "run command 'git branch' and write the output to build/current_branch.txt",
+            steps: [
+                PlanStep(id: "s1", toolName: nil, arguments: [:], purpose: "execute branch"),
+                PlanStep(id: "s2", toolName: nil, arguments: [:], purpose: "write branch")
+            ]
+        )
+        var zeroToolActionRejected = false
+        if case .failure(.unsafeOperation(_, let reason)) = PlanValidator.validate(zeroToolActionPlan),
+           reason.contains("requires executable tools, but plan contains none") {
+            zeroToolActionRejected = true
+        }
+        check(zeroToolActionRejected, "plan validator 20.159: plan with zero executable tools for action goal rejected")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

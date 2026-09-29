@@ -395,8 +395,16 @@ actor AgentLoop {
                 } else {
                     // Composition step (tool:null): produce a REAL direct answer
                     // with one bounded local-model generation conditioned on the
-                    // goal + actual observations. Falls back to the planner's own
-                    // purpose text only if composition fails — never a fake answer.
+                    // goal + actual observations. Action purposes can NEVER be
+                    // satisfied by composition without an executable tool.
+                    let lowerPurpose = step.purpose.lowercased()
+                    let actionVerbs = ["execute", "run ", "write", "save", "read", "open ", "set ", "download", "fetch", "search"]
+                    if actionVerbs.contains(where: { lowerPurpose.contains($0) }) {
+                        throw JarvisError.actionFailed(
+                            action: "AgentLoop.executeStep",
+                            reason: "Step '\(step.id)' requires an executable tool for action '\(step.purpose)', cannot compose answer")
+                    }
+
                     let composed: String
                     do {
                         composed = try await DirectComposer().composeAnswer(

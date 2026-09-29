@@ -255,7 +255,7 @@ actor MLXPlanner {
             var validatorErrorDescription: String?
             switch AgentPlanParser.parse(raw.text) {
             case .success(let parsed):
-                switch await PlanValidator.validateAsync(parsed) {
+                switch await PlanValidator.validateAsync(parsed, originalGoal: goal) {
                 case .success(let plan):
                     diagnostics.append(AttemptDiagnostic(
                         attempt: attempt,
@@ -429,7 +429,7 @@ actor MLXPlanner {
 
             switch AgentPlanParser.parse(raw.text) {
             case .success(let parsed):
-                switch await PlanValidator.validateAsync(parsed) {
+                switch await PlanValidator.validateAsync(parsed, originalGoal: goal) {
                 case .success(let plan):
                     appendLedgerRecord(
                         runID: ledgerRunID, taskID: taskID, cycleID: cycleID,
@@ -959,7 +959,10 @@ actor MLXPlanner {
         let shellVerbs = ["run ", "execute ", "shell", "command ", "print ", "echo ", "list files", "directory", "working directory", "show me the current"]
         if shellVerbs.contains(where: { g.contains($0) }) { families.insert("shell") }
 
-        if g.contains("write ") || g.contains("save ") || g.contains("file") {
+        if g.contains("write ") || g.contains("save ") || g.contains("file")
+            || g.contains("read ") || g.contains("read_file") || g.contains("cat ")
+            || g.contains("view ") || g.contains("open file") || g.contains("inspect ")
+            || g.contains("contents of ") {
             families.insert("file")
         }
 
@@ -1093,7 +1096,7 @@ actor MLXPlanner {
         {"goal": "<the goal>", "steps": [ {"id": "step_1", "tool": "<tool name from the list>", "arguments": {<arguments matching the schema above>}, "purpose": "<short reason>"} ]}
 
         Rules:
-        - Use only tools from the list. No tool fits: use "tool": null.
+        - Use only tools from the list. Do not use "tool": null for actions like write, save, run, read, or open. For questions without tools: use "tool": null.
         - Copy argument names and value shapes EXACTLY from the schema above. Numbers without quotes. Never invent argument fields that are not in the schema.
         - If the goal asks to run a shell command, use run_shell and put the ENTIRE command text into one "command" string.
         - command is ONE scalar string containing the complete shell command. Never create an args field.
@@ -1113,6 +1116,10 @@ actor MLXPlanner {
         Example 3:
         Goal: check git branch and echo it
         {"goal":"check git branch and echo it","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"git rev-parse --abbrev-ref HEAD"},"purpose":"get current branch"},{"id":"step_2","tool":"run_shell","arguments":{"command":"echo $step.1.output"},"purpose":"print branch"}]}
+
+        Example 4:
+        Goal: run git branch and write output to build/branch.txt
+        {"goal":"run git branch and write output to build/branch.txt","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"git branch"},"purpose":"get branch"},{"id":"step_2","tool":"write_file","arguments":{"content":"$step.1.output","path":"build/branch.txt"},"purpose":"write branch to file"}]}
 
         Goal: \(goal)
         """
@@ -1190,7 +1197,7 @@ actor MLXPlanner {
         case .wrongArgumentType(let tool, _, _):
             return tool
         case .unsafeOperation(let tool, _):
-            return tool
+            return (tool == "none" || tool == "?") ? nil : tool
         case .stepLimitArgument(let tool):
             return tool
         case .invalidReference(let tool, _, _):

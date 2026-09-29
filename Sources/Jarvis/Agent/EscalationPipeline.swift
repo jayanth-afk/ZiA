@@ -210,10 +210,15 @@ final class EscalationPipeline {
 
     /// Execute lossless escalation to Tier B.
     /// Privacy Gate: Evaluates sensitivity BEFORE any cloud provider is contacted.
+    /// Emergency Stop: refuses the handoff before any provider is invoked, and
+    /// discards a returned Tier B plan if stop latches during generation.
     func escalate(context: EscalationContext) async throws -> AgentPlan {
         guard isEnabled else {
             throw JarvisError.escalationFailed(reason: "EscalationPipeline is disabled")
         }
+
+        try Task.checkCancellation()
+        try refuseIfEmergencyStopLatched(stage: "pre-provider")
 
         lastEscalationContext = context
         escalationCount += 1
@@ -248,6 +253,9 @@ final class EscalationPipeline {
         // Generate Plan
         let plan = try await provider.plan(context: context)
 
+        try Task.checkCancellation()
+        try refuseIfEmergencyStopLatched(stage: "post-provider")
+
         // Deterministic Validation Gate: Tier B plans must strictly pass PlanValidator
         let validation = PlanValidator.validate(plan)
         guard case .success = validation else {
@@ -258,5 +266,11 @@ final class EscalationPipeline {
 
         JarvisLogger.brain.info("Tier B escalation successfully produced valid plan with \(plan.steps.count) steps")
         return plan
+    }
+
+    private func refuseIfEmergencyStopLatched(stage: String) throws {
+        guard AgentLoop.shared.isEmergencyCancelled else { return }
+        JarvisLogger.security.fault("EscalationPipeline refused at \(stage): emergency stop latched")
+        throw JarvisError.escalationFailed(reason: "Emergency stop latched; escalation refused")
     }
 }

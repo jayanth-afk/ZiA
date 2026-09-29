@@ -194,6 +194,9 @@ enum SelfTest {
         let vad = VoiceActivityDetector.shared
         check(vad.configuration.energyThreshold > 0, "VAD default threshold is positive")
         check(vad.configuration.hangoverFrames > 0, "VAD hangover frames > 0")
+        check(VoiceActivityDetector.silenceNeeded(for: "open Safari.") < VoiceActivityDetector.silenceNeeded(for: "open Safari and"), "VAD uses a longer endpoint pause when a transcript appears mid-clause")
+        check(VoiceActivityDetector.silenceNeeded(for: "open Safari.") < 0.5, "VAD uses a short endpoint pause for a complete-sounding command")
+        check(VoiceActivityDetector.silenceNeeded(for: "open Safari and") >= 0.9, "VAD preserves a longer pause after continuation words")
         vad.reset()
         check(!vad.isSpeaking, "VAD reset clears speaking state")
 
@@ -461,6 +464,8 @@ enum SelfTest {
         check(DirectAnswerRouter.refusalReason(for: "   ") == .malformedRequest, "Empty/malformed request → explicit malformedRequest refusal")
         check(DirectAnswerRouter.decide(goal: "what is the capital of France") == .directAnswer, "Knowledge question → direct answer")
         check(DirectAnswerRouter.decide(goal: "explain recursion") == .directAnswer, "Explanation request → direct answer")
+        check(DirectAnswerRouter.decide(goal: "What is a search engine?") == .directAnswer, "Question about a search engine does not trigger web-action routing")
+        check(DirectAnswerRouter.decide(goal: "Search for the best route to work") == .planner, "Explicit search action still routes to planner")
         check(DirectAnswerRouter.decide(goal: "what time is it") == .directAnswer, "Time question classified direct-answer (deterministic router still runs first in AgentLoop)")
         check(DirectAnswerRouter.decide(goal: "search the web for Swift 6 release notes") == .planner, "Web task → planner")
         check(DirectAnswerRouter.decide(goal: "echo hello from the shell") == .planner, "Shell task → planner")
@@ -919,6 +924,11 @@ enum SelfTest {
 
         let chatResult = classifier.classifySync("How are you doing today?")
         check(chatResult.category == .conversation, "Classifies general chat as .conversation")
+
+        let substringFalsePositive = IntentClassifier.classification(for: "Tell me about research methods")
+        check(substringFalsePositive.category == .deepReasoning, "Does not mistake 'research' for the 'search' web intent")
+        let systemQueryResult = IntentClassifier.classification(for: "How much battery is left?")
+        check(systemQueryResult.category == .systemQuery, "Routes system-state questions to the system-query category")
 
         // ── Phase 5: Provider Router & Cloud Intelligence Tests ──
         print("\n─── Phase 5: Cloud Providers ───")
@@ -2259,6 +2269,7 @@ enum SelfTest {
         Task { @MainActor in
             let pipeline = EscalationPipeline.shared
             pipeline.reset()
+            AgentLoop.shared.resetEmergencyCancellation()
 
             let mockTierB = MockTierBProvider(id: "mock-tier-b", isCloud: false)
             pipeline.mockProvider = mockTierB
@@ -2375,9 +2386,17 @@ enum SelfTest {
             } catch {}
             mockTierB.setErrorToThrow(nil)
 
-            // 18.10 TEST 10: EMERGENCY STOP SAFETY PRESERVED
+            // 18.10 TEST 10: EMERGENCY STOP refuses the escalation handoff
+            mockTierB.setPlanToReturn(AgentPlan(goal: sampleGoal, steps: [validStep]))
+            let callsBeforeStop = mockTierB.callCount
             AgentLoop.shared.emergencyCancel()
-            if AgentLoop.shared.isEmergencyCancelled {
+            var escalationRefusedByStop = false
+            do {
+                _ = try await pipeline.escalate(context: baseContext)
+            } catch JarvisError.escalationFailed {
+                escalationRefusedByStop = true
+            } catch {}
+            if AgentLoop.shared.isEmergencyCancelled && escalationRefusedByStop && mockTierB.callCount == callsBeforeStop {
                 test10EmergencyStopSafety = true
             }
             AgentLoop.shared.resetEmergencyCancellation()
@@ -2673,6 +2692,230 @@ enum SelfTest {
             }
         } catch {}
         check(blockedResolution, "TEST I: ReferenceResolver deterministically blocks consuming outputs from steps with .inconclusive verification")
+
+        // ── Phase 20: Planner Reliability — Decomposition, Direct-Answer Routing, Recency Forcing ──
+        print("\n─── Phase 20: Planner Decomposition & Direct-Answer Routing ───")
+
+        // 20.1 DIRECT-ANSWER TEST MATRIX (CASE 1): knowledge question → direct answer.
+        check(DirectAnswerRouter.decide(goal: "What is the capital of France?") == .directAnswer,
+              "CASE 1: knowledge question routes DIRECT ANSWER")
+        check(DirectAnswerRouter.decide(goal: "what time is it") == .directAnswer,
+              "Time question classified direct-answer at the router layer (L0 still runs first)")
+
+        // 20.2 CASE 2: explicit tool request → tool/planner path.
+        check(DirectAnswerRouter.decide(goal: "Search for the capital of France.") == .planner,
+              "CASE 2: explicit search request routes TOOL PATH (planner)")
+
+        // 20.3 CASE 3: recency-sensitive question must NOT get a stale direct answer.
+        check(DirectAnswerRouter.decide(goal: "What is the current capital of France according to today's sources?") == .planner,
+              "CASE 3: recency question forced to TOOL/WEB path despite question phrasing")
+        check(DirectAnswerRouter.requiresFreshData("What is the current capital of France according to today's sources?"),
+              "Recency safety net detects 'current'/'today's' signals")
+
+        // 20.4 Recency forcing: stale answers structurally impossible.
+        check(DirectAnswerRouter.decide(goal: "what is the latest news") == .planner, "Recency: 'latest' forces tool path")
+        check(DirectAnswerRouter.decide(goal: "what is the population of japan right now") == .planner, "Recency: 'right now' forces tool path")
+        check(DirectAnswerRouter.decide(goal: "show me results as of this week") == .planner, "Recency: 'as of'/'this week' forces tool path")
+        check(DirectAnswerRouter.decide(goal: "who won the game today") == .planner, "Recency: 'today' forces tool path")
+        check(!DirectAnswerRouter.requiresFreshData("I want to know python"), "Recency: 'now' inside 'know' does not false-positive")
+        check(!DirectAnswerRouter.requiresFreshData("What is the capital of France?"), "Recency: static fact question has no recency signal")
+
+        // 20.5 Deterministic commands keep their zero-model-call routes.
+        check(AgentLoop.classifyRouteSync(for: "open Safari") == .deterministic, "Route matrix: 'open Safari' → DETERMINISTIC (0 model calls)")
+        check(AgentLoop.classifyRouteSync(for: "what time is it") == .deterministic, "Route matrix: 'what time is it' → DETERMINISTIC (0 model calls)")
+        check(AgentLoop.classifyRouteSync(for: "echo hello world") == .deterministic, "Route matrix: 'echo hello world' → DETERMINISTIC fast path")
+
+        // 20.6 Route attribution classification for the matrix cases.
+        check(AgentLoop.classifyRouteSync(for: "What is the capital of France?") == .directAnswer, "Route matrix: CASE 1 → DIRECT-ANSWER route")
+        check(AgentLoop.classifyRouteSync(for: "Search for the capital of France.") == .planner, "Route matrix: CASE 2 → PLANNER route")
+        check(AgentLoop.classifyRouteSync(for: "What is the current capital of France according to today's sources?") == .planner, "Route matrix: CASE 3 → PLANNER (web) route")
+
+        // 20.7 Bounded extraction parser: valid extraction shape.
+        let validExtraction = #"{"tool": "run_shell", "arguments": {"command": "echo jarvis_planner_e2e_verified"}, "literal": "jarvis_planner_e2e_verified"}"#
+        if case .success(let action) = PlannerExtraction.parse(validExtraction) {
+            check(action.toolName == "run_shell" && action.arguments["command"] == "echo jarvis_planner_e2e_verified",
+                  "Extraction parser: tool + arguments + literal anchor extracted")
+            check(action.literal == "jarvis_planner_e2e_verified", "Extraction parser: user literal anchor preserved byte-for-byte")
+        } else {
+            check(false, "Extraction parser: valid extraction JSON parses")
+        }
+
+        // 20.8 Extraction parser: malformed shapes produce typed failures.
+        if case .failure(.noJSONFound) = PlannerExtraction.parse("no json here") {
+            check(true, "Extraction parser: non-JSON output fails with noJSONFound")
+        } else {
+            check(false, "Extraction parser: non-JSON output fails with noJSONFound")
+        }
+        if case .failure(.missingToolField) = PlannerExtraction.parse(#"{"arguments": {"command": "echo x"}}"#) {
+            check(true, "Extraction parser: missing tool field fails with missingToolField")
+        } else {
+            check(false, "Extraction parser: missing tool field fails with missingToolField")
+        }
+        if case .failure(.malformedCommandShape) = PlannerExtraction.parse(#"{"tool": "run_shell", "arguments": {"command": "echo", "args": ["x"]}}"#) {
+            check(true, "Extraction parser: split command/args array shape fails with malformedCommandShape")
+        } else {
+            check(false, "Extraction parser: split command/args array shape fails with malformedCommandShape")
+        }
+
+        let exactEcho = PlannerExtraction.explicitShellEchoExtraction(
+            goal: "write the words hello routing benchmark world using run_shell")
+        check(exactEcho?.literal == "hello routing benchmark world",
+              "Deterministic extraction preserves the complete explicit multi-word shell payload")
+        let punctuatedEcho = PlannerExtraction.explicitShellEchoExtraction(
+            goal: "print the line ready, set; go! using echo in the shell")
+        check(punctuatedEcho?.literal == "ready, set; go!",
+              "Deterministic extraction preserves punctuation as literal text")
+        let quotedPunctuationEcho = PlannerExtraction.explicitShellEchoExtraction(
+            goal: "print the line \"ready, set; go!\" using echo in the shell")
+        check(quotedPunctuationEcho?.literal == "ready, set; go!",
+              "Deterministic extraction treats surrounding quotes as delimiters, not payload")
+        check(PlannerExtraction.explicitShellEchoExtraction(
+            goal: "write the phrase don't run using run_shell") == nil,
+              "Deterministic shell extraction rejects unsupported quote boundaries")
+        if let exactEcho,
+           case .success(let exactPlan) = PlannerExtraction.compile(exactEcho, goal: "write the words hello routing benchmark world using run_shell") {
+            check(exactPlan.steps.first?.arguments["command"] == "echo 'hello routing benchmark world'",
+                  "Deterministic literal extraction compiles a safely quoted echo command")
+        } else {
+            check(false, "Deterministic literal extraction compiles a safely quoted echo command")
+        }
+        let unsafeEchoGoal = "write the phrase rm -rf / using run_shell"
+        let unsafeEcho = PlannerExtraction.explicitShellEchoExtraction(goal: unsafeEchoGoal)
+        check(unsafeEcho.map { PlannerExtraction.compile($0, goal: unsafeEchoGoal) }.map {
+            if case .failure(.unsafeOperation) = $0 { return true }
+            return false
+        } == true, "Deterministic extraction still rejects dangerous shell content at PlanValidator")
+
+        // 20.9 Structural repair: split command/args shape rejoined byte-for-byte.
+        let splitShape = #"{"tool": "run_shell", "arguments": {"command": "echo", "args": "jarvis_planner_e2e_verified"}, "literal": "jarvis_planner_e2e_verified"}"#
+        if let repaired = PlannerExtraction.structuralRepair(splitShape) {
+            check(repaired.arguments["command"] == "echo jarvis_planner_e2e_verified",
+                  "Structural repair: split shape re-joins model's OWN content byte-for-byte")
+            check(repaired.arguments["command"] != "echo hello" && repaired.arguments["command"] != "echo jarvis" && repaired.arguments["command"] != "echo example",
+                  "Structural repair: NEVER substitutes prompt-example values")
+        } else {
+            check(false, "Structural repair: split command/args shape is repairable")
+        }
+
+        // 20.10 Structural repair: array-wrapped scalar unwrapped.
+        let arrayWrapped = #"{"tool": "web_search", "arguments": {"query": ["capital of France"]}, "literal": "capital of France"}"#
+        check(PlannerExtraction.structuralRepair(arrayWrapped)?.arguments["query"] == "capital of France",
+              "Structural repair: array-wrapped scalar unwrapped")
+
+        // 20.11 Literal adoption gate: spans of the goal pass; fabricated content fails.
+        check(PlannerExtraction.literalAdoptionGate(goal: "write the word jarvis_planner_e2e_verified using run_shell", extracted: "jarvis_planner_e2e_verified"),
+              "Adoption gate: user literal span accepted")
+        check(PlannerExtraction.literalAdoptionGate(goal: "say hello world", extracted: "hello world"),
+              "Adoption gate: multi-word literal span accepted")
+        check(!PlannerExtraction.literalAdoptionGate(goal: "write the word jarvis_planner_e2e_verified using run_shell", extracted: "hello"),
+              "Adoption gate: fabricated 'hello' rejected")
+        check(!PlannerExtraction.literalAdoptionGate(goal: "write the word jarvis_planner_e2e_verified using run_shell", extracted: "example"),
+              "Adoption gate: fabricated 'example' rejected")
+
+        // 20.12 Deterministic compiler: valid extraction compiles to a validated plan.
+        let goodExtraction = ExtractedAction(
+            toolName: "run_shell",
+            arguments: ["command": "echo jarvis_planner_e2e_verified"],
+            literal: "jarvis_planner_e2e_verified")
+        if case .success(let compiled) = PlannerExtraction.compile(goodExtraction, goal: "write the word jarvis_planner_e2e_verified using run_shell") {
+            check(compiled.steps.count == 1 && compiled.steps.first?.toolName == "run_shell",
+                  "Deterministic compiler: single-step plan compiled")
+            check(compiled.steps.first?.arguments["command"] == "echo jarvis_planner_e2e_verified",
+                  "Deterministic compiler: user literal preserved into compiled arguments")
+            var validated = false
+            if case .success = PlanValidator.validate(compiled) { validated = true }
+            check(validated, "Deterministic compiler output passes PlanValidator (authority unchanged)")
+        } else {
+            check(false, "Deterministic compiler: valid extraction compiles")
+        }
+
+        let unsafeCompiledExtraction = ExtractedAction(
+            toolName: "run_shell",
+            arguments: ["command": "rm -rf ~/Documents"],
+            literal: nil)
+        check({
+            if case .failure(.unsafeOperation) = PlannerExtraction.compile(unsafeCompiledExtraction, goal: "run the command") { return true }
+            return false
+        }(), "Decomposed compiler: unsafe shell command rejected by canonical PlanValidator")
+
+        // 20.13 Compiler gates: fabricated/substituted literals fail closed.
+        let fabricated = ExtractedAction(toolName: "run_shell", arguments: ["command": "echo hello"], literal: "hello")
+        var fabricatedRejected = false
+        if case .failure(.unsafeOperation) = PlannerExtraction.compile(fabricated, goal: "write the word jarvis_planner_e2e_verified using run_shell") {
+            fabricatedRejected = true
+        }
+        check(fabricatedRejected, "Compiler gate: fabricated literal (not a goal span) fails closed")
+
+        let substituted = ExtractedAction(toolName: "run_shell", arguments: ["command": "echo jarvis_plan_example"], literal: "jarvis_planner_e2e_verified")
+        var substitutedRejected = false
+        if case .failure(.unsafeOperation) = PlannerExtraction.compile(substituted, goal: "write the word jarvis_planner_e2e_verified using run_shell") {
+            substitutedRejected = true
+        }
+        check(substitutedRejected, "Compiler gate: substituted literal (anchor absent from args) fails closed")
+
+        // 20.14 Compiler gates: unknown tool and undeclared argument rejected.
+        check({
+            if case .failure(.unknownTool) = PlannerExtraction.compile(ExtractedAction(toolName: "made_up_tool", arguments: [:], literal: nil), goal: "g") { return true }
+            return false
+        }(), "Compiler gate: unknown tool rejected")
+        check({
+            if case .failure(.unknownArgument) = PlannerExtraction.compile(ExtractedAction(toolName: "run_shell", arguments: ["command": "echo x", "args": "y"], literal: nil), goal: "echo x") { return true }
+            return false
+        }(), "Compiler gate: undeclared argument rejected")
+
+        // 20.15 Argument-preservation recorder: full chain verdicts.
+        ArgumentPreservationRecorder.shared.reset()
+        ArgumentPreservationRecorder.shared.recordCompilation(
+            originalGoal: "write the word preserve_me_token using run_shell",
+            extractedLiteral: "preserve_me_token",
+            compiledLiteral: "echo preserve_me_token")
+        ArgumentPreservationRecorder.shared.noteExecution(
+            goal: "write the word preserve_me_token using run_shell",
+            resolvedArguments: ["command": "echo preserve_me_token"])
+        let preservedRecord = ArgumentPreservationRecorder.shared.records(forGoal: "write the word preserve_me_token using run_shell").last
+        check(preservedRecord?.preserved == true, "Preservation recorder: byte-exact chain reports preserved=true")
+
+        ArgumentPreservationRecorder.shared.recordCompilation(
+            originalGoal: "write the word preserve_me_token2 using run_shell",
+            extractedLiteral: "preserve_me_token2",
+            compiledLiteral: "echo substituted_value")
+        ArgumentPreservationRecorder.shared.noteExecution(
+            goal: "write the word preserve_me_token2 using run_shell",
+            resolvedArguments: ["command": "echo substituted_value"])
+        let substitutedRecord = ArgumentPreservationRecorder.shared.records(forGoal: "write the word preserve_me_token2 using run_shell").last
+        check(substitutedRecord?.preserved == false, "Preservation recorder: substitution reports preserved=false (explicit, not buried)")
+
+        ArgumentPreservationRecorder.shared.reset()
+
+        // 20.16 Recency compiler: composition-only plan for a recency goal is replaced.
+        let stalePlan = AgentPlan(goal: "What is the latest Swift version?", steps: [PlanStep(id: "s1", toolName: nil, arguments: [:], purpose: "compose")])
+        let forcedPlan = PlannerExtraction.enforceRecency(plan: stalePlan, goal: "What is the latest Swift version?")
+        check(forcedPlan.steps.first?.toolName == "web_search", "Recency compiler: composition-only plan replaced with web_search for recency goal")
+        let toolPlan = AgentPlan(goal: "What is the latest Swift version?", steps: [PlanStep(id: "s1", toolName: "web_search", arguments: ["query": "latest Swift version"], purpose: "lookup")])
+        check(PlannerExtraction.enforceRecency(plan: toolPlan, goal: "What is the latest Swift version?").steps.first?.toolName == "web_search",
+              "Recency compiler: genuine tool plans pass through unchanged")
+        let staticPlan = AgentPlan(goal: "What is the capital of France?", steps: [PlanStep(id: "s1", toolName: nil, arguments: [:], purpose: "compose")])
+        check(PlannerExtraction.enforceRecency(plan: staticPlan, goal: "What is the capital of France?").steps.first?.toolName == nil,
+              "Recency compiler: non-recency composition plans untouched")
+
+        // 20.17 Decomposition prompt: copy rule + anti-fabrication example present.
+        let decomposedPrompt = MLXPlanner.buildExtractionPrompt(
+            goal: "write the word jarvis_planner_e2e_verified using run_shell",
+            tools: ToolRegistry.shared.allTools)
+        check(decomposedPrompt.contains("COPY RULE"), "Decomposition prompt: explicit copy rule present")
+        check(decomposedPrompt.contains("WRONG (fabrication)"), "Decomposition prompt: anti-fabrication example present")
+        check(decomposedPrompt.contains("jarvis_planner_e2e_verified"), "Decomposition prompt: goal-echo example demonstrates shape-only transformation")
+
+        // 20.18 End-to-end offline pipeline: extraction → compile → validate (no model).
+        // Proves the real production types flow through every deterministic stage.
+        let e2eExtraction = PlannerExtraction.parse(validExtraction)
+        var e2eValidated = false
+        if case .success(let action) = e2eExtraction,
+           case .success(let plan) = PlannerExtraction.compile(action, goal: "write the word jarvis_planner_e2e_verified using run_shell"),
+           case .success = PlanValidator.validate(plan) {
+            e2eValidated = true
+        }
+        check(e2eValidated, "Offline E2E: extraction → compile → PlanValidator green on real types")
 
         // ── Results ──
         print("\n══════════════════════════════════════════")

@@ -135,6 +135,14 @@ final class VoicePipeline {
             self?.handleFinalTranscript(event.text)
         }
 
+        // Partial hypotheses improve endpointing: complete commands can finish
+        // quickly, while a clause ending in "and" / "to" gets a longer pause.
+        EventBus.shared.subscribe(TranscriptPartialEvent.self) { event in
+            Task { @MainActor in
+                VoiceActivityDetector.shared.updatePartialTranscript(event.text)
+            }
+        }
+
         // 4. Emergency stop
         EventBus.shared.subscribe(EmergencyStopEvent.self) { [weak self] event in
             self?.handleEmergencyStop(phrase: event.phrase)
@@ -355,7 +363,7 @@ final class VoicePipeline {
         }
 
         // 3. Deep / LLM task: Deterministic acknowledgement first (Requirement G)
-        JarvisLogger.voice.info("[VOICE_TRACE] no deterministic match — dispatching to BrainRouter (LLM path)")
+        JarvisLogger.voice.info("[VOICE_TRACE] no deterministic match — dispatching to AgentLoop (direct-answer / planner / tool path)")
         TTSEngine.shared.speak("On it.", mode: .acknowledgement)
 
         // 4. Asynchronous task execution decoupled from voice loop (Requirement F & H)
@@ -365,7 +373,12 @@ final class VoicePipeline {
                 self?.activeBackgroundTasks.removeValue(forKey: taskID)
             }
             do {
-                let response = try await BrainRouter.shared.route(cleaned)
+                // Route every non-deterministic voice request through the same
+                // authoritative task loop used by the overlay and planner
+                // benchmarks. BrainRouter only composes provider text and
+                // bypasses Task IR, validation, permission, execution and
+                // verification, so it must not be the voice action path.
+                let response = try await AgentLoop.shared.run(goal: cleaned)
                 guard !Task.isCancelled else { return }
                 TTSEngine.shared.speak(response, mode: .conversational)
             } catch is CancellationError {

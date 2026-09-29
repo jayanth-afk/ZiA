@@ -39,8 +39,79 @@ struct JarvisApp: App {
             exit(0)
         }
 
+        // Handle --goal <goal>: run ONE goal through the full production
+        // pipeline (AgentLoop.run → router | direct answer | planner →
+        // validation → execution → verification) and print route + response.
+        // Used for single-shot live validation (physical E2E probes); no
+        // special benchmark behavior — the exact production path.
+        if let goalIdx = CommandLine.arguments.firstIndex(of: "--goal"),
+           CommandLine.arguments.count > goalIdx + 1 {
+            setbuf(stdout, nil)
+            let goal = CommandLine.arguments[goalIdx + 1]
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                ArgumentPreservationRecorder.shared.reset()
+                do {
+                    let response = try await AgentLoop.shared.run(goal: goal)
+                    let route = await AgentLoop.shared.latestRoute()
+                    print("[route] \(route?.rawValue ?? "unknown")")
+                    print("[response] \(response)")
+                } catch {
+                    let route = await AgentLoop.shared.latestRoute()
+                    print("[route] \(route?.rawValue ?? "unknown")")
+                    print("[error] \(error.localizedDescription)")
+                }
+                // Argument-preservation chain evidence (byte-exact metric).
+                for rec in ArgumentPreservationRecorder.shared.records(forGoal: goal) {
+                    let verdict = rec.preserved.map { $0 ? "true" : "false" } ?? "n/a"
+                    print("[preservation] extracted=\(rec.extractedLiteral ?? "nil") compiled=\(rec.compiledLiteral ?? "nil") executed=\(rec.executedLiteral ?? "nil") preserved=\(verdict)")
+                }
+                // Planner ledger: raw outputs of this run's attempts (diagnostics).
+                let ledger = await MLXPlanner.shared.allLedgerRecords()
+                for rec in ledger.suffix(4) {
+                    print("[planner-attempt \(rec.attempt)] parseFailed=\(rec.parseStageFailed) validatorError=\(rec.validatorError ?? "none") repair=\(rec.isRepair)")
+                    print("[raw] \(rec.rawOutput)")
+                }
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(0)
+        }
+
+        // Handle --routing-benchmark flag: route-attributed planner routing
+        // benchmark (repeated trials, argument-preservation metric, offline
+        // replay of structural repair + compilation gates).
+        // Optional segment argument: OFFLINE (replay only, no model) or LIVE
+        // (matrix only) so each fits a single invocation. LIVE additionally
+        // accepts a case-id filter (e.g. `--routing-benchmark LIVE arg-punct`)
+        // so the model-involved matrix runs in bounded segments with identical
+        // goals, repetitions, scoring, and route attribution.
+        if CommandLine.arguments.contains("--routing-benchmark") {
+            setbuf(stdout, nil)
+            let segIdx = CommandLine.arguments.firstIndex(of: "--routing-benchmark")!
+            let segment = CommandLine.arguments.count > segIdx + 1 ? CommandLine.arguments[segIdx + 1] : nil
+            let caseFilter: String? = segment == "LIVE" && CommandLine.arguments.count > segIdx + 2
+                ? CommandLine.arguments[segIdx + 2] : nil
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                switch segment {
+                case "OFFLINE": PlannerRoutingBenchmark.runOfflineReplay()
+                case "LIVE": await PlannerRoutingBenchmark.runLiveMatrix(caseFilter: caseFilter)
+                default: await PlannerRoutingBenchmark.runAll()
+                }
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(0)
+        }
+
         // Handle --benchmark flag for the fixed planner benchmark (Phase D.5)
         if CommandLine.arguments.contains("--benchmark") {
+            setbuf(stdout, nil)
             let semaphore = DispatchSemaphore(value: 0)
             Task { @MainActor in
                 await PlannerBenchmark.runAll()
@@ -92,6 +163,19 @@ struct JarvisApp: App {
                 default:
                     print("Unknown phase '\(phase)' — use --sequential-experiment BASELINE | SEQA [B1|B2|B3|B4|B5]")
                 }
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(0)
+        }
+
+        // Handle --escalation-audit flag: Milestone 3 peer edge-case harness
+        if CommandLine.arguments.contains("--escalation-audit") {
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                await EscalationAudit.runAll()
                 semaphore.signal()
             }
             while semaphore.wait(timeout: .now() + 0.1) == .timedOut {

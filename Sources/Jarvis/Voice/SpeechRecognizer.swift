@@ -289,6 +289,12 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
 
     /// Cancel current recognition session without emitting final result.
     func cancelRecognition() {
+        // EmergencyInterrupt cancels synchronously, then its EventBus fan-out
+        // invokes this method again. Make the common already-idle path truly
+        // idempotent: do not take the audio-request lock or log when there is
+        // no recognition session left to cancel.
+        guard isRecognizing || tapToken != nil || recognitionTask != nil else { return }
+
         if let token = tapToken {
             AudioCapture.shared.removeBufferHandler(token)
             tapToken = nil

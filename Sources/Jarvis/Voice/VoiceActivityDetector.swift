@@ -10,8 +10,14 @@ final class VoiceActivityDetector: @unchecked Sendable {
     // MARK: - Configuration
     struct Configuration: Sendable {
         var energyThreshold: Float = 0.015
-        var hangoverFrames: Int = 15 // ~300-500ms of silence before declaring speech ended
+        /// Short pause for a complete-sounding utterance; keeps voice actions snappy.
+        var completedUtteranceSilence: TimeInterval = 0.42
+        /// Longer pause when the live transcript appears to end mid-thought.
+        var continuationSilence: TimeInterval = 0.95
         var minSpeechFrames: Int = 3  // Minimum speech frames to declare speech started
+
+        // Compatibility/readability for existing diagnostics and tests.
+        var hangoverFrames: Int { Int((completedUtteranceSilence / (1024.0 / 16_000.0)).rounded(.up)) }
     }
 
     // MARK: - State
@@ -20,7 +26,8 @@ final class VoiceActivityDetector: @unchecked Sendable {
 
     // Internal tracking
     private var consecutiveSpeechFrames = 0
-    private var consecutiveSilenceFrames = 0
+    private var silenceDuration: TimeInterval = 0
+    private var latestPartialTranscript = ""
 
     // Handlers
     var onSpeechStart: (@MainActor @Sendable () -> Void)?
@@ -44,27 +51,35 @@ final class VoiceActivityDetector: @unchecked Sendable {
             sumSquares += sample * sample
         }
         let rms = sqrt(sumSquares / Float(frameCount))
+        let duration = Double(frameCount) / buffer.format.sampleRate
 
         Task { @MainActor [weak self] in
-            self?.handleEnergy(rms)
+            self?.handleEnergy(rms, duration: duration)
         }
+    }
+
+    /// Keep endpointing informed by the newest speech-recognition hypothesis.
+    /// Audio remains ephemeral; only the current transcript string is retained.
+    func updatePartialTranscript(_ transcript: String) {
+        latestPartialTranscript = transcript
     }
 
     /// Reset internal state.
     func reset() {
         isSpeaking = false
         consecutiveSpeechFrames = 0
-        consecutiveSilenceFrames = 0
+        silenceDuration = 0
+        latestPartialTranscript = ""
     }
 
     // MARK: - Private
 
-    private func handleEnergy(_ rms: Float) {
+    private func handleEnergy(_ rms: Float, duration: TimeInterval) {
         let isFrameSpeech = rms >= configuration.energyThreshold
 
         if isFrameSpeech {
             consecutiveSpeechFrames += 1
-            consecutiveSilenceFrames = 0
+            silenceDuration = 0
 
             if !isSpeaking && consecutiveSpeechFrames >= configuration.minSpeechFrames {
                 isSpeaking = true
@@ -72,14 +87,34 @@ final class VoiceActivityDetector: @unchecked Sendable {
                 onSpeechStart?()
             }
         } else {
-            consecutiveSilenceFrames += 1
+            silenceDuration += duration
             consecutiveSpeechFrames = 0
 
-            if isSpeaking && consecutiveSilenceFrames >= configuration.hangoverFrames {
+            let endpointDelay = Self.silenceNeeded(for: latestPartialTranscript, configuration: configuration)
+            if isSpeaking && silenceDuration >= endpointDelay {
                 isSpeaking = false
+                silenceDuration = 0
+                latestPartialTranscript = ""
                 JarvisLogger.voice.info("[VOICE_TRACE] VAD speech ended")
                 onSpeechEnd?()
             }
         }
+    }
+
+    /// Transcript-aware endpointing: short pauses for a likely complete command,
+    /// with extra time for conjunctions/prepositions that commonly precede more speech.
+    static func silenceNeeded(for transcript: String, configuration: Configuration = Configuration()) -> TimeInterval {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return configuration.continuationSilence }
+        if let last = trimmed.last, ".!?".contains(last) {
+            return configuration.completedUtteranceSilence
+        }
+        let lastWord = trimmed.lowercased()
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" })
+            .last.map(String.init) ?? ""
+        let continuationWords: Set<String> = ["and", "or", "but", "because", "if", "when", "while", "to", "for", "with", "about", "that", "the", "a", "an", "of", "into", "from", "on", "at"]
+        return continuationWords.contains(lastWord)
+            ? configuration.continuationSilence
+            : configuration.completedUtteranceSilence
     }
 }

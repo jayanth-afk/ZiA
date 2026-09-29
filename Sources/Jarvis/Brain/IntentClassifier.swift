@@ -1,7 +1,6 @@
 import Foundation
 
-/// Fast intent classifier using the lightweight Reflex model (~80ms).
-/// Categorizes requests when the 0ms deterministic router misses.
+/// Fast, zero-model intent routing when the deterministic action router misses.
 @MainActor
 final class IntentClassifier {
     static let shared = IntentClassifier()
@@ -31,20 +30,7 @@ final class IntentClassifier {
         let timer = PipelineTimer()
         timer.mark(.intentStart)
 
-        let lower = transcript.lowercased()
-        let result: ClassificationResult
-
-        if lower.contains("code") || lower.contains("script") || lower.contains("function") ||
-           lower.contains("compile") || lower.contains("debug") || lower.contains("swift") || lower.contains("python") {
-            result = ClassificationResult(category: .coding, confidence: 0.95, suggestedProvider: "claude")
-        } else if lower.contains("analyze") || lower.contains("why") || lower.contains("compare") ||
-                  lower.contains("plan") || lower.contains("strategy") || lower.contains("summarize") {
-            result = ClassificationResult(category: .deepReasoning, confidence: 0.90, suggestedProvider: "claude")
-        } else if lower.contains("weather") || lower.contains("news") || lower.contains("search") || lower.contains("find") {
-            result = ClassificationResult(category: .webSearch, confidence: 0.92, suggestedProvider: "groq")
-        } else {
-            result = ClassificationResult(category: .conversation, confidence: 0.88, suggestedProvider: "local-normal")
-        }
+        let result = Self.classification(for: transcript)
 
         timer.mark(.intentComplete)
         let elapsed = timer.elapsed(from: .intentStart, to: .intentComplete) ?? 0
@@ -56,5 +42,38 @@ final class IntentClassifier {
     /// Asynchronously classify a query into an intent category.
     func classify(_ transcript: String) async throws -> ClassificationResult {
         return classifySync(transcript)
+    }
+
+    /// Token-boundary routing avoids substring false positives (for example,
+    /// "research" is not automatically interpreted as a web-search request).
+    static func classification(for transcript: String) -> ClassificationResult {
+        let normalized = transcript.lowercased().replacingOccurrences(of: "wi-fi", with: "wifi")
+        let tokens = Set(normalized.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
+        let coding = Set(["code", "coding", "script", "function", "compile", "debug", "swift", "python", "javascript", "typescript", "repository", "repo", "build", "bug"])
+        let web = Set(["web", "online", "latest", "news", "weather", "search", "browse", "internet"])
+        let reasoning = Set(["analyze", "analyse", "why", "compare", "plan", "strategy", "summarize", "explain", "evaluate", "reason", "research"])
+        let system = Set(["battery", "wifi", "memory", "cpu", "storage", "volume", "brightness", "system", "date", "time"])
+
+        let category: IntentCategory
+        if !tokens.isDisjoint(with: coding) {
+            category = .coding
+        } else if !tokens.isDisjoint(with: web) {
+            category = .webSearch
+        } else if !tokens.isDisjoint(with: reasoning) {
+            category = .deepReasoning
+        } else if !tokens.isDisjoint(with: system) {
+            category = .systemQuery
+        } else {
+            category = .conversation
+        }
+
+        let provider: String
+        switch category {
+        case .coding, .deepReasoning: provider = "claude"
+        case .webSearch: provider = "groq"
+        case .systemQuery, .conversation: provider = "local-normal"
+        }
+        let confidence: Double = category == .conversation ? 0.75 : 0.9
+        return ClassificationResult(category: category, confidence: confidence, suggestedProvider: provider)
     }
 }

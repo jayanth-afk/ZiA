@@ -61,7 +61,8 @@ final class EmergencyInterrupt {
         JarvisLogger.security.info("EmergencyInterrupt production subscribers registered: \(self.emergencyStopSubscriberCount)")
     }
 
-    /// Measured latency for emergency stop execution from trigger to event publication.
+    /// Measured time to halt TTS, earcons, and any active speech-recognition
+    /// session. State/task cleanup is still synchronous but is not audio-halt latency.
     private(set) var lastEmergencyHaltLatencyMs: Double?
 
     private init() {
@@ -110,7 +111,6 @@ final class EmergencyInterrupt {
     /// Explicitly trigger emergency stop.
     func triggerEmergencyStop(phrase: String) {
         let start = CFAbsoluteTimeGetCurrent()
-        JarvisLogger.security.fault("EMERGENCY STOP TRIGGERED: '\(phrase, privacy: .public)'")
 
         // 1. Immediately kill all audio output
         TTSEngine.shared.stop()
@@ -118,6 +118,12 @@ final class EmergencyInterrupt {
 
         // 2. Cancel current speech recognition
         SpeechRecognizer.shared.cancelRecognition()
+
+        // Measure the actual I/O halt boundary. State transitions and pending
+        // confirmation cleanup remain synchronous below, before background
+        // cancellation is published, but are not part of audio-stop latency.
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
+        lastEmergencyHaltLatencyMs = elapsed
 
         // 3. Fall back to SLEEP if currently ACTIVE
         if AppState.shared.state == .active {
@@ -127,8 +133,9 @@ final class EmergencyInterrupt {
         // 3b. Cancel any pending destructive actions (Preview/Commit) synchronously
         DestructiveActionManager.shared.cancel()
 
-        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
-        lastEmergencyHaltLatencyMs = elapsed
+        // Keep synchronous OS logging out of the measured halt critical path;
+        // log immediately after the user-facing stop has actually occurred.
+        JarvisLogger.security.fault("EMERGENCY STOP TRIGGERED: '\(phrase, privacy: .public)'")
         JarvisLogger.security.info("Emergency stop halt completed in \(String(format: "%.2f", elapsed), privacy: .public)ms")
 
         // 4. Publish emergency event to cancel all background workers and tasks

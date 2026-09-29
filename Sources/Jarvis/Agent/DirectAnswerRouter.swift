@@ -9,6 +9,15 @@ import Foundation
 ///      EXPLICIT typed refusal; everything else (genuine tool task, ambiguous)
 ///      goes to the MLX planner.
 ///
+/// Recency safety net (direct-answer routing milestone): a request with a
+/// strong recency signal ("current", "today", "latest", "as of", "right now",
+/// "this week", …) is NEVER eligible for a stale direct answer — it is forced
+/// onto the tool/web path. The bias is deliberately toward unnecessary lookup
+/// rather than confidently answering a current-information question from
+/// stale model knowledge. The check is deterministic, tiny, and composes with
+/// every branch below: a recency goal can still be refused as unsafe, but it
+/// can never be answered from stale knowledge.
+///
 /// Deliberately NOT a classifier model and not a large keyword net: a small
 /// high-precision predicate set. Ambiguous goals fall FORWARD to the planner —
 /// never into refusal — so over-triggering refusal is structurally impossible
@@ -50,12 +59,33 @@ enum DirectAnswerRouter {
         case planner
     }
 
+    // MARK: - Recency safety net (deterministic freshness forcing)
+
+    /// A goal carrying a strong recency signal must reach fresh data through a
+    /// tool — never a stale direct answer. Delegates to the single documented
+    /// signal list in PlannerExtraction.requiresFreshData(_:) so the router,
+    /// the planner catalog hint, and the post-validation recency compiler all
+    /// share ONE deterministic definition.
+    nonisolated static func requiresFreshData(_ goal: String) -> Bool {
+        PlannerExtraction.requiresFreshData(goal)
+    }
+
     // MARK: - Predicate
 
     nonisolated static func decide(goal rawGoal: String) -> Decision {
         let goal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !goal.isEmpty else { return .refusal(.malformedRequest) }
         let g = goal.lowercased()
+
+        // 0. RECENCY SAFETY NET (evaluated first, applies to every branch):
+        // a current-information request can still be refused below if it is
+        // unsafe, but it can NEVER be answered from stale model knowledge.
+        // This is the CASE 3 guarantee: "What is the current capital of
+        // France according to today's sources?" is forced onto the tool path
+        // even though it is phrased as a plain knowledge question.
+        if requiresFreshData(goal) {
+            return .planner
+        }
 
         // 1. Unsafe/destructive: explicit refusal BEFORE any planning. These
         // must never reach the planner where a 0.5B model might wrap them in
@@ -78,7 +108,7 @@ enum DirectAnswerRouter {
             "describe ", "tell me about", "tell me what", "tell me why", "tell me how"
         ]
         let actionVerbs = [
-            "run ", "execute ", "open ", "launch ", "search", "look up", "find ",
+            "run ", "execute ", "open ", "launch ", "search for", "search the web", "search online", "look up", "find ",
             "fetch", "download", "list ", "show ", "read ", "write ", "create ",
             "delete ", "remove ", "copy ", "move ", "set ", "print ", "make ",
             "kill ", "quit ", "close ", "empty ", "play ", "install ", "uninstall "

@@ -1373,7 +1373,7 @@ struct EscalationContext: Sendable {
 2. **Authority Boundaries Preserved (Principle 1):**
    Tier B is strictly a planning model. Every plan returned by Tier B is grounded and validated by `PlanValidator.validate(plan)`. If Tier B hallucinates an unregistered tool, omits required arguments, or supplies illegal arguments, the plan is rejected with `JarvisError.actionFailed(action: "TierBPlanValidation", reason: ...)`.
 3. **Execution Safety & Emergency Stop:**
-   `AgentLoop.shared.isEmergencyCancelled` and `EmergencyInterrupt` retain full preemption authority over in-flight tasks regardless of escalation state.
+   `EscalationPipeline.escalate` refuses the handoff while `AgentLoop.shared.isEmergencyCancelled` is latched (before any provider call) and discards a returned Tier B plan if stop latches during generation. `EmergencyInterrupt` still retains full preemption over workers and in-flight tasks.
 4. **State & Reference Continuity:**
    Step resolution records and verified outputs (`verifiedOutputs`) from completed steps are preserved in `TaskStateMachine`. Downstream steps in Tier B plans referencing `$step.<N>.output` or `$step.<N>.<field>` resolve seamlessly via `ReferenceResolver`.
 5. **No Duplicate Execution:**
@@ -1403,10 +1403,19 @@ struct EscalationContext: Sendable {
   8. `DataClassifier blocks cloud escalation for SENSITIVE tasks` [VERIFIED]
   9. `DataClassifier blocks cloud escalation for HIGHLY_SENSITIVE tasks` [VERIFIED]
   10. `Tier B provider failure propagates deterministically without false success` [VERIFIED]
-  11. `Emergency stop safety preserved during/after escalation` [VERIFIED]
+  11. `Emergency stop safety preserved during/after escalation` [VERIFIED — pipeline now refuses escalate() while the latch is set; provider call count must stay unchanged]
   12. `Completed steps not re-executed post-escalation` [VERIFIED]
   13. `Reference continuity ($step.1.token) preserved post-escalation` [VERIFIED]
   14. `Tier B plans strictly validated against PlanValidator (Intelligence != Authority)` [VERIFIED]
   15. `Cloud escalation permitted for PUBLIC data level` [VERIFIED]
 
 ---
+
+## 32. VOICE-TO-AGENT INTEGRATION & DECOMPOSED PLAN AUTHORITY
+
+- Non-deterministic voice requests now enter `AgentLoop.run(goal:)`, the same authoritative path used by the overlay. The existing deterministic voice fast path remains in place. This removes the prior provider-only `BrainRouter` bypass for spoken questions and action requests.
+- `PlannerExtraction.compile` now applies canonical `PlanValidator.validate` to its compiled one-tool plan before returning it. The bounded extraction route therefore cannot skip shell sandbox, reference, tool-schema, or future plan invariants.
+- Explicit single-line `write/print the word(s)/phrase/line … using run_shell` requests take a narrow deterministic extraction path. The literal is quoted as one shell argument, surrounding straight/curly double quotes are treated as delimiters, and apostrophes/multiline or oversized content fail closed to normal planning. The compiled plan still passes through `PlanValidator`.
+- Emergency stop avoids redundant speech-recognizer cancellation when no recognition session is active. Its latency metric measures the actual TTS/earcon/recognition halt boundary; state and confirmation cleanup remain synchronous before background cancellation is published.
+- Verification: `swift build` succeeded; canonical `.build/out/Products/Debug/Jarvis --self-test` reported **619 passed, 0 failed**. Live production routing benchmarks passed `arg-spaces` (3/3 exact) and `arg-punct` (3/3 exact); the latter regressed before quote-delimiter handling and is now green. Adversarial coverage confirms an unsafe shell command from the decomposed compiler is rejected by `PlanValidator`.
+- Physical voice input was not exercised in this run; microphone/recognition permission remains an environment-dependent check.

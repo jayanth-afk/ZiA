@@ -18,6 +18,48 @@ actor AgentLoop {
     /// Number of replans in the most recent run.
     private let lastReplanCount = LockedValue(0)
 
+    /// Mandatory route attribution of the most recent run (planner reliability
+    /// milestone). Deterministic commands, direct answers, refusals, planner
+    /// runs, and escalations are reported SEPARATELY so no route's success can
+    /// inflate another route's statistics. Reset at the start of every run.
+    private let lastRoute = LockedValue<PipelineRoute?>(nil)
+    /// True when the most recent run's plan came from the Tier-B/C escalation
+    /// pipeline rather than the Tier-A planner (route attribution refinement).
+    private let lastEscalationUsed = LockedValue(false)
+
+    /// Route of the most recent run (nil before the first run). A planner run
+    /// whose plan came from escalation is reported as .escalation, never .planner.
+    func latestRoute() -> PipelineRoute? {
+        if lastRoute.value == .planner && lastEscalationUsed.value { return .escalation }
+        return lastRoute.value
+    }
+
+    /// Classification of a goal WITHOUT running it: the routing decision the
+    /// pipeline WOULD make. Used by the benchmark/SelfTest for zero-cost route
+    /// matrix checks that do not touch the model.
+    nonisolated static func classifyRoute(for goal: String) async -> PipelineRoute {
+        if await MainActor.run(body: { DeterministicRouter.shared.match(goal) }) != nil {
+            return .deterministic
+        }
+        switch DirectAnswerRouter.decide(goal: goal) {
+        case .directAnswer: return .directAnswer
+        case .refusal: return .refusal
+        case .planner: return .planner
+        }
+    }
+
+    /// MainActor-synchronous variant of classifyRoute (SelfTest/benchmark run
+    /// on the MainActor; matching the production order deterministically).
+    /// DeterministicRouter first, then the DirectAnswerRouter decision.
+    @MainActor static func classifyRouteSync(for goal: String) -> PipelineRoute {
+        if DeterministicRouter.shared.match(goal) != nil { return .deterministic }
+        switch DirectAnswerRouter.decide(goal: goal) {
+        case .directAnswer: return .directAnswer
+        case .refusal: return .refusal
+        case .planner: return .planner
+        }
+    }
+
     func latestReplanCount() -> Int { lastReplanCount.value }
 
     /// Real planner metrics from the most recent run (nil after a fast-path
@@ -70,6 +112,10 @@ actor AgentLoop {
     private func runInternal(goal: String) async throws -> String {
         let timer = PipelineTimer()
         timer.mark(.actionStart)
+        // Route attribution: set as soon as the route is decided, so every run
+        // (success or failure) is attributed exactly once.
+        lastEscalationUsed.value = false
+        func attribute(_ route: PipelineRoute) { lastRoute.value = route }
 
         // 1. SENSE & UNDERSTAND (Data classification & permissions)
         let sensitivity = await DataClassifier.shared.classify(goal)
@@ -83,6 +129,7 @@ actor AgentLoop {
         // reach the MLX planner.
         if let match = await MainActor.run(body: { DeterministicRouter.shared.match(goal) }) {
             JarvisLogger.brain.info("AgentLoop: deterministic fast path hit for '\(goal)'")
+            attribute(.deterministic)
             // The declared impact is enforced inside ActionEngine via the
             // PermissionGate — the fast path obeys the same authority policy
             // as planned tool execution.
@@ -104,6 +151,7 @@ actor AgentLoop {
         switch DirectAnswerRouter.decide(goal: goal) {
         case .refusal(let reason):
             JarvisLogger.brain.info("AgentLoop: explicit refusal (\(reason.rawValue)) for goal '\(goal, privacy: .public)'")
+            attribute(.refusal)
             lastReplanCount.value = 0
             lastPlannerMetrics.value = nil
             return reason.userFacingMessage
@@ -111,6 +159,7 @@ actor AgentLoop {
             JarvisLogger.brain.info("AgentLoop: direct-answer route for '\(goal, privacy: .public)'")
             do {
                 let answer = try await DirectComposer().composeAnswer(goal: goal, observations: [])
+                attribute(.directAnswer)
                 lastReplanCount.value = 0
                 lastPlannerMetrics.value = nil
                 return answer
@@ -148,9 +197,57 @@ actor AgentLoop {
                 goal: goal, task: task, stateMachine: stateMachine)
         }
 
+        attribute(.planner)
         var plannerContext = PlannerContext.initial(goal: goal)
-        var plan = try await planWithRecovery(
-            goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+        // Decomposed planning first for SINGLE-ACTION goals (planner
+        // reliability milestone): the model selects ONE tool and extracts the
+        // user's literal; the deterministic compiler builds the plan.
+        // Compound/multi-step goals keep the legacy whole-plan path — the same
+        // conservatism the deterministic router applies — because the bounded
+        // extraction is structurally a ONE-tool decision. On extraction failure
+        // the EXISTING whole-plan prompt runs through the unchanged recovery
+        // chain (lossless escalation context preserved): the fallback is
+        // structural, never a semantic rewrite of the user's request.
+        let loweredGoal = goal.lowercased()
+        let compoundMarkers = [" and ", " then ", ";", "&&", ", then", " also "]
+        // Quoted spans are literal CONTENT, not clause structure: a goal like
+        // print the line "ready, set; go!" is ONE request even though the
+        // quoted literal contains ';'. Strip quoted spans before the marker
+        // scan so in-literal punctuation cannot force the legacy whole-plan
+        // path (unquoted separators still compound as before).
+        var compoundScan = loweredGoal
+        for quote in ["\"", "'"] {
+            let parts = compoundScan.split(separator: quote, omittingEmptySubsequences: false)
+            if parts.count >= 3 {
+                compoundScan = parts.enumerated().map { $0.offset % 2 == 0 ? String($0.element) : "" }.joined()
+            }
+        }
+        let isCompoundGoal = compoundMarkers.contains { compoundScan.contains($0) }
+        var plan: AgentPlan
+        if isCompoundGoal {
+            plan = try await planWithRecovery(
+                goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+        } else {
+            do {
+                plan = try await MLXPlanner.shared.planDecomposed(goal: goal, taskID: task.id)
+                if let metrics = await MLXPlanner.shared.latestMetrics() {
+                    lastPlannerMetrics.value = metrics
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                JarvisLogger.brain.warning("Decomposed extraction failed (\(error.localizedDescription)); falling back to whole-plan prompt")
+                plannerContext = plannerContext.with(
+                    failure: error.localizedDescription,
+                    observations: [])
+                plan = try await planWithRecovery(
+                    goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+            }
+        }
+        // Recency safety net (deterministic, post-validation): a
+        // freshness-sensitive goal can never be answered by a composition-only
+        // plan — the compiler replaces it with a real web_search step.
+        plan = PlannerExtraction.enforceRecency(plan: plan, goal: goal)
         try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
 
         // 4. EXECUTE -> OBSERVE -> VERIFY -> RECOVER loop
@@ -225,6 +322,16 @@ actor AgentLoop {
 
                     // 5. EXECUTE (ToolExecutor does permission gate + execute + observe + verify)
                     let result = try await ToolExecutor.shared.execute(toolName: toolName, arguments: args)
+                    // Argument-preservation instrumentation: record the executed
+                    // (post-reference-resolution) values for the most recent
+                    // planner compilation of this goal. No-op when the run was
+                    // not planner-routed (deterministic/direct-answer/refusal).
+                    if let resolvedArgs = args as? [String: String] {
+                        await MainActor.run {
+                            ArgumentPreservationRecorder.shared.noteExecution(
+                                goal: goal, resolvedArguments: resolvedArgs)
+                        }
+                    }
 
                     // Emergency Stop / cancel may have fired during execution:
                     // do not record this step as completed if so.
@@ -349,6 +456,7 @@ actor AgentLoop {
 
                     do {
                         plan = try await EscalationPipeline.shared.escalate(context: escalationContext)
+                        lastEscalationUsed.value = true
                         try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
                         if stepIndex >= plan.steps.count { stepIndex = 0 }
                         try stateMachine.transition(taskId: task.id, to: .running)
@@ -682,7 +790,9 @@ actor AgentLoop {
                     )
 
                     do {
-                        return try await EscalationPipeline.shared.escalate(context: escalationContext)
+                        let escalatedPlan = try await EscalationPipeline.shared.escalate(context: escalationContext)
+                        lastEscalationUsed.value = true
+                        return escalatedPlan
                     } catch {
                         JarvisLogger.brain.warning("Tier B escalation failed: \(error.localizedDescription)")
                         throw error

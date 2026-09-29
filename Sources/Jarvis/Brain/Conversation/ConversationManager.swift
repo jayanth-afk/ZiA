@@ -21,7 +21,7 @@ final class ConversationManager {
         messages = [
             Message(
                 role: .system,
-                content: "You are JARVIS, a highly capable voice-first AI assistant for macOS. You are concise, precise, direct, and action-oriented. You speak clearly and avoid robotic greetings."
+                content: "You are JARVIS, a voice-first macOS assistant. Answer the user's actual request directly, use relevant conversation context, and be concise by default (one or two spoken sentences). Take authorized actions instead of merely describing how; never claim an action succeeded without evidence. Ask one brief clarifying question only when ambiguity changes the action or answer. Avoid greetings and filler."
             )
         ]
         JarvisLogger.brain.info("ConversationManager reset")
@@ -48,9 +48,19 @@ final class ConversationManager {
 
     private func trimHistory() {
         guard messages.count > maxHistoryCount + 1 else { return }
-        // Preserve system message at index 0, drop oldest user/assistant turns
+        // Preserve the system prompt and complete user/assistant turns wherever
+        // possible; orphaned turns degrade relevance and confuse provider context.
         let system = messages[0]
-        let remaining = Array(messages.suffix(maxHistoryCount))
+        var remaining = Array(messages.dropFirst())
+        while remaining.count > maxHistoryCount {
+            if remaining.count >= 2,
+               remaining[0].role == .user,
+               remaining[1].role == .assistant {
+                remaining.removeFirst(2)
+            } else {
+                remaining.removeFirst()
+            }
+        }
         messages = [system] + remaining
     }
 }

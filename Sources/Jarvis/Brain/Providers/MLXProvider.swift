@@ -222,6 +222,14 @@ actor MLXProvider: LLMProvider {
         // Per-request token budget (planner requests need more headroom than
         // the 256-token default; small direct requests can be tighter).
         let maxTokens = (options["max_tokens"] as? Int) ?? 256
+        // Deterministic copy-from-goal tasks (bounded extraction) run with
+        // GREEDY decoding (temperature 0). The extraction prompt forbids
+        // prompt-example values; sampling at temperature 0.2 made that rule
+        // stochastically violable — observed as the model echoing prompt tokens
+        // ("hello world") instead of the goal's own words. A copy task must be
+        // deterministic; the pipeline's deterministic gates still catch any
+        // fabrication and fail closed.
+        let temperature = (options["temperature"] as? Double) ?? 0.2
         let slot = self.modelSlot
         return AsyncThrowingStream { continuation in
             Task {
@@ -234,7 +242,8 @@ actor MLXProvider: LLMProvider {
                     let reply = try await worker.request([
                         "op": "generate",
                         "prompt": prompt,
-                        "max_tokens": maxTokens
+                        "max_tokens": maxTokens,
+                        "temperature": temperature
                     ])
 
                     guard reply["ok"] as? Bool == true else {

@@ -134,6 +134,16 @@ actor MLXPlanner {
         let repaired: Bool             // true when attempt 2 rescued attempt 1
     }
 
+    /// Planning mode of the generation that produced the plan — used for
+    /// mandatory route attribution so decomposed-extraction runs are never
+    /// blended into whole-plan statistics.
+    enum PlanningMode: String, Sendable {
+        /// Legacy single-shot whole-plan generation.
+        case fullPlan
+        /// Bounded decomposition: extraction + deterministic compilation.
+        case decomposed
+    }
+
     func latestMetrics() -> PlannerMetrics? { lastMetrics.value }
 
     /// Raw model outputs (per attempt) from the most recent plan() invocation.
@@ -151,6 +161,14 @@ actor MLXPlanner {
     }
 
     private init() {}
+
+    // MARK: - Planning mode (route attribution)
+
+    /// Planning mode of the most recent plan()/planDecomposed() call, for
+    /// route attribution. Reset to nil by fast-path runs through AgentLoop.
+    private let lastRunMode = LockedValue<PlanningMode?>(nil)
+
+    func latestPlanningMode() -> PlanningMode? { lastRunMode.value }
 
     // MARK: - Public API
 
@@ -513,16 +531,198 @@ actor MLXPlanner {
     /// headroom for 2-3 step plans while staying bounded.
     static let plannerMaxTokens = 384
 
-    private func generate(prompt: String, maxTokens: Int = MLXPlanner.plannerMaxTokens) async throws -> (text: String, metrics: PlannerMetrics) {
+    // MARK: - Bounded decomposition: extraction + deterministic compilation
+
+    /// Decomposed planning path (planner reliability milestone). Pipeline:
+    ///   MODEL → bounded extraction → typed IR → deterministic compile →
+    ///   PlanValidator (authority unchanged) → caller
+    ///
+    /// Attempt budget: 1 model extraction + 1 DETERMINISTIC structural repair
+    /// (PlannerExtraction.structuralRepair). A malformed shape is NEVER sent
+    /// back to the model for a second generation, so repair contamination —
+    /// the model rewriting the user's literal into a prompt-example value — is
+    /// structurally impossible on this path. When extraction fails even after
+    /// structural repair, the error carries the exact reason so the caller's
+    /// existing recovery chain (lossless escalation / whole-plan fallback)
+    /// proceeds unchanged.
+    func planDecomposed(goal: String, taskID: UUID? = nil) async throws -> AgentPlan {
+        try Task.checkCancellation()
+        // Clear per-run metrics first: a deterministic extraction must not
+        // inherit the previous model call's latency/token evidence.
+        lastMetrics.value = nil
+        lastRunRawOutputs.value = []
+        lastRunDiagnostics.value = []
+        lastRunMode.value = .decomposed
+        let ledgerRunID = activeLedgerRunID.value ?? UUID()
+        if let taskID {
+            TaskStateMachine.shared.registerRunAttribution(runID: ledgerRunID, taskID: taskID)
+        }
+        let cycleID = UUID()
+
+        if let extracted = PlannerExtraction.explicitShellEchoExtraction(goal: goal) {
+            switch await MainActor.run(body: { PlannerExtraction.compile(extracted, goal: goal) }) {
+            case .success(let plan):
+                await MainActor.run {
+                    ArgumentPreservationRecorder.shared.recordCompilation(
+                        originalGoal: goal,
+                        extractedLiteral: extracted.literal,
+                        compiledLiteral: PlannerExtraction.compiledValue(carrying: extracted.literal, in: plan))
+                }
+                JarvisLogger.brain.info("MLXPlanner used exact-literal deterministic extraction (0 model calls)")
+                return plan
+            case .failure(let error):
+                throw JarvisError.actionFailed(
+                    action: "mlx.planner.extraction",
+                    reason: "Deterministic literal extraction failed validation: \(error.description)")
+            }
+        }
+
+        // Catalog: identical deterministic hint + forced-inclusion logic as
+        // plan(), plus the recency web hint so freshness-sensitive goals see
+        // the web tools.
+        var hint = Self.toolFamilyHint(for: goal)
+        if PlannerExtraction.requiresFreshData(goal) { hint.insert("web") }
+        let allTools = await MainActor.run { ToolRegistry.shared.allTools }
+        let forcedNames = Self.toolNamesMentioned(in: goal, tools: allTools)
+        hint.formUnion(forcedNames)
+        let promptTools: [any JarvisTool]
+        if let hinted = Self.hintedTools(from: allTools, families: hint) {
+            promptTools = hinted.sorted { $0.name < $1.name }
+        } else {
+            promptTools = allTools.sorted { $0.name < $1.name }
+        }
+
+        let prompt = Self.buildExtractionPrompt(goal: goal, tools: promptTools)
+        let raw = try await generate(prompt: prompt, maxTokens: Self.extractionMaxTokens, temperature: 0.0)
+        // One ledger record per attempt, same shape as plan() records.
+        func record(_ validatorError: String?, parseStageFailed: Bool, summary: String?, tools: [String?]?, args: [[String: String]]?) {
+            var ledger = attemptLedger.value
+            ledger.append(PlannerAttemptRecord(
+                runID: ledgerRunID, taskID: taskID, cycleID: cycleID, cycleIndex: 0,
+                attempt: 1, isRepair: false,
+                promptSHA256: Self.sha256Hex(prompt), rawOutput: raw.text,
+                validatorError: validatorError, parseStageFailed: parseStageFailed,
+                parsedPlanSummary: summary, compiledStepTools: tools, compiledStepArgs: args,
+                requestLatencyMs: raw.metrics.requestLatencyMs))
+            if ledger.count > 1000 { ledger.removeFirst(ledger.count - 1000) }
+            attemptLedger.value = ledger
+        }
+
+        // Attempt 1: parse the bounded extraction shape.
+        // Attempt 2: DETERMINISTIC structural repair (no second generation) —
+        // tried both after a parse failure AND after a compile failure (the
+        // split command/args shape parses but fails the compiler's
+        // undeclared-argument gate until the shape is repaired).
+        var extracted: ExtractedAction
+        var wasStructurallyRepaired: Bool
+        var extractionError: Error?
+        switch PlannerExtraction.parse(raw.text) {
+        case .success(let action):
+            extracted = action
+            wasStructurallyRepaired = false
+            extractionError = nil
+        case .failure(let parseError):
+            guard let repaired = await MainActor.run(body: { PlannerExtraction.structuralRepair(raw.text) }) else {
+                record("extraction unparseable and not structurally repairable: \(parseError)", parseStageFailed: true, summary: nil, tools: nil, args: nil)
+                throw JarvisError.actionFailed(
+                    action: "mlx.planner.extraction",
+                    reason: "Extraction output invalid and not structurally repairable: \(String(raw.text.prefix(160)))")
+            }
+            extracted = repaired
+            wasStructurallyRepaired = true
+            extractionError = nil
+        }
+
+        // Deterministic compilation (gate + typed IR → AgentPlan).
+        var compileResult = await MainActor.run {
+            PlannerExtraction.compile(extracted, goal: goal)
+        }
+        if case .failure = compileResult, !wasStructurallyRepaired {
+            // The split command/args shape parses cleanly but is rejected as an
+            // undeclared argument; repair the shape deterministically once.
+            if let repaired = await MainActor.run(body: { PlannerExtraction.structuralRepair(raw.text) }),
+               repaired != extracted {
+                extracted = repaired
+                wasStructurallyRepaired = true
+                compileResult = await MainActor.run {
+                    PlannerExtraction.compile(extracted, goal: goal)
+                }
+            }
+        }
+        switch compileResult {
+        case .success(let plan):
+            record(nil, parseStageFailed: false, summary: Self.summarizePlan(plan),
+                   tools: plan.steps.map { $0.toolName }, args: plan.steps.map { $0.arguments })
+            await MainActor.run {
+                ArgumentPreservationRecorder.shared.recordCompilation(
+                    originalGoal: goal,
+                    extractedLiteral: extracted.literal,
+                    compiledLiteral: PlannerExtraction.compiledValue(carrying: extracted.literal, in: plan))
+            }
+            return plan
+        case .failure(let error):
+            record(error.description, parseStageFailed: false, summary: nil, tools: nil, args: nil)
+            throw JarvisError.actionFailed(
+                action: "mlx.planner.extraction",
+                reason: "Extraction failed validation: \(error.description)")
+        }
+    }
+
+    /// Token budget for the extraction generation: ONE tool choice + arguments
+    /// + literal anchor. Far below the whole-plan budget; a tighter cap
+    /// reduces truncation-corruption risk and latency.
+    static let extractionMaxTokens = 128
+
+    /// Bounded extraction prompt. The model selects ONE tool and copies the
+    /// goal's own words into the arguments and the `literal` anchor. The
+    /// anti-example names the exact Experiment-B failure mode (model emitting
+    /// prompt-example values instead of user text).
+    nonisolated static func buildExtractionPrompt(goal: String, tools: [any JarvisTool]) -> String {
+        let catalog = tools.sorted { $0.name < $1.name }.map { tool -> String in
+            let params = tool.parameterSpec
+                .map { spec in "\(spec.name)\(spec.required ? "" : "?"):\(spec.kind.rawValue)" }
+                .joined(separator: ", ")
+            return "- \(tool.name)(\(params)): \(tool.description)"
+        }.joined(separator: "\n")
+
+        var p = ""
+        p += "TASK: choose ONE tool for the user goal and COPY the goal's own words into the required argument.\n\n"
+        p += "TOOLS:\n\(catalog)\n\n"
+        p += "OUTPUT: one JSON object, nothing else:\n"
+        p += "{\"tool\": \"<one tool name>\", \"arguments\": {<argument names exactly as listed>}, \"literal\": \"<the exact words from the goal that are the user's requested content>\"}\n\n"
+        p += "ARGUMENT VALUES:\n"
+        p += "- run_shell: the ENTIRE shell command as ONE scalar string.\n"
+        p += "- web_search: the search query text.\n"
+        p += "- write_file: content = the exact text to write; path = a file path.\n"
+        p += "- open_app: app_name = the application name.\n\n"
+        p += "COPY RULE (critical): argument values must be copied from the user goal. Never write \"hello\", \"example\", or any word that is not in the goal.\n\n"
+        p += "Example of the ONLY allowed transformation (shape change only):\n"
+        p += "Goal: write the word jarvis_planner_e2e_verified using run_shell\n"
+        p += "{\"tool\": \"run_shell\", \"arguments\": {\"command\": \"echo jarvis_planner_e2e_verified\"}, \"literal\": \"jarvis_planner_e2e_verified\"}\n\n"
+        p += "WRONG (fabrication): {\"tool\": \"run_shell\", \"arguments\": {\"command\": \"echo hello\"}, \"literal\": \"hello\"}\n\n"
+        p += "No tool fits: reply {\"tool\": null, \"arguments\": {}, \"literal\": \"\"}.\n\n"
+        p += "Goal: \(goal)\n\n"
+        p += "JSON: "
+        return p
+    }
+
+    private func generate(prompt: String, maxTokens: Int = MLXPlanner.plannerMaxTokens, temperature: Double? = nil) async throws -> (text: String, metrics: PlannerMetrics) {
         // Cancellation must surface as CancellationError even while waiting on
         // the provider stream (worker request continuations do not auto-abort).
         try Task.checkCancellation()
         let message = Message(role: .user, content: prompt)
+        var options: [String: any Sendable] = ["max_tokens": maxTokens]
+        if let temperature {
+            // Copy-from-goal extraction is a deterministic selection task:
+            // greedy decoding removes the stochastic path to prompt-example
+            // contamination (observed live with a 0.5B model).
+            options["temperature"] = temperature
+        }
         let stream = await provider.complete(
             messages: [message],
             tools: nil,
             stream: false,
-            options: ["max_tokens": maxTokens])
+            options: options)
         var text = ""
         for try await chunk in stream {
             try Task.checkCancellation()

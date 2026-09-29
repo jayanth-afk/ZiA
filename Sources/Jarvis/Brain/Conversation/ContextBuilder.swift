@@ -22,9 +22,16 @@ final class ContextBuilder {
             context.insert(Message(role: .system, content: systemPrompt), at: 0)
         }
 
-        // Prune older user/assistant messages if exceeding token limit
+        // Prune old turns as units so the model does not receive an orphaned
+        // answer without its question. Keep the newest user request intact.
         while estimateTokens(messages: context) > tokenLimit && context.count > 2 {
-            context.remove(at: 1) // Remove oldest non-system message
+            if context.count >= 4,
+               context[1].role == .user,
+               context[2].role == .assistant {
+                context.removeSubrange(1...2)
+            } else {
+                context.remove(at: 1)
+            }
         }
 
         return context
@@ -52,7 +59,7 @@ final class ContextBuilder {
         Current System Time: \(now)
         Network Status: \(onlineStr)
         Unified Memory: \(memStr)
-        Guidelines: Be concise, direct, intelligent, and execute actions decisively.
+        Guidelines: Answer the current request directly and use prior context only when relevant. Be concise by default, especially for voice. Ask a clarifying question only when ambiguity changes the action or answer. Never claim an action succeeded unless it was verified. State uncertainty instead of inventing current facts.
         """
     }
 }

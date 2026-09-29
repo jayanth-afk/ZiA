@@ -720,10 +720,12 @@ actor MLXPlanner {
         p += "- web_search: the search query text.\n"
         p += "- write_file: content = the exact text to write; path = a file path.\n"
         p += "- open_app: app_name = the application name.\n\n"
-        p += "COPY RULE (critical): argument values must be copied from the user goal. Never write \"hello\", \"example\", or any word that is not in the goal.\n\n"
-        p += "Example of the ONLY allowed transformation (shape change only):\n"
+        p += "COPY RULE (critical): argument values and literal must be copied EXACTLY as written in the user goal, preserving exact capitalization. Never write \"hello\", \"example\", or any word that is not in the goal.\n\n"
+        p += "Examples of the ONLY allowed transformation (shape change only):\n"
         p += "Goal: write the word jarvis_planner_e2e_verified using run_shell\n"
         p += "{\"tool\": \"run_shell\", \"arguments\": {\"command\": \"echo jarvis_planner_e2e_verified\"}, \"literal\": \"jarvis_planner_e2e_verified\"}\n\n"
+        p += "Goal: look up Python documentation\n"
+        p += "{\"tool\": \"web_search\", \"arguments\": {\"query\": \"Python documentation\"}, \"literal\": \"Python documentation\"}\n\n"
         p += "WRONG (fabrication): {\"tool\": \"run_shell\", \"arguments\": {\"command\": \"echo hello\"}, \"literal\": \"hello\"}\n\n"
         p += "No tool fits: reply {\"tool\": null, \"arguments\": {}, \"literal\": \"\"}.\n\n"
         p += "Goal: \(goal)\n\n"
@@ -784,7 +786,7 @@ actor MLXPlanner {
         if openVerbs.contains(where: { g.hasPrefix($0) }) { families.insert("app") }
 
         if g.contains("search the web") || g.contains("web search") || g.hasPrefix("search ")
-            || g.hasPrefix("look up ") || g.contains("on the internet") || g.contains("online for") {
+            || g.hasPrefix("look up ") || g.hasPrefix("google ") || g.contains("on the internet") || g.contains("online for") {
             families.insert("web")
         }
         if g.hasPrefix("fetch ") || g.hasPrefix("download ") || g.contains("content of the page")

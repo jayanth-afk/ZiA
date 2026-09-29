@@ -418,7 +418,11 @@ private final class WorkerProcess: @unchecked Sendable {
 
         stderrPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            if !data.isEmpty, let text = String(data: data, encoding: .utf8) {
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                return
+            }
+            if let text = String(data: data, encoding: .utf8) {
                 JarvisLogger.brain.debug("mlx worker stderr: \(text.prefix(500))")
             }
         }

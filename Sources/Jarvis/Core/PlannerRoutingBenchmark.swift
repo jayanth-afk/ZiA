@@ -240,8 +240,15 @@ enum PlannerRoutingBenchmark {
 
         // L2 so run_shell/open_app/web tools are permitted (same as the audit).
         let prevAutonomy = Config.shared.autonomyLevel
+        let prevNormalModel = Config.shared.modelName(for: "normal")
         Config.shared.autonomyLevel = 2
-        defer { Config.shared.autonomyLevel = prevAutonomy }
+        Config.shared.setModelName("mlx-community/Qwen2.5-0.5B-Instruct-4bit", for: "normal")
+        defer {
+            Config.shared.autonomyLevel = prevAutonomy
+            if let prevNormalModel {
+                Config.shared.setModelName(prevNormalModel, for: "normal")
+            }
+        }
 
         ArgumentPreservationRecorder.shared.reset()
 
@@ -305,7 +312,7 @@ enum PlannerRoutingBenchmark {
             let webOK = routeOK && (familyObserved("web", response: response) || webAttempted(response))
             semantic = routeOK && (structural || webAttempted(response))
             notes = !routeOK ? "expected tool/web route (observed \(route?.rawValue ?? "threw"))"
-                : (webOK ? "web/tool path engaged (recency-safe)" : "planner route but no web/tool behavior: '\(response.prefix(60))'")
+                : (webOK ? "web/tool path engaged (recency-safe)" : (completed ? "planner route but no web/tool behavior: '\(response.prefix(60))'" : "failed: \(failureNote.prefix(80))"))
         case .escalationProbe:
             semantic = (route == .planner || route == .escalation)
             notes = "route probe (observed \(route?.rawValue ?? "threw"))"
@@ -313,7 +320,7 @@ enum PlannerRoutingBenchmark {
 
         // ---- ARGUMENT PRESERVATION: explicit byte-exact chain verdict.
         var preserved: Bool? = nil
-        if let expectedLiteral = routingCase.expectedLiteral, routingCase.kind == .plannerTool {
+        if let expectedLiteral = routingCase.expectedLiteral, (routingCase.kind == .plannerTool || routingCase.kind == .plannerWeb) {
             let records = ArgumentPreservationRecorder.shared.records(forGoal: routingCase.goal)
             if let last = records.last, last.preserved != nil {
                 preserved = last.preserved
@@ -331,7 +338,7 @@ enum PlannerRoutingBenchmark {
             }
             // Byte-exact response cross-check (executed literal must appear in
             // the tool's real output for shell echo cases).
-            if preserved == true && !response.contains(expectedLiteral) {
+            if preserved == true && routingCase.kind == .plannerTool && !response.contains(expectedLiteral) {
                 preserved = false
                 notes += " | executed output missing the expected literal"
             }

@@ -110,8 +110,8 @@ final class ArgumentPreservationRecorder {
         let record = current[index]
         guard let anchor = record.extractedLiteral else { return }
         // The executed value carrying the anchor (first argument value that
-        // contains it byte-for-byte).
-        let executed = resolvedArguments.values.first { $0.contains(anchor) }
+        // contains it byte-for-byte or case-insensitively).
+        let executed = resolvedArguments.values.first { $0.contains(anchor) || $0.range(of: anchor, options: .caseInsensitive) != nil }
         // Preserved = anchor survived to execution AND the compiled value
         // reached execution unchanged (byte-for-byte compiled == executed).
         let preserved = (executed != nil) && (record.compiledLiteral != nil) && (record.compiledLiteral == executed)
@@ -343,7 +343,10 @@ enum PlannerExtraction {
             .filter { !$0.isEmpty }.joined(separator: " ")
         let normalizedCandidate = candidate.components(separatedBy: whitespace)
             .filter { !$0.isEmpty }.joined(separator: " ")
-        return normalizedGoal.contains(normalizedCandidate)
+        if normalizedGoal.contains(normalizedCandidate) { return true }
+        // Case-insensitive contiguous span (0.5B tokenization case drift):
+        if goal.range(of: candidate, options: .caseInsensitive) != nil { return true }
+        return normalizedGoal.range(of: normalizedCandidate, options: .caseInsensitive) != nil
     }
 
     // MARK: Deterministic compilation
@@ -367,6 +370,7 @@ enum PlannerExtraction {
             return .failure(.unknownArgument(tool: extracted.toolName, argument: key))
         }
 
+        var arguments = extracted.arguments
         // Anti-fabrication + preservation gate on the user-literal anchor:
         // 1. The anchor must be a span of the user's goal (adoption gate).
         // 2. The anchor must SURVIVE into the compiled arguments byte-for-byte.
@@ -379,7 +383,19 @@ enum PlannerExtraction {
                     tool: extracted.toolName,
                     reason: "extracted literal is not a span of the user's goal text (argument fabrication rejected)"))
             }
-            let preservedInCompiled = extracted.arguments.values.contains { $0.contains(literal) }
+            // Align literal and argument values to the user's exact goal casing if case drifted.
+            // This preserves the user's exact original casing from their goal.
+            var effectiveLiteral = literal
+            if !goal.contains(literal), let range = goal.range(of: literal, options: .caseInsensitive) {
+                let exactCasing = String(goal[range])
+                effectiveLiteral = exactCasing
+                for (k, v) in arguments {
+                    if let argRange = v.range(of: literal, options: .caseInsensitive) {
+                        arguments[k] = v.replacingCharacters(in: argRange, with: exactCasing)
+                    }
+                }
+            }
+            let preservedInCompiled = arguments.values.contains { $0.contains(effectiveLiteral) }
             guard preservedInCompiled else {
                 return .failure(.unsafeOperation(
                     tool: extracted.toolName,
@@ -388,14 +404,14 @@ enum PlannerExtraction {
         }
 
         // Required arguments the model did not provide fail closed.
-        for spec in tool.parameterSpec where spec.required && extracted.arguments[spec.name] == nil {
+        for spec in tool.parameterSpec where spec.required && arguments[spec.name] == nil {
             return .failure(.missingArgument(tool: extracted.toolName, argument: spec.name))
         }
 
         let step = PlanStep(
             id: "step_1",
             toolName: extracted.toolName,
-            arguments: extracted.arguments,
+            arguments: arguments,
             purpose: "extracted from goal: \(goal.prefix(80))")
         // The decomposition compiler is not an alternate authority path.
         // Apply the canonical validator after constructing the typed plan so
@@ -414,7 +430,7 @@ enum PlannerExtraction {
     static func compiledValue(carrying literal: String?, in plan: AgentPlan) -> String? {
         guard let literal else { return nil }
         for step in plan.steps {
-            if let value = step.arguments.values.first(where: { $0.contains(literal) }) {
+            if let value = step.arguments.values.first(where: { $0.contains(literal) || $0.range(of: literal, options: .caseInsensitive) != nil }) {
                 return value
             }
         }

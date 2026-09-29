@@ -284,6 +284,7 @@ enum SelfTest {
         var emergencyFired = false
         let emSub = bus.subscribe(EmergencyStopEvent.self) { _ in emergencyFired = true }
 
+        _ = emergency.checkForEmergency(in: "stop") // Warm-up lazy audio/speech subsystem allocations
         check(emergency.checkForEmergency(in: "stop"), "Detects standalone 'stop'")
         check(emergencyFired, "Emits EmergencyStopEvent")
         check((emergency.lastEmergencyHaltLatencyMs ?? 999.0) < 50.0, "Emergency stop halt latency is sub-50ms (\(String(format: "%.2f", emergency.lastEmergencyHaltLatencyMs ?? 0))ms)")
@@ -1580,6 +1581,22 @@ enum SelfTest {
         }
         check(rejectedUnsafe, "Unsafe shell command rejected by plan-time sandbox check")
 
+        // 13.7b Protected system path rejected for write_file at plan time
+        let unsafeWritePlan = AgentPlan(goal: "g", steps: [PlanStep(id: "s1", toolName: "write_file", arguments: ["path": "/etc/hosts", "content": "127.0.0.1 bad"], purpose: "p")])
+        var rejectedSystemWrite = false
+        if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(unsafeWritePlan), tool == "write_file", reason.contains("system path") {
+            rejectedSystemWrite = true
+        }
+        check(rejectedSystemWrite, "Protected system path rejected for write_file by PlanValidator")
+
+        // 13.7c Protected system path rejected for read_file at plan time
+        let unsafeReadPlan = AgentPlan(goal: "g", steps: [PlanStep(id: "s1", toolName: "read_file", arguments: ["path": "/private/etc/passwd"], purpose: "p")])
+        var rejectedSystemRead = false
+        if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(unsafeReadPlan), tool == "read_file", reason.contains("system path") {
+            rejectedSystemRead = true
+        }
+        check(rejectedSystemRead, "Protected system path rejected for read_file by PlanValidator")
+
         // 13.8 Garbage (no JSON) fails with noJSONFound
         if case .failure(.noJSONFound) = AgentPlanParser.parse("I cannot do that, sorry!") {
             check(true, "Non-JSON output rejected with noJSONFound")
@@ -1635,6 +1652,26 @@ enum SelfTest {
             orphanOK = true
         }
         check(orphanOK, "Orphaned purpose brace-slip repaired")
+
+        // 14.2b Real 0.5B orphaned purpose ending with }] (root brace omitted after slip)
+        let orphanOmittedRoot = #"{"goal":"write file","steps":[{"id":"step_1","tool":"write_file","arguments":{"path":"a.txt","content":"hello"}},"purpose":"write the text"}]"#
+        var orphanOmittedRootOK = false
+        if case .success(let p) = AgentPlanParser.parse(orphanOmittedRoot),
+           p.steps.first?.purpose == "write the text", p.steps.first?.toolName == "write_file",
+           p.steps.first?.arguments["content"] == "hello" {
+            orphanOmittedRootOK = true
+        }
+        check(orphanOmittedRootOK, "Orphaned purpose with omitted root brace repaired")
+
+        // 14.2c Real 0.5B orphaned purpose ending with "} (array bracket omitted)
+        let orphanOmittedBracket = #"{"goal":"open app","steps":[{"id":"step_1","tool":"open_app","arguments":{"app_name":"Calculator"}},"purpose":"open the app"}"#
+        var orphanOmittedBracketOK = false
+        if case .success(let p) = AgentPlanParser.parse(orphanOmittedBracket),
+           p.steps.first?.purpose == "open the app", p.steps.first?.toolName == "open_app",
+           p.steps.first?.arguments["app_name"] == "Calculator" {
+            orphanOmittedBracketOK = true
+        }
+        check(orphanOmittedBracketOK, "Orphaned purpose with omitted array bracket repaired")
 
         // 14.3 JSON terminator echo stripped from string values
         let terminatorEcho = #"{"goal":"say hiJSON: ","steps":[{"id":"s1","tool":"run_shell","arguments":{"command":"echo say hiJSON"},"purpose":"p"}]}"#

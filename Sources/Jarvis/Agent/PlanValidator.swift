@@ -141,14 +141,24 @@ enum AgentPlanParser {
             // object early and emits "purpose" at array level
             // (`}},"purpose":"X"}]`). Removing one brace reattaches it to the
             // step it belongs to.
-            let orphanFixed = bounded.replacingOccurrences(
+            var orphanFixed = bounded.replacingOccurrences(
                 of: "}},\"purpose\":\"",
                 with: "},\"purpose\":\"")
-            if orphanFixed != bounded,
-               let data = orphanFixed.data(using: .utf8),
-               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               case .success(let plan) = validateSchema(object) {
-                return .success(plan)
+            if orphanFixed != bounded {
+                let trimmed = orphanFixed.trimmingCharacters(in: .whitespacesAndNewlines)
+                var candidatesToTry = [orphanFixed]
+                if trimmed.hasSuffix("}]") {
+                    candidatesToTry.append(trimmed + "}")
+                } else if trimmed.hasSuffix("\"}") {
+                    candidatesToTry.append(trimmed + "]}")
+                }
+                for candidate in candidatesToTry {
+                    if let data = candidate.data(using: .utf8),
+                       let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       case .success(let plan) = validateSchema(object) {
+                        return .success(plan)
+                    }
+                }
             }
 
             // Formatting repair 2: prefix-join of a string truncated by the
@@ -427,6 +437,12 @@ enum PlanValidator {
                     let sensitiveSubpaths = [".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud", ".env", ".netrc", ".zsh_history", ".bash_history"]
                     if sensitiveSubpaths.contains(where: { lower.contains($0) }) {
                         return .failure(.unsafeOperation(tool: toolName, reason: "access to sensitive subpath forbidden"))
+                    }
+                    let protectedSystemPrefixes = [
+                        "/system", "/library", "/usr", "/bin", "/sbin", "/private", "/etc", "/var", "/dev"
+                    ]
+                    if protectedSystemPrefixes.contains(where: { lower == $0 || lower.hasPrefix($0 + "/") }) {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "access to system path forbidden"))
                     }
                 }
             }

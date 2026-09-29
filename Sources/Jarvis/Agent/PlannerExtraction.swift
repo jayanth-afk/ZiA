@@ -762,6 +762,175 @@ enum PlannerExtraction {
         )
     }
 
+    // MARK: Deterministic read_file extraction (0 model calls)
+
+    /// Deterministically capture an explicit, bounded file-reading request
+    /// where the prefix identifies the read intent and the remainder is a
+    /// single target file path.
+    ///
+    /// Accepted prefix forms:
+    ///   - "read the file <path>"
+    ///   - "read file <path>"
+    ///   - "read the contents of <path>"
+    ///   - "read contents of <path>"
+    ///   - "show the contents of <path>"
+    ///   - "show contents of <path>"
+    ///   - "please read the file <path>"
+    ///   - "can you read the file <path>"
+    ///   - "please read file <path>"
+    ///   - "can you read file <path>"
+    ///   - "read <path>" (when path has an extension or path separator)
+    static func explicitReadFileExtraction(goal: String) -> ExtractedAction? {
+        let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGoal.isEmpty else { return nil }
+        let lower = trimmedGoal.lowercased()
+
+        // Compound guard: multi-action utterances must go to the planner.
+        let compoundMarkers = [" and then", ", then", " then ", " & ", " also ", " or "]
+        if compoundMarkers.contains(where: { lower.contains($0) }) { return nil }
+
+        // Negation guard: "don't read ...", "do not read ...", etc.
+        let negations = ["don't", "do not", "never ", "not read", "without reading"]
+        if negations.contains(where: { lower.contains($0) }) { return nil }
+
+        // Question guard at the START of the utterance — except "can you …"
+        let questionStarters = ["what ", "why ", "how ", "when ", "is ", "are ",
+                                "does ", "which ", "who ", "where ", "can i "]
+        if questionStarters.contains(where: { lower.hasPrefix($0) }) { return nil }
+
+        // Instructions merely discussing read_file or meta queries
+        if lower.contains("how to") || lower.contains("read_file") || lower.contains("explain") {
+            return nil
+        }
+
+        // Prefixes to match, ordered longest-first
+        let prefixes: [String] = [
+            "please read the contents of the file ",
+            "please read the contents of file ",
+            "please read the contents of ",
+            "can you read the contents of the file ",
+            "can you read the contents of file ",
+            "can you read the contents of ",
+            "read the contents of the file ",
+            "read the contents of file ",
+            "read the contents of ",
+            "read contents of the file ",
+            "read contents of file ",
+            "read contents of ",
+            "show the contents of the file ",
+            "show the contents of file ",
+            "show the contents of ",
+            "show contents of the file ",
+            "show contents of file ",
+            "show contents of ",
+            "please read the file ",
+            "can you read the file ",
+            "please read file ",
+            "can you read file ",
+            "read the file ",
+            "read file ",
+            "please read ",
+            "can you read ",
+            "read ",
+        ]
+
+        var matchedPath: String?
+        for prefix in prefixes {
+            guard lower.hasPrefix(prefix) else { continue }
+            var candidate = String(trimmedGoal.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            // Strip trailing punctuation
+            while let last = candidate.last, ".?!,".contains(last) {
+                candidate = String(candidate.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            // Strip matching quotes if present
+            if (candidate.hasPrefix("'") && candidate.hasSuffix("'") && candidate.count >= 2) ||
+               (candidate.hasPrefix("\"") && candidate.hasSuffix("\"") && candidate.count >= 2) ||
+               (candidate.hasPrefix("`") && candidate.hasSuffix("`") && candidate.count >= 2) {
+                candidate = String(candidate.dropFirst().dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+            } else if candidate.hasPrefix("'") || candidate.hasPrefix("\"") || candidate.hasPrefix("`") ||
+                      candidate.hasSuffix("'") || candidate.hasSuffix("\"") || candidate.hasSuffix("`") {
+                // Mismatched delimiter
+                return nil
+            }
+
+            // If prefix was just "read " or "please read ", ensure candidate looks like a file path
+            // (has extension like .txt, .json, etc., or starts with ~ or / or contains /)
+            if prefix == "read " || prefix == "please read " || prefix == "can you read " {
+                let hasPathSeparator = candidate.contains("/") || candidate.hasPrefix("~")
+                let hasFileExtension = candidate.contains(".") && !(candidate.hasPrefix(".") && !candidate.dropFirst().contains("."))
+                guard hasPathSeparator || hasFileExtension else { continue }
+            }
+
+            guard !candidate.isEmpty else { return nil }
+            matchedPath = candidate
+            break
+        }
+
+        guard let path = matchedPath else { return nil }
+
+        // State / relative clause guard:
+        // "read the file I was working on", "read the file from earlier"
+        let lowerPath = path.lowercased()
+        let referenceStarters = ["i ", "that ", "which ", "we ", "you ", "the ", "my ", "it "]
+        if referenceStarters.contains(where: { lowerPath.hasPrefix($0) }) {
+            return nil
+        }
+        let referenceKeywords = [" was ", " were ", " used", " using", " earlier", " recently", " yesterday", " edited", " created", " modified"]
+        if referenceKeywords.contains(where: { lowerPath.contains($0) }) {
+            return nil
+        }
+
+        // Path validation: non-empty, not a directory, no traversal, no quotes, no newlines/nulls
+        guard !path.isEmpty,
+              !path.hasSuffix("/"),
+              !path.contains(".."),
+              !path.contains("//"),
+              !path.contains("'"),
+              !path.contains("\""),
+              !path.contains("\n"),
+              !path.contains("\r"),
+              !path.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            return nil
+        }
+
+        // Must be a substring of user's goal (literal adoption)
+        guard trimmedGoal.contains(path) else {
+            return nil
+        }
+
+        // Path sandbox / containment safety checks:
+        let blockedSystemPrefixes = [
+            "/system", "/library", "/usr", "/bin", "/sbin",
+            "/private", "/etc", "/var", "/dev"
+        ]
+        for prefix in blockedSystemPrefixes {
+            if lowerPath == prefix || lowerPath.hasPrefix(prefix + "/") {
+                return nil
+            }
+        }
+        let expanded = (path as NSString).expandingTildeInPath.lowercased()
+        for prefix in blockedSystemPrefixes {
+            if expanded == prefix || expanded.hasPrefix(prefix + "/") {
+                return nil
+            }
+        }
+        let blockedSubpaths = [
+            ".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud",
+            ".env", ".netrc", ".zsh_history", ".bash_history"
+        ]
+        for subpath in blockedSubpaths {
+            if lowerPath.contains(subpath) || expanded.contains(subpath) {
+                return nil
+            }
+        }
+
+        return ExtractedAction(
+            toolName: "read_file",
+            arguments: ["path": path],
+            literal: path
+        )
+    }
+
     // MARK: Deterministic fetch_url extraction (0 model calls)
 
     /// Bounded, deterministic extraction for explicit, unambiguous URL fetch requests.

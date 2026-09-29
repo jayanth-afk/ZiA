@@ -3612,6 +3612,99 @@ enum SelfTest {
         }
         check(sh129Compiled, "run_shell det extraction 20.129b: safe command compiles and preserves argument")
 
+        // 20.130-20.146 read_file deterministic extractor: positive, adversarial, preservation, compile, physical E2E.
+        let rf130 = PlannerExtraction.explicitReadFileExtraction(goal: "read the file notes.txt")
+        check(rf130?.toolName == "read_file" && rf130?.arguments["path"] == "notes.txt" && rf130?.literal == "notes.txt",
+              "read_file det extraction 20.130: 'read the file notes.txt' extracted byte-for-byte")
+
+        let rf131 = PlannerExtraction.explicitReadFileExtraction(goal: "read file '~/Documents/report.md'")
+        check(rf131?.toolName == "read_file" && rf131?.arguments["path"] == "~/Documents/report.md",
+              "read_file det extraction 20.131: single-quoted path stripped and preserved")
+
+        let rf132 = PlannerExtraction.explicitReadFileExtraction(goal: "read the contents of \"build/status.json\"")
+        check(rf132?.toolName == "read_file" && rf132?.arguments["path"] == "build/status.json",
+              "read_file det extraction 20.132: double-quoted path stripped and preserved")
+
+        let rf133 = PlannerExtraction.explicitReadFileExtraction(goal: "please read file config.yml")
+        check(rf133?.toolName == "read_file" && rf133?.arguments["path"] == "config.yml",
+              "read_file det extraction 20.133: polite prefix 'please read file' handled")
+
+        let rf134 = PlannerExtraction.explicitReadFileExtraction(goal: "can you read the file test.swift")
+        check(rf134?.toolName == "read_file" && rf134?.arguments["path"] == "test.swift",
+              "read_file det extraction 20.134: polite prefix 'can you read the file' handled")
+
+        let rf135 = PlannerExtraction.explicitReadFileExtraction(goal: "read README.md")
+        check(rf135?.toolName == "read_file" && rf135?.arguments["path"] == "README.md",
+              "read_file det extraction 20.135: direct 'read <file.ext>' accepted")
+
+        check(PlannerExtraction.explicitReadFileExtraction(goal: "don't read the file notes.txt") == nil,
+              "read_file det extraction 20.136: negation rejected")
+
+        check(PlannerExtraction.explicitReadFileExtraction(goal: "what file should I read?") == nil,
+              "read_file det extraction 20.137: question rejected")
+
+        check(PlannerExtraction.explicitReadFileExtraction(goal: "read the file notes.txt and then open Safari") == nil,
+              "read_file det extraction 20.138: compound command rejected")
+
+        check(PlannerExtraction.explicitReadFileExtraction(goal: "read the file my_folder/") == nil,
+              "read_file det extraction 20.139: directory target rejected")
+
+        check(PlannerExtraction.explicitReadFileExtraction(goal: "read the file ../secret.txt") == nil,
+              "read_file det extraction 20.140: directory traversal '..' rejected")
+
+        check(PlannerExtraction.explicitReadFileExtraction(goal: "read the file /System/Library/test.txt") == nil,
+              "read_file det extraction 20.141: protected system path rejected")
+
+        check(PlannerExtraction.explicitReadFileExtraction(goal: "read the file ~/.ssh/id_rsa") == nil,
+              "read_file det extraction 20.142: sensitive subpath rejected")
+
+        check(PlannerExtraction.explicitReadFileExtraction(goal: "read the file I was working on") == nil,
+              "read_file det extraction 20.143: relative clause reference rejected")
+
+        check(PlannerExtraction.explicitReadFileExtraction(goal: "read the file from earlier") == nil,
+              "read_file det extraction 20.144: temporal reference rejected")
+
+        // 20.145 Compile gate: well-formed read_file ExtractedAction compiles, validates, preserves argument
+        let rf145Extraction = ExtractedAction(toolName: "read_file", arguments: ["path": "notes.txt"], literal: "notes.txt")
+        var rf145Compiled = false
+        if case .success(let plan) = PlannerExtraction.compile(rf145Extraction, goal: "read the file notes.txt"),
+           plan.steps.count == 1,
+           let step = plan.steps.first,
+           step.toolName == "read_file",
+           step.arguments["path"] == "notes.txt" {
+            rf145Compiled = true
+        }
+        check(rf145Compiled, "read_file det extraction 20.145: compile gate passes, path preserved")
+
+        // 20.146 Physical E2E: write temp file -> read_file execution -> observe -> verify byte-exact match
+        let tempReadPath = "build/selftest_read_e2e.txt"
+        let testPayload = "Zia physical read E2E payload: 42 passed!"
+        try? testPayload.write(toFile: tempReadPath, atomically: true, encoding: .utf8)
+        var physicalReadSuccess = false
+        let readSem = DispatchSemaphore(value: 0)
+        Task {
+            if let extracted = PlannerExtraction.explicitReadFileExtraction(goal: "read the file \(tempReadPath)"),
+               case .success(let plan) = PlannerExtraction.compile(extracted, goal: "read the file \(tempReadPath)"),
+               case .success(let validatedPlan) = PlanValidator.validate(plan),
+               let step = validatedPlan.steps.first {
+                let tool = ReadFileTool()
+                if let result = try? await tool.execute(arguments: step.arguments), result.success {
+                    if let obs = try? await tool.observe(expected: result) {
+                        let verification = tool.verifyDetailed(expected: result, observed: obs)
+                        if verification.outcome == .passed && result.output == testPayload {
+                            physicalReadSuccess = true
+                        }
+                    }
+                }
+            }
+            try? FileManager.default.removeItem(atPath: tempReadPath)
+            readSem.signal()
+        }
+        while readSem.wait(timeout: .now() + 0.05) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        check(physicalReadSuccess, "read_file physical E2E 20.146: extraction → compile → validate → execute → verify matches disk byte-for-byte")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

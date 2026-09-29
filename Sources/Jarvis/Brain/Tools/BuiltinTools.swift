@@ -212,6 +212,55 @@ struct WriteFileTool: JarvisTool {
     }
 }
 
+// MARK: - Safe File Reading Tool
+
+struct ReadFileTool: JarvisTool {
+    let name = "read_file"
+    let description = "Reads UTF-8 text from a user-accessible non-system file"
+    let impact: PermissionGate.ActionImpact = .readOnly
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "path", kind: .string, required: true, description: "Target file path within the user-accessible filesystem")
+    ]
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let path = arguments["path"] as? String, !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw JarvisError.actionFailed(action: name, reason: "Missing or empty argument 'path'")
+        }
+        let content = try await MainActor.run { try FileManagerJarvis.shared.readFile(at: path) }
+        return ToolResult(
+            success: true,
+            output: content,
+            sideEffects: ["file_read"],
+            metadata: ["path": path]
+        )
+    }
+
+    func observe() async throws -> ObservationResult {
+        return ObservationResult(observations: ["status": "completed"], isAvailable: true)
+    }
+
+    func observe(expected: ToolResult) async throws -> ObservationResult {
+        guard let path = expected.metadata["path"] else {
+            return ObservationResult(observations: ["status": "completed"], isAvailable: true)
+        }
+        let state = FileSystemObserver.shared.observe(path: path)
+        return ObservationResult(observations: [
+            "exists": state.exists ? "true" : "false",
+            "isRegularFile": state.isRegularFile ? "true" : "false"
+        ], isAvailable: true)
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            return .failed("File read failed during execution")
+        }
+        if let exists = observed.observations["exists"], exists == "false" {
+            return .failed("File does not exist: \(expected.metadata["path"] ?? "")")
+        }
+        return .passed
+    }
+}
+
 // MARK: - Web Search Tool
 
 struct WebSearchTool: JarvisTool {

@@ -413,6 +413,18 @@ enum PlanValidator {
                     }
                 }
             }
+
+            if toolName == "read_file" || toolName == "write_file", let path = step.arguments["path"] {
+                if !path.contains("$step") && !path.contains("$ambient") {
+                    let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if trimmed.isEmpty {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "empty file path"))
+                    }
+                    if trimmed.contains("..") {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "directory traversal '..' forbidden"))
+                    }
+                }
+            }
         }
 
         return .success(plan)

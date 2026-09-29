@@ -61,6 +61,7 @@ final class ToolRegistry {
         register(SetVolumeTool())
         register(RunShellTool())
         register(WriteFileTool())
+        register(ReadFileTool())
         register(WebSearchTool())
         register(FetchURLTool())
         register(OpenBrowserTool())

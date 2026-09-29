@@ -664,6 +664,26 @@ actor MLXPlanner {
             }
         }
 
+        // Deterministic read_file extraction for explicit file read requests
+        // ("read the file X", "read 'X'", "show contents of X").
+        if let extractedRead = PlannerExtraction.explicitReadFileExtraction(goal: goal) {
+            let compileResultRead = await MainActor.run { PlannerExtraction.compile(extractedRead, goal: goal) }
+            switch compileResultRead {
+            case .success(let plan):
+                await MainActor.run {
+                    ArgumentPreservationRecorder.shared.recordCompilation(
+                        originalGoal: goal,
+                        extractedLiteral: extractedRead.literal,
+                        compiledLiteral: PlannerExtraction.compiledValue(carrying: extractedRead.literal, in: plan))
+                }
+                JarvisLogger.brain.info("MLXPlanner used read_file deterministic extraction (0 model calls)")
+                return plan
+            case .failure(let error):
+                // Soft fall-through: the model gets a chance at an unusual request.
+                JarvisLogger.brain.warning("read_file det extraction compile failed (\(error.description)) — falling through to model")
+            }
+        }
+
         // Deterministic fetch_url extraction for explicit HTTP/HTTPS URL fetch requests
         // ("fetch the url https://...", "download url https://...").
         if let extractedFetch = PlannerExtraction.explicitFetchURLExtraction(goal: goal) {
@@ -844,6 +864,7 @@ actor MLXPlanner {
         p += "- run_shell: the ENTIRE shell command as ONE scalar string.\n"
         p += "- web_search: the search query text.\n"
         p += "- write_file: content = the exact text to write; path = a file path.\n"
+        p += "- read_file: path = the file path to read.\n"
         p += "- open_app: app_name = the application name.\n"
         p += "- set_volume: level = integer volume level from 0 to 100.\n\n"
         p += "COPY RULE (critical): argument values and literal must be copied EXACTLY as written in the user goal, preserving exact capitalization. Never write \"hello\", \"example\", or any word that is not in the goal.\n\n"
@@ -954,7 +975,7 @@ actor MLXPlanner {
             switch family {
             case "app": return tools.filter { $0.name == "open_app" }
             case "volume": return tools.filter { $0.name == "set_volume" }
-            case "file": return tools.filter { $0.name == "write_file" }
+            case "file": return tools.filter { $0.name == "write_file" || $0.name == "read_file" }
             case "shell": return tools.filter { $0.name == "run_shell" }
             case "web": return tools.filter { ["web_search", "fetch_url", "open_browser"].contains($0.name) }
             default: return tools.filter { $0.name == family }

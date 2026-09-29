@@ -337,11 +337,12 @@ actor AgentLoop {
                     // (post-reference-resolution) values for the most recent
                     // planner compilation of this goal. No-op when the run was
                     // not planner-routed (deterministic/direct-answer/refusal).
-                    if let resolvedArgs = args as? [String: String] {
-                        await MainActor.run {
-                            ArgumentPreservationRecorder.shared.noteExecution(
-                                goal: goal, resolvedArguments: resolvedArgs)
-                        }
+                    let stringArgs = args.reduce(into: [String: String]()) { dict, pair in
+                        dict[pair.key] = "\(pair.value)"
+                    }
+                    await MainActor.run {
+                        ArgumentPreservationRecorder.shared.noteExecution(
+                            goal: goal, resolvedArguments: stringArgs)
                     }
 
                     // Emergency Stop / cancel may have fired during execution:

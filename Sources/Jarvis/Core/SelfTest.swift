@@ -2997,6 +2997,76 @@ enum SelfTest {
         check(oa28Compiled,
               "open_app det extraction 20.28: compile gate passes, app_name preserved in compiled plan")
 
+        // 20.29–20.39 set_volume deterministic extractor: positive + adversarial + compile.
+        // Purely offline (0 model calls). Verifies finite grammar and guard paths.
+
+        // 20.29 Positive: "please set the volume to 50" → level=50, literal=50
+        let sv29 = PlannerExtraction.explicitSetVolumeExtraction(goal: "please set the volume to 50")
+        check(sv29?.toolName == "set_volume" && sv29?.arguments["level"] == "50" && sv29?.literal == "50",
+              "set_volume det extraction 20.29: 'please set the volume to 50' → level=50")
+
+        // 20.30 Positive: "can you set volume to 25%" → level=25, literal=25
+        let sv30 = PlannerExtraction.explicitSetVolumeExtraction(goal: "can you set volume to 25%")
+        check(sv30?.toolName == "set_volume" && sv30?.arguments["level"] == "25" && sv30?.literal == "25",
+              "set_volume det extraction 20.30: 'can you set volume to 25%' → level=25")
+
+        // 20.31 Positive: "set the volume to 75" → level=75
+        let sv31 = PlannerExtraction.explicitSetVolumeExtraction(goal: "set the volume to 75")
+        check(sv31?.toolName == "set_volume" && sv31?.arguments["level"] == "75",
+              "set_volume det extraction 20.31: 'set the volume to 75' → level=75")
+
+        // 20.32 Positive: "turn the volume to 10" → level=10
+        let sv32 = PlannerExtraction.explicitSetVolumeExtraction(goal: "turn the volume to 10")
+        check(sv32?.toolName == "set_volume" && sv32?.arguments["level"] == "10",
+              "set_volume det extraction 20.32: 'turn the volume to 10' → level=10")
+
+        // 20.33 Positive: "change the volume to 0" → level=0
+        let sv33 = PlannerExtraction.explicitSetVolumeExtraction(goal: "change the volume to 0")
+        check(sv33?.toolName == "set_volume" && sv33?.arguments["level"] == "0",
+              "set_volume det extraction 20.33: 'change the volume to 0' → level=0")
+
+        // 20.34 Positive: "adjust the volume to 100%" → level=100
+        let sv34 = PlannerExtraction.explicitSetVolumeExtraction(goal: "adjust the volume to 100%")
+        check(sv34?.toolName == "set_volume" && sv34?.arguments["level"] == "100",
+              "set_volume det extraction 20.34: 'adjust the volume to 100%' → level=100")
+
+        // 20.35 False-positive: "don't set the volume to 50" → nil (negation guard)
+        let sv35 = PlannerExtraction.explicitSetVolumeExtraction(goal: "don't set the volume to 50")
+        check(sv35 == nil,
+              "set_volume det extraction 20.35: \"don't set the volume to 50\" → nil (negation guard)")
+
+        // 20.36 False-positive: "set the volume to 50 and then open Safari" → nil (compound guard)
+        let sv36 = PlannerExtraction.explicitSetVolumeExtraction(goal: "set the volume to 50 and then open Safari")
+        check(sv36 == nil,
+              "set_volume det extraction 20.36: compound 'set the volume to 50 and then…' → nil (compound guard)")
+
+        // 20.37 False-positive: "what is the volume?" → nil (question guard)
+        let sv37 = PlannerExtraction.explicitSetVolumeExtraction(goal: "what is the volume?")
+        check(sv37 == nil,
+              "set_volume det extraction 20.37: 'what is the volume?' → nil (question guard)")
+
+        // 20.38 Out-of-range & non-numeric guards
+        let sv38a = PlannerExtraction.explicitSetVolumeExtraction(goal: "set the volume to 150")
+        let sv38b = PlannerExtraction.explicitSetVolumeExtraction(goal: "please set the volume to high")
+        check(sv38a == nil && sv38b == nil,
+              "set_volume det extraction 20.38: out-of-range (150) and non-numeric ('high') → nil")
+
+        // 20.39 Compile gate: well-formed set_volume ExtractedAction compiles,
+        // validates through PlanValidator, preserves level argument.
+        let sv39Extraction = ExtractedAction(
+            toolName: "set_volume",
+            arguments: ["level": "50"],
+            literal: "50")
+        var sv39Compiled = false
+        if case .success(let plan) = PlannerExtraction.compile(sv39Extraction, goal: "please set the volume to 50"),
+           plan.steps.count == 1,
+           plan.steps.first?.toolName == "set_volume",
+           plan.steps.first?.arguments["level"] == "50" {
+            sv39Compiled = true
+        }
+        check(sv39Compiled,
+              "set_volume det extraction 20.39: compile gate passes, level preserved in compiled plan")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

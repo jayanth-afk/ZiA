@@ -602,6 +602,28 @@ actor MLXPlanner {
             }
         }
 
+        // Deterministic set_volume extraction for polite/indirect forms
+        // ("please set the volume to X", "can you set volume to X", "turn the volume to X").
+        // Canonical forms ("set volume to X", "volume X%") are handled by
+        // DeterministicRouter BEFORE planDecomposed is ever called.
+        if let extractedVol = PlannerExtraction.explicitSetVolumeExtraction(goal: goal) {
+            let compileResultVol = await MainActor.run { PlannerExtraction.compile(extractedVol, goal: goal) }
+            switch compileResultVol {
+            case .success(let plan):
+                await MainActor.run {
+                    ArgumentPreservationRecorder.shared.recordCompilation(
+                        originalGoal: goal,
+                        extractedLiteral: extractedVol.literal,
+                        compiledLiteral: PlannerExtraction.compiledValue(carrying: extractedVol.literal, in: plan))
+                }
+                JarvisLogger.brain.info("MLXPlanner used set_volume deterministic extraction (0 model calls)")
+                return plan
+            case .failure(let error):
+                // Soft fall-through: the model gets a chance at an unusual request.
+                JarvisLogger.brain.warning("set_volume det extraction compile failed (\(error.description)) — falling through to model")
+            }
+        }
+
         // Catalog: identical deterministic hint + forced-inclusion logic as
         // plan(), plus the recency web hint so freshness-sensitive goals see
         // the web tools.
@@ -719,7 +741,8 @@ actor MLXPlanner {
         p += "- run_shell: the ENTIRE shell command as ONE scalar string.\n"
         p += "- web_search: the search query text.\n"
         p += "- write_file: content = the exact text to write; path = a file path.\n"
-        p += "- open_app: app_name = the application name.\n\n"
+        p += "- open_app: app_name = the application name.\n"
+        p += "- set_volume: level = integer volume level from 0 to 100.\n\n"
         p += "COPY RULE (critical): argument values and literal must be copied EXACTLY as written in the user goal, preserving exact capitalization. Never write \"hello\", \"example\", or any word that is not in the goal.\n\n"
         p += "Examples of the ONLY allowed transformation (shape change only):\n"
         p += "Goal: write the word jarvis_planner_e2e_verified using run_shell\n"
@@ -785,6 +808,9 @@ actor MLXPlanner {
         let openVerbs = ["open ", "launch ", "start ", "switch to ", "quit ", "close ", "kill "]
         if openVerbs.contains(where: { g.hasPrefix($0) }) { families.insert("app") }
 
+        if g.contains("volume") || g.contains("audio") || g.contains("sound") {
+            families.insert("volume")
+        }
         if g.contains("search the web") || g.contains("web search") || g.hasPrefix("search ")
             || g.hasPrefix("look up ") || g.hasPrefix("google ") || g.contains("on the internet") || g.contains("online for") {
             families.insert("web")
@@ -811,6 +837,7 @@ actor MLXPlanner {
         let familyTools: (String) -> [any JarvisTool] = { family in
             switch family {
             case "app": return tools.filter { $0.name == "open_app" }
+            case "volume": return tools.filter { $0.name == "set_volume" }
             case "shell": return tools.filter { $0.name == "run_shell" }
             case "web": return tools.filter { ["web_search", "fetch_url", "open_browser"].contains($0.name) }
             default: return tools.filter { $0.name == family }

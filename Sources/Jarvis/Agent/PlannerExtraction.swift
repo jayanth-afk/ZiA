@@ -260,6 +260,82 @@ enum PlannerExtraction {
         return nil
     }
 
+    /// Deterministically capture an explicit, bounded volume-setting request
+    /// where the prefix identifies the intent and the remainder is a volume level (0-100).
+    ///
+    /// IMPORTANT: L0 `DeterministicRouter.matchVolumeCommand()` handles:
+    ///   - "set volume to <N>"
+    ///   - "set volume <N>"
+    ///   - "volume <N>%"
+    /// BEFORE this extractor is reached.
+    ///
+    /// Accepted prefix forms (polite, indirect, and article-qualified):
+    ///   please set the volume to <N>   · please set volume to <N>
+    ///   can you set the volume to <N>  · can you set volume to <N>
+    ///   set the volume to <N>          · set the volume <N>
+    ///   adjust the volume to <N>       · change the volume to <N>
+    ///   turn the volume up to <N>      · turn the volume down to <N>
+    ///   turn the volume to <N>         · turn volume to <N>
+    ///
+    /// All other forms fall through to the model or L0 router respectively.
+    static func explicitSetVolumeExtraction(goal: String) -> ExtractedAction? {
+        let lower = goal.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !lower.isEmpty else { return nil }
+
+        // Compound guard: multi-action utterances must go to the planner.
+        let compoundMarkers = [" and then", ", then", " then ", " & ", " also ",
+                               " and set", " and turn", " or "]
+        if compoundMarkers.contains(where: { lower.contains($0) }) { return nil }
+
+        // Negation guard: "don't set the volume", "do not change volume", etc.
+        let negations = ["don't", "do not", "never ", "not set", "not change",
+                         "without setting", "without changing"]
+        if negations.contains(where: { lower.contains($0) }) { return nil }
+
+        // Question guard at the START of the utterance — except "can you …"
+        let questionStarters = ["what ", "why ", "how ", "when ", "is ", "are ",
+                                "does ", "which ", "who ", "where "]
+        if questionStarters.contains(where: { lower.hasPrefix($0) }) { return nil }
+
+        // Accepted prefix forms, ordered longest-first to prevent short-prefix shadowing.
+        let prefixes: [String] = [
+            "please set the volume to ",
+            "can you set the volume to ",
+            "please set volume to ",
+            "can you set volume to ",
+            "turn the volume up to ",
+            "turn the volume down to ",
+            "turn the volume to ",
+            "set the volume to ",
+            "adjust the volume to ",
+            "change the volume to ",
+            "set the volume ",
+            "turn volume to ",
+        ]
+
+        for prefix in prefixes {
+            guard lower.hasPrefix(prefix) else { continue }
+            var levelStr = String(goal.dropFirst(prefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            while let last = levelStr.last, ".?!,".contains(last) {
+                levelStr = String(levelStr.dropLast())
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if levelStr.hasSuffix("%") {
+                levelStr = String(levelStr.dropLast())
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard !levelStr.isEmpty,
+                  let level = Int(levelStr),
+                  (0...100).contains(level) else { return nil }
+            return ExtractedAction(
+                toolName: "set_volume",
+                arguments: ["level": String(level)],
+                literal: levelStr)
+        }
+        return nil
+    }
+
     // MARK: Parsing
 
     /// Parse the bounded extraction JSON the decomposition prompt requests:

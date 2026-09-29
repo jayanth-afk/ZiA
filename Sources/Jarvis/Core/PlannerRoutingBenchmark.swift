@@ -114,6 +114,15 @@ enum PlannerRoutingBenchmark {
         RoutingCase(id: "ws-look-up", goal: "look up the boiling point of water", kind: .plannerWeb, toolFamily: "web", expectedLiteral: "the boiling point of water", repetitions: 3),
         RoutingCase(id: "ws-google", goal: "google Swift programming tutorials", kind: .plannerWeb, toolFamily: "web", expectedLiteral: "Swift programming tutorials", repetitions: 3),
         RoutingCase(id: "ws-lit-numbers", goal: "search for WWDC 2026 session videos", kind: .plannerWeb, toolFamily: "web", expectedLiteral: "WWDC 2026 session videos", repetitions: 3),
+
+        // ── set_volume control cases: L0 router must remain unaffected ──
+        RoutingCase(id: "ctrl-det-vol-set", goal: "set volume to 50", kind: .deterministic, toolFamily: nil, expectedLiteral: nil, repetitions: 3),
+        RoutingCase(id: "ctrl-det-vol-mute", goal: "mute", kind: .deterministic, toolFamily: nil, expectedLiteral: nil, repetitions: 3),
+
+        // ── set_volume extraction cases: new deterministic extractor (0 model calls) ──
+        RoutingCase(id: "vol-det-please-set", goal: "please set the volume to 50", kind: .plannerTool, toolFamily: "volume", expectedLiteral: "50", repetitions: 3),
+        RoutingCase(id: "vol-det-can-you", goal: "can you set volume to 25%", kind: .plannerTool, toolFamily: "volume", expectedLiteral: "25", repetitions: 3),
+        RoutingCase(id: "vol-det-turn-to", goal: "turn the volume to 60", kind: .plannerTool, toolFamily: "volume", expectedLiteral: "60", repetitions: 3),
     ]
 
     /// Offline segments (no model): structural repair replay of the observed
@@ -375,6 +384,8 @@ enum PlannerRoutingBenchmark {
                 || lowered.contains("notes") || lowered.contains("calculator")
                 || lowered.contains("xcode") || lowered.contains("terminal")
                 || lowered.contains("already") || lowered.contains("front")
+        case "volume":
+            return lowered.contains("volume") || lowered.contains("set to") || lowered.contains("%")
         default:
             return false
         }

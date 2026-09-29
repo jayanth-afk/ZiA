@@ -664,6 +664,26 @@ actor MLXPlanner {
             }
         }
 
+        // Deterministic web_search extraction for explicit single-target web search requests
+        // ("search the web for X", "search for 'X'", "web search X", "google X").
+        if let extractedWeb = PlannerExtraction.explicitWebSearchExtraction(goal: goal) {
+            let compileResultWeb = await MainActor.run { PlannerExtraction.compile(extractedWeb, goal: goal) }
+            switch compileResultWeb {
+            case .success(let plan):
+                await MainActor.run {
+                    ArgumentPreservationRecorder.shared.recordCompilation(
+                        originalGoal: goal,
+                        extractedLiteral: extractedWeb.literal,
+                        compiledLiteral: PlannerExtraction.compiledValue(carrying: extractedWeb.literal, in: plan))
+                }
+                JarvisLogger.brain.info("MLXPlanner used web_search deterministic extraction (0 model calls)")
+                return plan
+            case .failure(let error):
+                // Soft fall-through: the model gets a chance at an unusual request.
+                JarvisLogger.brain.warning("web_search det extraction compile failed (\(error.description)) — falling through to model")
+            }
+        }
+
         // Deterministic URL-open extraction for goals containing exactly one
         // explicit http(s) URL or bare domain after an open/go/visit/browse
         // verb ("go to example.com", "open https://www.wikipedia.org").

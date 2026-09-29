@@ -763,6 +763,170 @@ enum PlannerExtraction {
         )
     }
 
+    /// Bounded deterministic extractor for explicit single-target web search requests.
+    ///
+    /// Matches explicit queries such as:
+    ///   - "search the web for <query>"
+    ///   - "search for <query>"
+    ///   - "web search <query>"
+    ///   - "google <query>"
+    ///
+    /// Preserves exact casing, inner punctuation, and numbers from the user's
+    /// query span byte-for-byte.
+    ///
+    /// Fails closed (returns nil) on:
+    ///   - Negations ("don't search...")
+    ///   - Questions ("what should I search...")
+    ///   - Compound requests ("and then", "then", ";", "&&")
+    ///   - Local file/directory searches ("search for files...", "search disk...")
+    ///   - Empty queries
+    ///   - Mismatched delimiters
+    static func explicitWebSearchExtraction(goal: String) -> ExtractedAction? {
+        let trimmed = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+
+        // Adversarial guard: negations
+        if lower.hasPrefix("don't ") || lower.hasPrefix("do not ") || lower.hasPrefix("never ") ||
+           lower.contains(" don't ") || lower.contains(" do not ") {
+            return nil
+        }
+
+        // Adversarial guard: questions
+        if lower.hasPrefix("what ") || lower.hasPrefix("why ") || lower.hasPrefix("how ") ||
+           lower.hasPrefix("who ") || lower.hasPrefix("where ") || lower.hasPrefix("when ") ||
+           lower.hasPrefix("which ") || lower.hasPrefix("can i ") || lower.hasPrefix("should i ") ||
+           lower.contains("what should") || lower.contains("how do i") || lower.contains("how to") {
+            return nil
+        }
+
+        // Adversarial guard: compound requests
+        let compoundMarkers = [" and then ", " then ", ";", "&&", ", then", " also "]
+        for marker in compoundMarkers {
+            if lower.contains(marker) {
+                return nil
+            }
+        }
+
+        // Strip polite prefix
+        var rest = trimmed
+        let prefixes = ["please ", "can you please ", "can you ", "could you please ", "could you "]
+        for p in prefixes {
+            if rest.lowercased().hasPrefix(p) {
+                rest = String(rest.dropFirst(p.count)).trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+
+        // Search verbs & prefixes
+        let verbPrefixes = [
+            "search the web for:",
+            "search the web for",
+            "search web for:",
+            "search web for",
+            "web search for:",
+            "web search for",
+            "web search:",
+            "web search",
+            "google for:",
+            "google for",
+            "google:",
+            "google",
+            "search for:",
+            "search for"
+        ]
+
+        var matchedPrefix: String?
+        for vp in verbPrefixes {
+            let vpLower = vp.lowercased()
+            let restLower = rest.lowercased()
+            if restLower.hasPrefix(vpLower) {
+                // Must be followed by space or colon or quote
+                let nextIdx = rest.index(rest.startIndex, offsetBy: vp.count)
+                if nextIdx == rest.endIndex {
+                    // Empty query after verb
+                    return nil
+                }
+                let nextChar = rest[nextIdx]
+                if nextChar == " " || nextChar == ":" || nextChar == "'" || nextChar == "\"" || nextChar == "“" || nextChar == "”" {
+                    matchedPrefix = vp
+                    break
+                }
+            }
+        }
+
+        guard let prefix = matchedPrefix else { return nil }
+
+        var rawQuery = String(rest.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        if rawQuery.hasPrefix(":") {
+            rawQuery = String(rawQuery.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+
+        guard !rawQuery.isEmpty else { return nil }
+
+        // Local file/filesystem search guard (these are local searches, not web searches)
+        let rawLower = rawQuery.lowercased()
+        if rawLower.hasPrefix("files ") || rawLower.hasPrefix("file ") ||
+           rawLower.hasPrefix("folders ") || rawLower.hasPrefix("folder ") ||
+           rawLower.hasPrefix("directory ") || rawLower.hasPrefix("my mac") ||
+           rawLower.hasPrefix("on my mac") || rawLower.hasPrefix("on disk") {
+            return nil
+        }
+
+        // Delimiter handling (single, double, or smart quotes)
+        let quotePairs: [(Character, Character)] = [
+            ("\"", "\""),
+            ("'", "'"),
+            ("“", "”"),
+            ("‘", "’")
+        ]
+
+        var finalQuery: String
+        if let firstChar = rawQuery.first,
+           quotePairs.contains(where: { $0.0 == firstChar }) {
+            // Check matching closing delimiter
+            guard let pair = quotePairs.first(where: { $0.0 == firstChar }),
+                  let lastChar = rawQuery.last,
+                  pair.1 == lastChar else {
+                // Mismatched delimiters
+                return nil
+            }
+            guard rawQuery.count >= 2 else { return nil }
+            let inner = String(rawQuery.dropFirst().dropLast())
+            guard !inner.isEmpty else { return nil }
+            finalQuery = inner
+        } else {
+            // Unquoted query: strip single trailing punctuation (period, question mark)
+            var unquoted = rawQuery
+            if let last = unquoted.last, ".?!".contains(last) {
+                unquoted = String(unquoted.dropLast()).trimmingCharacters(in: .whitespaces)
+            }
+            // If the query contains unmatched quotes, fail closed
+            if unquoted.contains("\"") || unquoted.contains("'") || unquoted.contains("“") || unquoted.contains("”") {
+                return nil
+            }
+            guard !unquoted.isEmpty else { return nil }
+            finalQuery = unquoted
+        }
+
+        // Control characters / newline protection
+        guard !finalQuery.contains("\n"),
+              !finalQuery.contains("\r"),
+              !finalQuery.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            return nil
+        }
+
+        // Check literal adoption: finalQuery must be a substring of the goal
+        guard goal.localizedStandardContains(finalQuery) || goal.contains(finalQuery) else {
+            return nil
+        }
+
+        return ExtractedAction(
+            toolName: "web_search",
+            arguments: ["query": finalQuery],
+            literal: finalQuery
+        )
+    }
+
     // MARK: Parsing
 
     /// Parse the bounded extraction JSON the decomposition prompt requests:

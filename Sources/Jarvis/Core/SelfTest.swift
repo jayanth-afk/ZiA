@@ -3452,6 +3452,113 @@ enum SelfTest {
         check(fu96?.arguments["url"] == complexURL2 && fu96?.literal == complexURL2,
               "fetch_url det extraction 20.96: port, encoded query, and fragment preserved byte-for-byte")
 
+        // ── web_search bounded extraction tests (20.97 - 20.121) ──
+        let ws97 = PlannerExtraction.explicitWebSearchExtraction(goal: "search the web for Swift programming")
+        check(ws97?.toolName == "web_search" && ws97?.arguments["query"] == "Swift programming" && ws97?.literal == "Swift programming",
+              "web_search det extraction 20.97: 'search the web for Swift programming' extracted byte-for-byte")
+
+        let ws98 = PlannerExtraction.explicitWebSearchExtraction(goal: "search web for: 'quantum computing'")
+        check(ws98?.toolName == "web_search" && ws98?.arguments["query"] == "quantum computing" && ws98?.literal == "quantum computing",
+              "web_search det extraction 20.98: 'search web for: 'quantum computing'' single quotes stripped")
+
+        let ws99 = PlannerExtraction.explicitWebSearchExtraction(goal: "web search machine learning tutorials")
+        check(ws99?.toolName == "web_search" && ws99?.arguments["query"] == "machine learning tutorials" && ws99?.literal == "machine learning tutorials",
+              "web_search det extraction 20.99: 'web search machine learning tutorials' extracted")
+
+        let ws100 = PlannerExtraction.explicitWebSearchExtraction(goal: "google Apple Silicon M4")
+        check(ws100?.toolName == "web_search" && ws100?.arguments["query"] == "Apple Silicon M4" && ws100?.literal == "Apple Silicon M4",
+              "web_search det extraction 20.100: 'google Apple Silicon M4' extracted")
+
+        let ws101 = PlannerExtraction.explicitWebSearchExtraction(goal: "search for the history of Rome")
+        check(ws101?.toolName == "web_search" && ws101?.arguments["query"] == "the history of Rome" && ws101?.literal == "the history of Rome",
+              "web_search det extraction 20.101: 'search for the history of Rome' extracted")
+
+        let ws102 = PlannerExtraction.explicitWebSearchExtraction(goal: "please search the web for WWDC 2026 session videos")
+        check(ws102?.arguments["query"] == "WWDC 2026 session videos" && ws102?.literal == "WWDC 2026 session videos",
+              "web_search det extraction 20.102: polite prefix 'please' handled")
+
+        let ws103 = PlannerExtraction.explicitWebSearchExtraction(goal: "can you google Swift 6 migration guide")
+        check(ws103?.arguments["query"] == "Swift 6 migration guide" && ws103?.literal == "Swift 6 migration guide",
+              "web_search det extraction 20.103: polite prefix 'can you' handled")
+
+        let ws104 = PlannerExtraction.explicitWebSearchExtraction(goal: "search for \"c++ vs rust\"")
+        check(ws104?.arguments["query"] == "c++ vs rust" && ws104?.literal == "c++ vs rust",
+              "web_search det extraction 20.104: double quotes stripped and exact content preserved")
+
+        let ws105 = PlannerExtraction.explicitWebSearchExtraction(goal: "web search 'hello, world!'")
+        check(ws105?.arguments["query"] == "hello, world!" && ws105?.literal == "hello, world!",
+              "web_search det extraction 20.105: inner punctuation preserved")
+
+        let ws106 = PlannerExtraction.explicitWebSearchExtraction(goal: "search for ISO/IEC 27001:2022")
+        check(ws106?.arguments["query"] == "ISO/IEC 27001:2022" && ws106?.literal == "ISO/IEC 27001:2022",
+              "web_search det extraction 20.106: symbols, slashes, colons, numbers preserved")
+
+        let ws107 = PlannerExtraction.explicitWebSearchExtraction(goal: "search the web for: latest mars rover news")
+        check(ws107?.arguments["query"] == "latest mars rover news" && ws107?.literal == "latest mars rover news",
+              "web_search det extraction 20.107: colon separator handled")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "don't search for cats") == nil,
+              "web_search det extraction 20.108: negation rejected")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "what should I search for on Google?") == nil,
+              "web_search det extraction 20.109: question rejected")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "search for Swift and then open Safari") == nil,
+              "web_search det extraction 20.110: compound command rejected")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "search the web for ") == nil,
+              "web_search det extraction 20.111: empty query rejected")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "search for \"\"") == nil,
+              "web_search det extraction 20.112: empty quoted query rejected")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "search for 'hello\"") == nil,
+              "web_search det extraction 20.113: mismatched delimiters rejected")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "search for files in downloads") == nil,
+              "web_search det extraction 20.114: local files search guard")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "search for folders on disk") == nil,
+              "web_search det extraction 20.115: local folder search guard")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "search for my mac documents") == nil,
+              "web_search det extraction 20.116: local mac search guard")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "search for hello\"world") == nil,
+              "web_search det extraction 20.117: unmatched quote in unquoted query rejected")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "how do I search for flights?") == nil,
+              "web_search det extraction 20.118: how-to question rejected")
+
+        check(PlannerExtraction.explicitWebSearchExtraction(goal: "search for cats; search for dogs") == nil,
+              "web_search det extraction 20.119: semicolon compound rejected")
+
+        let ws120Extraction = ExtractedAction(
+            toolName: "web_search",
+            arguments: ["query": "Swift concurrency"],
+            literal: "Swift concurrency"
+        )
+        var ws120Compiled = false
+        if case .success(let plan) = PlannerExtraction.compile(ws120Extraction, goal: "search the web for Swift concurrency"),
+           plan.steps.count == 1,
+           let step = plan.steps.first,
+           step.toolName == "web_search",
+           step.arguments["query"] == "Swift concurrency" {
+            ws120Compiled = true
+        }
+        check(ws120Compiled, "web_search det extraction 20.120: compile gate passes, query preserved in plan")
+
+        let ws121BadAction = ExtractedAction(
+            toolName: "web_search",
+            arguments: ["invalid_param": "foo"],
+            literal: "foo"
+        )
+        if case .failure(let err) = PlannerExtraction.compile(ws121BadAction, goal: "search for foo") {
+            check(true, "web_search det extraction 20.121: unknown argument fails closed (\(err))")
+        } else {
+            check(false, "web_search det extraction 20.121: unknown argument should have failed")
+        }
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

@@ -60,6 +60,9 @@ struct JarvisApp: App {
             let semaphore = DispatchSemaphore(value: 0)
             Task { @MainActor in
                 ArgumentPreservationRecorder.shared.reset()
+                // Mirror the app lifecycle: restore the persisted conversation
+                // window so multi-turn memory behaves as in the running app.
+                ConversationManager.shared.loadPersistedHistory()
                 for (i, goal) in goals.enumerated() {
                     print("── turn \(i + 1): \(goal)")
                     do {
@@ -73,6 +76,9 @@ struct JarvisApp: App {
                         print("[error] \(error.localizedDescription)")
                     }
                 }
+                // Allow the detached conversation-persist write to land before
+                // the process exits (CLI-only concern; the running app stays up).
+                try? await Task.sleep(nanoseconds: 300_000_000)
                 semaphore.signal()
             }
             while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
@@ -114,6 +120,9 @@ struct JarvisApp: App {
                     print("[planner-attempt \(rec.attempt)] parseFailed=\(rec.parseStageFailed) validatorError=\(rec.validatorError ?? "none") repair=\(rec.isRepair)")
                     print("[raw] \(rec.rawOutput)")
                 }
+                // Allow the detached conversation-persist write to land before
+                // the process exits (CLI-only concern; the running app stays up).
+                try? await Task.sleep(nanoseconds: 300_000_000)
                 semaphore.signal()
             }
             while semaphore.wait(timeout: .now() + 0.1) == .timedOut {

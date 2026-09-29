@@ -138,20 +138,16 @@ actor AgentLoop {
     }
 
     /// CROSS-TURN MEMORY (production connection): record one interaction so
-    /// the next user turn can reference it. Uses the existing
-    /// ConversationManager — no new architecture, no new state system. Only
-    /// COMPLETED interactions are recorded: failures surface their own truthful
-    /// partial-state report, and a refusal is not something the assistant "did"
-    /// — replaying it as a completed turn would fabricate a false action in
-    /// memory. The user's request itself is still remembered either way.
+    /// the next user turn can reference it, and PERSIST it through the
+    /// ConversationManager's single source of truth (ConversationStore) so it
+    /// survives restart. Only COMPLETED interactions record an assistant
+    /// response: failures surface their own truthful partial-state report, and
+    /// a refusal is not something the assistant "did" — replaying it as a
+    /// completed turn would fabricate a false action in memory. The user's
+    /// request itself is still remembered either way.
     private func recordConversationTurn(goal: String, response: String?) {
         Task { @MainActor in
-            ConversationManager.shared.addUserMessage(goal)
-            if let response {
-                let finalText = response.isEmpty ? "All actions executed and verified." : response
-                ConversationManager.shared.addAssistantMessage(finalText)
-                ConversationStore.shared.saveMessage(Message(role: .assistant, content: finalText))
-            }
+            ConversationManager.shared.recordInteraction(goal: goal, response: response)
         }
     }
 
@@ -203,9 +199,7 @@ actor AgentLoop {
             lastPlannerMetrics.value = nil
             // Memory records the REQUEST (never a fake assistant action), so a
             // follow-up clarification ("what can you do instead?") has context.
-            Task { @MainActor in
-                ConversationManager.shared.addUserMessage(goal)
-            }
+            recordConversationTurn(goal: goal, response: nil)
             return reason.userFacingMessage
         case .directAnswer:
             JarvisLogger.brain.info("AgentLoop: direct-answer route for '\(goal, privacy: .public)'")

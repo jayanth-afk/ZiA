@@ -20,11 +20,18 @@ actor DirectComposer {
 
         // Cross-turn memory: reuse the existing ConversationManager history so
         // follow-up questions can reference the previous production turn
-        // (e.g. "why?" after a completed task). Clipped to the last few turns
-        // — the prompt stays tiny for the 0.5B model.
-        let history = await MainActor.run { ConversationManager.shared.getContext() }
+        // (e.g. "why?" after a completed task). If the working window is empty
+        // (fresh lifecycle where the app started but the user's first turn is
+        // this one), fall back to the PERSISTED history (ConversationStore) so
+        // a restored conversation is usable without re-populating RAM first.
+        // Bounded to the last few turns — the prompt stays tiny for the 0.5B model.
+        var history = await MainActor.run { ConversationManager.shared.getContext() }
             .filter { $0.role == .user || $0.role == .assistant }
-            .suffix(4)
+        if history.isEmpty {
+            history = ConversationStore.shared.loadMessages(limit: 12)
+                .filter { $0.role == .user || $0.role == .assistant }
+        }
+        history = Array(history.suffix(4))
 
         // Keep the prompt tiny: brief history + goal + clipped observations.
         var prompt = "Answer the user's request directly in one short sentence.\n"

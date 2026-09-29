@@ -13,6 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appState = AppState.shared
         let eventBus = EventBus.shared
 
+        // Restore the persisted conversation window (SQLite) so memory
+        // survives restart. CONTEXT ONLY: restored turns help understanding;
+        // they never authorize an action (authority stays with the existing
+        // gates and validators).
+        ConversationManager.shared.loadPersistedHistory()
+
         // Setup menu bar
         menuBarManager = MenuBarManager(appState: appState, eventBus: eventBus)
 

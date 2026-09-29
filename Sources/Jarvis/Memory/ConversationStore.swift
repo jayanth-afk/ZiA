@@ -90,11 +90,17 @@ final class ConversationStore: @unchecked Sendable {
     }
 
     /// Load the most recent messages for a conversation up to a specified limit.
+    /// Returns the NEWEST `limit` messages in chronological order, so a
+    /// restored window always contains the latest turns. (A naive
+    /// `ORDER BY timestamp ASC LIMIT ?` would return the OLDEST turns and lose
+    /// everything recent after a long history.) Ordering uses `rowid`
+    /// (insertion order) as the tie-break so a user+assistant turn pair written
+    /// in the same instant can never be reordered.
     func loadMessages(conversationId: String = "default", limit: Int = 50) -> [Message] {
         lock.lock()
         defer { lock.unlock() }
 
-        let querySQL = "SELECT id, role, content, timestamp FROM messages WHERE conversation_id = ? ORDER BY timestamp ASC LIMIT ?;"
+        let querySQL = "SELECT id, role, content, timestamp FROM messages WHERE conversation_id = ? ORDER BY rowid DESC LIMIT ?;"
         var stmt: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, querySQL, -1, &stmt, nil) == SQLITE_OK else {
@@ -124,7 +130,24 @@ final class ConversationStore: @unchecked Sendable {
             messages.append(Message(id: idStr, role: role, content: content, timestamp: date))
         }
 
-        return messages
+        // DESC selection + ASC return: newest N turns, oldest-first.
+        return messages.reversed()
+    }
+
+    /// Count messages for one conversation (bounded-window diagnostics/tests).
+    func messageCount(conversationId: String = "default") -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let countSQL = "SELECT COUNT(*) FROM messages WHERE conversation_id = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, countSQL, -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, conversationId, -1, SQLITE_TRANSIENT)
+        if sqlite3_step(stmt) == SQLITE_ROW {
+            return Int(sqlite3_column_int(stmt, 0))
+        }
+        return 0
     }
 
     /// Clear all messages for a specific conversation.

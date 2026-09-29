@@ -4252,6 +4252,7 @@ enum SelfTest {
             defer { Config.shared.autonomyLevel = prevAutonomy }
             do {
             ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
             let goalStr = "read clipboard"
             _ = try await AgentLoop.shared.run(goal: goalStr)
             let msgs = ConversationManager.shared.messages.filter { $0.role != .system }
@@ -4282,6 +4283,7 @@ enum SelfTest {
             defer { Config.shared.autonomyLevel = prevAutonomy }
             do {
             ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
             let goalStr = "write the word mem_e2e_probe using run_shell"
             let response = try await AgentLoop.shared.run(goal: goalStr)
             let msgs = ConversationManager.shared.messages.filter { $0.role != .system }
@@ -4355,6 +4357,133 @@ enum SelfTest {
         if case .directAnswer = DirectAnswerRouter.decide(goal: "why did you delete the file") { actionGoalsStillPlanner = false }
         if case .directAnswer = DirectAnswerRouter.decide(goal: "delete that file") { actionGoalsStillPlanner = false }
         check(bareFollowUpsRoutedToDirectAnswer && processingRouted && actionGoalsStillPlanner, "direct answer router 21.4: bare follow-ups + processing instructions take directAnswer; action-shaped goals still route to planner")
+
+        // 21.5 PERSISTENCE: completed interactions persist to the single SQLite
+        // source of truth exactly once; a failed/refused interaction (response
+        // nil) records ONLY the user request — never a fabricated assistant
+        // action. Chronological order is preserved on reload.
+        var persistenceExactOnceAndNoFabricatedSuccess = false
+        let semMem215 = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
+            ConversationManager.shared.recordInteraction(goal: "echo persistence_probe_det", response: "persistence_probe_det")
+            ConversationManager.shared.recordInteraction(goal: "run a deliberately failing action probe", response: nil)
+            let stored = ConversationStore.shared.loadMessages(limit: 20)
+            let roles = stored.map(\.role)
+            let contents = stored.map(\.content)
+            if stored.count == 3,
+               roles == [.user, .assistant, .user],
+               contents == ["echo persistence_probe_det", "persistence_probe_det", "run a deliberately failing action probe"] {
+                persistenceExactOnceAndNoFabricatedSuccess = true
+            }
+            ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
+            semMem215.signal()
+        }
+        while semMem215.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(persistenceExactOnceAndNoFabricatedSuccess, "conversation persistence 21.5: completed turns persist exactly once in order; failed interaction records only the request (no fabricated success)")
+
+        // 21.6 RESTART RESTORE: after a lifecycle reset (simulating app relaunch),
+        // loadPersistedHistory restores the persisted conversation; reload is
+        // idempotent (never duplicates).
+        var restoreAfterLifecycleReset = false
+        let semMem216 = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
+            ConversationManager.shared.recordInteraction(goal: "echo restore_probe_one", response: "restore_probe_one")
+            ConversationManager.shared.recordInteraction(goal: "echo restore_probe_two", response: "restore_probe_two")
+            // Simulate app relaunch: fresh in-memory layer over the same store.
+            ConversationManager.shared.reset()
+            ConversationManager.shared.loadPersistedHistory(limit: 12)
+            let restored = ConversationManager.shared.messages.filter { $0.role != .system }
+            let firstRestoreOK = restored.count == 4
+                && restored.map(\.content) == ["echo restore_probe_one", "restore_probe_one", "echo restore_probe_two", "restore_probe_two"]
+            // Idempotence: a second reload must not duplicate turns.
+            ConversationManager.shared.reset()
+            ConversationManager.shared.loadPersistedHistory(limit: 12)
+            ConversationManager.shared.loadPersistedHistory(limit: 12)
+            let secondCount = ConversationManager.shared.messages.filter { $0.role != .system }.count
+            if firstRestoreOK && secondCount == 4 {
+                restoreAfterLifecycleReset = true
+            }
+            ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
+            semMem216.signal()
+        }
+        while semMem216.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(restoreAfterLifecycleReset, "conversation persistence 21.6: loadPersistedHistory restores exact conversation after lifecycle reset; reload is idempotent")
+
+        // 21.7 BOUNDED WINDOW: restoring a bounded limit keeps the NEWEST turns
+        // in chronological order — old history is clipped, never dumped whole.
+        var boundedWindowKeepsNewest = false
+        let semMem217 = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
+            for i in 1...8 {
+                ConversationManager.shared.recordInteraction(goal: "turn \(i)", response: "ack \(i)")
+            }
+            ConversationManager.shared.reset()
+            ConversationManager.shared.loadPersistedHistory(limit: 6)
+            let restored = ConversationManager.shared.messages.filter { $0.role != .system }
+            if restored.count == 6,
+               restored.first?.content == "turn 6",
+               restored.last?.content == "ack 8",
+               restored.map(\.role) == [.user, .assistant, .user, .assistant, .user, .assistant] {
+                boundedWindowKeepsNewest = true
+            }
+            ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
+            semMem217.signal()
+        }
+        while semMem217.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(boundedWindowKeepsNewest, "conversation persistence 21.7: bounded restore keeps newest 6 turns oldest-first; lifetime transcript is clipped")
+
+        // 21.8 MEMORY ≠ AUTHORITY: restored conversation memory must not change
+        // any authorization outcome. The same destructive-impact request is
+        // denied with AND without memory present — memory never bypasses the
+        // PermissionGate.
+        var memoryNeverAuthorizes = false
+        let semMem218 = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let prevAutonomy = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 1
+            defer { Config.shared.autonomyLevel = prevAutonomy }
+            ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
+            // Denial baseline without memory.
+            var deniedWithoutMemory = false
+            do {
+                _ = try await PermissionGate.shared.isAuthorized(actionName: "memory_authority_probe", impact: .destructive)
+            } catch { deniedWithoutMemory = true }
+            // Now fill memory with completed turns and reload it.
+            ConversationManager.shared.recordInteraction(goal: "echo authority_memory_probe", response: "authority_memory_probe")
+            ConversationManager.shared.reset()
+            ConversationManager.shared.loadPersistedHistory(limit: 12)
+            var deniedWithMemory = false
+            do {
+                _ = try await PermissionGate.shared.isAuthorized(actionName: "memory_authority_probe", impact: .destructive)
+            } catch { deniedWithMemory = true }
+            if deniedWithoutMemory && deniedWithMemory,
+               !ConversationManager.shared.messages.filter({ $0.role != .system }).isEmpty {
+                memoryNeverAuthorizes = true
+            }
+            ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
+            semMem218.signal()
+        }
+        while semMem218.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(memoryNeverAuthorizes, "conversation persistence 21.8: restored memory never authorizes — PermissionGate denial unchanged with memory present")
 
 
         print("\n══════════════════════════════════════════")

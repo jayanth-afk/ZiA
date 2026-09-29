@@ -267,6 +267,7 @@ actor AgentLoop {
         var completedOutputs: [String] = []
         var observations: [String] = []
         var replanCount = 0
+        var lastFailure: (stepNumber: Int, purpose: String, tool: String?, error: String)?
         // Total attempts across the whole task (initial pass + replans), bounded.
         let maxTotalAttempts = 3 + plan.steps.count
 
@@ -276,8 +277,14 @@ actor AgentLoop {
         while stepIndex < plan.steps.count {
             attempt += 1
             guard attempt <= maxTotalAttempts else {
-                try stateMachine.transition(taskId: task.id, to: .failed, error: "Max agent attempts exceeded")
-                throw JarvisError.actionFailed(action: "AgentLoop.run", reason: "Max agent attempts exceeded (\(maxTotalAttempts))")
+                let failMsg = lastFailure.map { "Step \($0.stepNumber) ('\($0.purpose)') failed: \($0.error)" }
+                    ?? "Max agent attempts exceeded (\(maxTotalAttempts))"
+                try stateMachine.transition(taskId: task.id, to: .failed, error: failMsg)
+                if let failure = lastFailure {
+                    _ = try? stateMachine.updateStep(taskId: task.id, stepIndex: failure.stepNumber - 1, state: .failed, error: failure.error)
+                    _ = try? stateMachine.markStepVerification(taskId: task.id, stepIndex: failure.stepNumber - 1, outcome: .failed)
+                }
+                throw JarvisError.actionFailed(action: lastFailure?.tool ?? "AgentLoop.run", reason: failMsg)
             }
 
             let step = plan.steps[stepIndex]
@@ -353,7 +360,6 @@ actor AgentLoop {
                     }
 
                     // OBSERVE: consume the actual tool output (real result text).
-                    completedOutputs.append(result.output)
                     observations.append("[\(toolName)] \(result.output)")
 
                     // VERIFY at the outcome level, beyond ToolExecutor's
@@ -390,7 +396,8 @@ actor AgentLoop {
                         taskId: task.id,
                         stepIndex: stepIndex,
                         state: .completed,
-                        output: completedOutputs.last)
+                        output: result.output)
+                    completedOutputs.append(result.output)
                     stepIndex += 1
                 } else {
                     // Composition step (tool:null): produce a REAL direct answer
@@ -435,6 +442,10 @@ actor AgentLoop {
                 replanCount += 1
                 lastReplanCount.value = replanCount
                 JarvisLogger.actions.warning("Step '\(step.purpose)' failed (replan \(replanCount)): \(error.localizedDescription)")
+
+                lastFailure = (stepNumber: stepIndex + 1, purpose: step.purpose, tool: step.toolName, error: error.localizedDescription)
+                _ = try? stateMachine.updateStep(taskId: task.id, stepIndex: stepIndex, state: .failed, error: error.localizedDescription)
+                _ = try? stateMachine.markStepVerification(taskId: task.id, stepIndex: stepIndex, outcome: .failed)
 
                 try stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
                 try stateMachine.transition(taskId: task.id, to: .recovering)
@@ -482,8 +493,10 @@ actor AgentLoop {
                     do {
                         plan = try await EscalationPipeline.shared.escalate(context: escalationContext)
                         lastEscalationUsed.value = true
-                        try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
-                        if stepIndex >= plan.steps.count { stepIndex = 0 }
+                        let existingSteps = stateMachine.getTask(id: task.id)?.steps ?? []
+                        try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan, preservingCompletedFrom: existingSteps))
+                        let completedCount = existingSteps.filter { $0.state == .completed }.count
+                        if stepIndex >= plan.steps.count { stepIndex = max(stepIndex, completedCount) }
                         try stateMachine.transition(taskId: task.id, to: .running)
                         continue
                     } catch {
@@ -493,15 +506,38 @@ actor AgentLoop {
 
                 plan = try await planWithRecovery(
                     goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
-                try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
-                // A replan can produce a shorter plan; restart traversal so the
-                // new plan executes from its first step (bounded by attempts).
-                if stepIndex >= plan.steps.count { stepIndex = 0 }
+                let existingSteps = stateMachine.getTask(id: task.id)?.steps ?? []
+                try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan, preservingCompletedFrom: existingSteps))
+                // A replan preserves completed steps and continues execution;
+                // do not reset stepIndex backwards into already-completed steps.
+                let completedCount = existingSteps.filter { $0.state == .completed }.count
+                if stepIndex >= plan.steps.count {
+                    stepIndex = max(stepIndex, completedCount)
+                }
                 try stateMachine.transition(taskId: task.id, to: .running)
             }
         }
 
         // 5. VERIFY & RESPOND
+        let finalTask = stateMachine.getTask(id: task.id)
+        let finalSteps = finalTask?.steps ?? []
+        let allCompletedAndVerified = !finalSteps.isEmpty && finalSteps.allSatisfy {
+            $0.state == .completed && ($0.verification?.isVerified == true || $0.verification == .notApplicable)
+        }
+        guard allCompletedAndVerified else {
+            let failMsg = lastFailure.map { "Step \($0.stepNumber) ('\($0.purpose)') failed: \($0.error)" }
+                ?? "Task incomplete: not all steps completed and verified"
+            try stateMachine.transition(taskId: task.id, to: .failed, error: failMsg)
+            if let failure = lastFailure {
+                _ = try? stateMachine.updateStep(taskId: task.id, stepIndex: failure.stepNumber - 1, state: .failed, error: failure.error)
+                _ = try? stateMachine.markStepVerification(taskId: task.id, stepIndex: failure.stepNumber - 1, outcome: .failed)
+            }
+            throw JarvisError.actionFailed(
+                action: lastFailure?.tool ?? "AgentLoop.run",
+                reason: failMsg
+            )
+        }
+
         try stateMachine.transition(taskId: task.id, to: .verifying)
         try stateMachine.transition(taskId: task.id, to: .completed)
 
@@ -828,10 +864,14 @@ actor AgentLoop {
         }
     }
 
-    /// Convert validated plan steps into state-machine TaskSteps.
-    private func toTaskSteps(_ plan: AgentPlan) -> [TaskStep] {
+    /// Convert validated plan steps into state-machine TaskSteps, preserving
+    /// any already-completed step states and verified outputs.
+    private func toTaskSteps(_ plan: AgentPlan, preservingCompletedFrom existingSteps: [TaskStep] = []) -> [TaskStep] {
         plan.steps.enumerated().map { index, step in
-            TaskStep(
+            if index < existingSteps.count && existingSteps[index].state == .completed {
+                return existingSteps[index]
+            }
+            return TaskStep(
                 stepNumber: index + 1,
                 description: step.purpose,
                 toolName: step.toolName,

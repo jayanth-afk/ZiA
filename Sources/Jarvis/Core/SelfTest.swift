@@ -4100,6 +4100,83 @@ enum SelfTest {
         }
         check(fetchAndWriteOK, "plan validator 20.160: multi-step fetch_url -> write_file with reference validates against compound goal")
 
+        // 20.161: ReferenceResolver blocks reference resolution when dependency verification failed
+        let smFail = TaskStateMachine.shared
+        let failTask = smFail.createTask(title: "FailDepTask", goal: "test failed dep block")
+        let failedDepRecord = StepResolutionRecord(
+            stepNumber: 1,
+            toolName: "run_shell",
+            rawOutput: "error exit code 1",
+            structuredOutput: nil,
+            completedAt: Date(),
+            verification: .failed
+        )
+        _ = try? smFail.appendResolutionRecord(failedDepRecord, for: failTask.id)
+        var failedDepBlocked = false
+        do {
+            let records = smFail.resolutionRecords(for: failTask.id)
+            _ = try ReferenceResolver.resolveTarget(
+                target: .stepOutput(stepNumber: 1, field: nil),
+                currentStepNumber: 2,
+                resolutionRecords: records,
+                environmentContext: nil
+            )
+        } catch ReferenceResolutionError.unverifiedStep(let stepNum, let outcome) {
+            if stepNum == 1 && outcome == "failed" {
+                failedDepBlocked = true
+            }
+        } catch {}
+        check(failedDepBlocked, "reference resolver 20.161: ReferenceResolver blocks referencing step with .failed verification")
+
+        // 20.162: ReferenceResolver blocks reference resolution when dependency produced no resolution record
+        var missingDepBlocked = false
+        do {
+            let records = smFail.resolutionRecords(for: failTask.id)
+            _ = try ReferenceResolver.resolveTarget(
+                target: .stepOutput(stepNumber: 5, field: nil),
+                currentStepNumber: 6,
+                resolutionRecords: records,
+                environmentContext: nil
+            )
+        } catch ReferenceResolutionError.missingStepOutput(let stepNum) {
+            if stepNum == 5 {
+                missingDepBlocked = true
+            }
+        } catch {}
+        check(missingDepBlocked, "reference resolver 20.162: ReferenceResolver blocks referencing unrecorded step with missingStepOutput")
+
+        // 20.163: Intermediate failure preserves partial state and fails safely
+        var intermediateFailurePreserved = false
+        let semInter = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let prevAutonomy = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 2
+            defer { Config.shared.autonomyLevel = prevAutonomy }
+
+            let goalStr = "run command 'echo intermediate_success' and then run command 'cat build/does_not_exist_file.txt'"
+            do {
+                _ = try await AgentLoop.shared.run(goal: goalStr)
+            } catch {
+                // Must fail and accurately report Step 2 failure
+                let errStr = error.localizedDescription
+                let tasks = TaskStateMachine.shared.tasks(matchingGoal: goalStr)
+                if let lastTask = tasks.last, lastTask.state == .failed {
+                    let steps = lastTask.steps
+                    let step1OK = steps.count >= 2 && steps[0].state == .completed && steps[0].verification == .passed
+                    let step2Failed = steps.count >= 2 && steps[1].state == .failed && steps[1].verification == .failed
+                    let errReported = errStr.contains("Step 2") || errStr.contains("Verification failed for run_shell")
+                    if step1OK && step2Failed && errReported {
+                        intermediateFailurePreserved = true
+                    }
+                }
+            }
+            semInter.signal()
+        }
+        while semInter.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(intermediateFailurePreserved, "agent loop 20.163: intermediate step failure preserves Step 1 completed state, marks Step 2 failed, and reports truthful partial state")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

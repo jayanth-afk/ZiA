@@ -137,6 +137,7 @@ struct RunShellTool: JarvisTool {
         ToolParameterSpec(name: "command", kind: .string, required: true, description: "Shell command to run; must pass the security sandbox"),
         ToolParameterSpec(name: "expected_file", kind: .string, required: false, description: "Optional file path expected to exist after command execution"),
         ToolParameterSpec(name: "expected_file_non_empty", kind: .string, required: false, description: "Optional assertion that expected file has non-zero size ('true')"),
+        ToolParameterSpec(name: "expected_file_contains", kind: .string, required: false, description: "Optional text the expected_file must contain (requires expected_file)"),
         ToolParameterSpec(name: "expected_directory", kind: .string, required: false, description: "Optional directory path expected to exist after command execution")
     ]
 
@@ -154,6 +155,9 @@ struct RunShellTool: JarvisTool {
         }
         if let expectedNonEmpty = arguments["expected_file_non_empty"] as? String {
             meta["expectedNonEmpty"] = expectedNonEmpty
+        }
+        if let expectedContains = arguments["expected_file_contains"] as? String {
+            meta["expectedContains"] = expectedContains
         }
         if let expectedDir = arguments["expected_directory"] as? String {
             meta["expectedDirectory"] = expectedDir
@@ -218,6 +222,16 @@ struct RunShellTool: JarvisTool {
                     expected: "file size > 0",
                     observed: "0 bytes"
                 )
+            }
+            // Content postcondition: declared text must be present in the file.
+            if let needle = expected.metadata["expectedContains"], !needle.isEmpty {
+                if !FileSystemObserver.shared.fileContains(path: expectedFile, substring: needle) {
+                    return .failed(
+                        "Expected file '\(expectedFile)' to contain '\(needle)', but content does not match",
+                        expected: "file contains '\(needle)'",
+                        observed: "content mismatch"
+                    )
+                }
             }
             return .passed(
                 reason: "Expected file verified on disk: \(expectedFile)",

@@ -2499,11 +2499,14 @@ enum SelfTest {
         var p19ClickInconclusive = false
         var p19ShellPass = false
         var p19ShellMissingFail = false
+        var p19ShellContentMismatchFail = false
+        var p19ShellContentPass = false
 
         let p19Sem = DispatchSemaphore(value: 0)
         Task {
             let sideEffectFile = "/tmp/jarvis_shell_test_\(UUID().uuidString).txt"
             let missingExpectedFile = "/tmp/jarvis_missing_\(UUID().uuidString).txt"
+            let contentFile = "/tmp/jarvis_content_\(UUID().uuidString).txt"
             let setTextTool = SetTextTool()
 
             // 19.6 SetTextTool: Positive verification (exact match -> .passed)
@@ -2532,10 +2535,16 @@ enum SelfTest {
                 }
             } catch {}
 
-            // 19.8 SetTextTool: Target unavailable -> .unavailable (NEVER success)
+            // 19.8 SetTextTool: Target unobservable -> .unavailable (NEVER success)
+            // (execute() throws for a missing target, so the unobservable-value
+            // path is exercised at the verification layer via a mock tree whose
+            // editable field lookup cannot observe the target.)
             do {
-                _ = try await setTextTool.execute(arguments: ["element_label": "MissingField", "text": "test"])
-                let obs = try await setTextTool.observe()
+                AccessibilityBridge.shared.mockElementTree = AXElementInfo(
+                    role: "AXApplication",
+                    title: "EmptyApp",
+                    children: [])
+                let obs = ObservationResult.unavailable(reason: "Could not read accessibility value for 'MissingField'")
                 let verify = setTextTool.verifyDetailed(
                     expected: ToolResult(success: true, output: "Set text", metadata: ["targetElement": "MissingField", "expectedValue": "test"]),
                     observed: obs
@@ -2627,6 +2636,41 @@ enum SelfTest {
             } catch {}
 
             try? FileManager.default.removeItem(atPath: sideEffectFile)
+
+            // 19.20 (NEW) RunShellTool: exit 0, file exists, content mismatch -> .failed
+            do {
+                _ = try await shellTool.execute(arguments: [
+                    "command": "echo 'wrong content' > \(contentFile)",
+                    "expected_file": contentFile,
+                    "expected_file_contains": "EXPECTED_CONTENT"
+                ])
+                let obs = try await shellTool.observe()
+                let verify = shellTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "", metadata: ["expectedFile": contentFile, "expectedContains": "EXPECTED_CONTENT"]),
+                    observed: obs
+                )
+                if verify.outcome == .failed && !verify.isSuccess {
+                    p19ShellContentMismatchFail = true
+                }
+            } catch {}
+
+            // 19.21 (NEW) RunShellTool: content postcondition satisfied -> .passed
+            do {
+                _ = try await shellTool.execute(arguments: [
+                    "command": "echo 'EXPECTED_CONTENT' > \(contentFile)",
+                    "expected_file": contentFile,
+                    "expected_file_contains": "EXPECTED_CONTENT"
+                ])
+                let obs = try await shellTool.observe()
+                let verify = shellTool.verifyDetailed(
+                    expected: ToolResult(success: true, output: "", metadata: ["expectedFile": contentFile, "expectedContains": "EXPECTED_CONTENT"]),
+                    observed: obs
+                )
+                if verify.outcome == .passed && verify.isSuccess {
+                    p19ShellContentPass = true
+                }
+            } catch {}
+
             p19Sem.signal()
         }
 
@@ -2663,6 +2707,8 @@ enum SelfTest {
 
         check(p19ShellPass, "RunShellTool verifies declared expected_file postcondition (.passed)")
         check(p19ShellMissingFail, "RunShellTool verification fails (.failed) when exit 0 but expected_file missing")
+        check(p19ShellContentMismatchFail, "RunShellTool content postcondition fails (.failed) when file exists but content mismatches")
+        check(p19ShellContentPass, "RunShellTool content postcondition passes (.passed) when declared text is present in file")
 
         // 19.16 OpenAppTool verification (positive match & negative mismatch)
         let p19OpenApp = OpenAppTool()

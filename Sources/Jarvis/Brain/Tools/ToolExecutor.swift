@@ -1,18 +1,45 @@
 import Foundation
 
 /// Executes tools with permission checks, observation, and verification.
-/// Adheres strictly to Rule 7: execute -> observe -> verify.
+/// Adheres strictly to Rule 7: execute -> observe -> verify (Evidence Before Green).
 @MainActor
 final class ToolExecutor {
     static let shared = ToolExecutor()
 
-    private init() {}
+    /// Registry used for tool resolution. The shared instance resolves
+    /// `ToolRegistry.shared` at execution time; dependency-injected instances
+    /// (deterministic tests, isolated contexts) use the provided registry.
+    private let injectedRegistry: ToolRegistry?
+
+    private init() {
+        self.injectedRegistry = nil
+    }
+
+    /// Dependency-injected executor. `nonisolated` so deterministic test
+    /// harnesses can construct it off the main actor (a ToolRegistry reference
+    /// is an immutable, Sendable global-actor-isolated object).
+    nonisolated init(registry: ToolRegistry) {
+        self.injectedRegistry = registry
+    }
 
     // MARK: - Public API
 
     /// Execute a tool by name with full observation and verification.
     func execute(toolName: String, arguments: [String: any Sendable]) async throws -> ToolResult {
-        guard let tool = ToolRegistry.shared.getTool(named: toolName) else {
+        try await execute(toolName: toolName, arguments: arguments, environmentContext: nil)
+    }
+
+    /// Full lifecycle with optional task environment context. The context is
+    /// the integration seam for context-aware verification (ambient state
+    /// carried with the execution); current verifiers are stateless and do
+    /// not require it.
+    func execute(
+        toolName: String,
+        arguments: [String: any Sendable],
+        environmentContext: TaskEnvironmentContext?
+    ) async throws -> ToolResult {
+        let registry = injectedRegistry ?? ToolRegistry.shared
+        guard let tool = registry.getTool(named: toolName) else {
             throw JarvisError.actionFailed(action: toolName, reason: "Tool '\(toolName)' is not registered")
         }
 
@@ -37,11 +64,15 @@ final class ToolExecutor {
 
         guard verification.isSuccess else {
             let reasonStr = verification.reason ?? observed.observations.description
-            JarvisLogger.actions.error("Verification failed for tool '\(toolName)': [\(verification.outcome.rawValue)] \(reasonStr)")
+            JarvisLogger.actions.error("Verification for tool '\(toolName)' ended [\(verification.outcome.rawValue)]: \(reasonStr)")
+            // Contract: the thrown error carries verification.outcome.rawValue
+            // in the 'expected' slot so callers can distinguish .failed from
+            // .inconclusive/.unavailable — an inconclusive or unavailable
+            // verification is NEVER a success (Evidence Before Green).
             throw JarvisError.verificationFailed(
                 action: toolName,
-                expected: verification.expectedState ?? expected.output,
-                actual: verification.observedState ?? "[\(verification.outcome.rawValue)] \(reasonStr)"
+                expected: verification.outcome.rawValue,
+                actual: "\(reasonStr) (expected: \(verification.expectedState ?? "n/a"), observed: \(verification.observedState ?? "n/a"))"
             )
         }
 

@@ -577,6 +577,26 @@ actor MLXPlanner {
             }
         }
 
+        // Deterministic run_shell extraction for explicit quoted commands
+        // ("run command \"git status\"", "execute shell command 'uname -a'").
+        if let extractedCmd = PlannerExtraction.explicitRunShellCommandExtraction(goal: goal) {
+            let compileResultCmd = await MainActor.run { PlannerExtraction.compile(extractedCmd, goal: goal) }
+            switch compileResultCmd {
+            case .success(let plan):
+                await MainActor.run {
+                    ArgumentPreservationRecorder.shared.recordCompilation(
+                        originalGoal: goal,
+                        extractedLiteral: extractedCmd.literal,
+                        compiledLiteral: PlannerExtraction.compiledValue(carrying: extractedCmd.literal, in: plan))
+                }
+                JarvisLogger.brain.info("MLXPlanner used run_shell deterministic extraction (0 model calls)")
+                return plan
+            case .failure(let error):
+                // Soft fall-through: the model gets a chance at an unusual request.
+                JarvisLogger.brain.warning("run_shell det extraction compile failed (\(error.description)) — falling through to model")
+            }
+        }
+
         // Deterministic open_app extraction for polite/indirect forms
         // ("please open X", "can you open X", "open the app [called] X").
         // Canonical forms ("open X", "launch X", "switch to X") are handled by

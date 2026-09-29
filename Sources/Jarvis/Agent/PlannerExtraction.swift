@@ -175,6 +175,144 @@ enum PlannerExtraction {
             literal: literal)
     }
 
+    /// Bounded deterministic extractor for explicit shell command execution requests.
+    ///
+    /// Matches explicit forms where the user supplies an exact quoted command:
+    ///   - "run command \"git status\""
+    ///   - "run the shell command 'ls -la'"
+    ///   - "execute command `uname -a`"
+    ///   - "please run the command \"date\""
+    ///
+    /// The command MUST be delimited by quotes or backticks (`"..."`, `'...'`, `` `...` ``).
+    /// Preserves exact casing, flags, and internal punctuation byte-for-byte.
+    ///
+    /// Fails closed (returns nil) on:
+    ///   - Unquoted / free-form natural language
+    ///   - Negations ("don't run command...")
+    ///   - Questions ("what command should I run?")
+    ///   - Compound requests ("and then", "then", ";", "&&" outside quotes)
+    ///   - Missing or empty command
+    ///   - Mismatched delimiters
+    ///   - Trailing prose after the closing delimiter
+    static func explicitRunShellCommandExtraction(goal: String) -> ExtractedAction? {
+        let trimmed = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lower = trimmed.lowercased()
+
+        // Adversarial guard: negations
+        if lower.hasPrefix("don't ") || lower.hasPrefix("do not ") || lower.hasPrefix("never ") ||
+           lower.contains(" don't ") || lower.contains(" do not ") {
+            return nil
+        }
+
+        // Adversarial guard: questions
+        if lower.hasPrefix("what ") || lower.hasPrefix("why ") || lower.hasPrefix("how ") ||
+           lower.hasPrefix("who ") || lower.hasPrefix("where ") || lower.hasPrefix("when ") ||
+           lower.hasPrefix("which ") || lower.hasPrefix("can i ") || lower.hasPrefix("should i ") ||
+           lower.contains("what command") || lower.contains("how do i") || lower.contains("how to") {
+            return nil
+        }
+
+        // Strip polite prefix
+        var rest = trimmed
+        let prefixes = ["please ", "can you please ", "can you ", "could you please ", "could you "]
+        for p in prefixes {
+            if rest.lowercased().hasPrefix(p) {
+                rest = String(rest.dropFirst(p.count)).trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+
+        // Verb prefixes for explicit shell command execution
+        let verbPrefixes = [
+            "run the shell command:",
+            "run the shell command",
+            "run shell command:",
+            "run shell command",
+            "run the command:",
+            "run the command",
+            "run command:",
+            "run command",
+            "execute the shell command:",
+            "execute the shell command",
+            "execute shell command:",
+            "execute shell command",
+            "execute the command:",
+            "execute the command",
+            "execute command:",
+            "execute command",
+            "run in the shell:",
+            "run in the shell",
+            "run in shell:",
+            "run in shell"
+        ]
+
+        var matchedPrefix: String?
+        for vp in verbPrefixes {
+            if rest.lowercased().hasPrefix(vp) {
+                let nextIdx = rest.index(rest.startIndex, offsetBy: vp.count)
+                if nextIdx < rest.endIndex {
+                    let nextChar = rest[nextIdx]
+                    if nextChar == " " || nextChar == ":" || nextChar == "\"" || nextChar == "'" || nextChar == "`" || nextChar == "“" || nextChar == "”" || nextChar == "‘" || nextChar == "’" {
+                        matchedPrefix = vp
+                        break
+                    }
+                }
+            }
+        }
+
+        guard let prefix = matchedPrefix else { return nil }
+
+        var remainder = String(rest.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        if remainder.hasPrefix(":") {
+            remainder = String(remainder.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+
+        // Trailing single punctuation like '.' can be present at the very end outside quotes
+        while let last = remainder.last, last == "." {
+            remainder = String(remainder.dropLast()).trimmingCharacters(in: .whitespaces)
+        }
+
+        guard !remainder.isEmpty else { return nil }
+
+        // Must be delimited by quotes or backticks to guarantee explicit bounded boundaries
+        let quotePairs: [(Character, Character)] = [
+            ("\"", "\""),
+            ("'", "'"),
+            ("`", "`"),
+            ("“", "”"),
+            ("‘", "’")
+        ]
+
+        guard let firstChar = remainder.first,
+              let pair = quotePairs.first(where: { $0.0 == firstChar }),
+              let lastChar = remainder.last,
+              pair.1 == lastChar,
+              remainder.count >= 2 else {
+            return nil
+        }
+
+        let cmd = String(remainder.dropFirst().dropLast()).trimmingCharacters(in: .whitespaces)
+        guard !cmd.isEmpty else { return nil }
+
+        // Control characters / newline protection
+        guard !cmd.contains("\n"),
+              !cmd.contains("\r"),
+              !cmd.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            return nil
+        }
+
+        // Must be a substring of user's goal (literal adoption)
+        guard goal.contains(cmd) else {
+            return nil
+        }
+
+        return ExtractedAction(
+            toolName: "run_shell",
+            arguments: ["command": cmd],
+            literal: cmd
+        )
+    }
+
     /// Deterministically capture a polite or indirect open-application request
     /// whose prefix unambiguously identifies the tool and whose remainder is
     /// the application name. This covers forms that `DeterministicRouter`

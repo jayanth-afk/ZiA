@@ -3559,6 +3559,51 @@ enum SelfTest {
             check(false, "web_search det extraction 20.121: unknown argument should have failed")
         }
 
+        // ── run_shell bounded extraction focused tests (20.122 - 20.129) ──
+        let sh122 = PlannerExtraction.explicitRunShellCommandExtraction(goal: "run command \"git status\"")
+        check(sh122?.toolName == "run_shell" && sh122?.arguments["command"] == "git status" && sh122?.literal == "git status",
+              "run_shell det extraction 20.122: double-quoted command extracted byte-for-byte")
+
+        let sh123 = PlannerExtraction.explicitRunShellCommandExtraction(goal: "run the shell command 'uname -a'")
+        check(sh123?.toolName == "run_shell" && sh123?.arguments["command"] == "uname -a" && sh123?.literal == "uname -a",
+              "run_shell det extraction 20.123: single-quoted command extracted byte-for-byte")
+
+        let sh124 = PlannerExtraction.explicitRunShellCommandExtraction(goal: "execute command `date`")
+        check(sh124?.toolName == "run_shell" && sh124?.arguments["command"] == "date" && sh124?.literal == "date",
+              "run_shell det extraction 20.124: backtick command extracted byte-for-byte")
+
+        check(PlannerExtraction.explicitRunShellCommandExtraction(goal: "run command \"git status'") == nil,
+              "run_shell det extraction 20.125: mismatched delimiter rejected")
+
+        check(PlannerExtraction.explicitRunShellCommandExtraction(goal: "run command git status") == nil,
+              "run_shell det extraction 20.126: unquoted ambiguous command rejected")
+
+        check(PlannerExtraction.explicitRunShellCommandExtraction(goal: "run command \"git status\" and then open Safari") == nil,
+              "run_shell det extraction 20.127: compound command rejected")
+
+        check(PlannerExtraction.explicitRunShellCommandExtraction(goal: "don't run command \"git status\"") == nil,
+              "run_shell det extraction 20.128: negation rejected")
+
+        // Authority boundary & compilation check:
+        // 1. Dangerous command must fail PlanValidator/CommandSandbox at compilation
+        let dangerousAction = ExtractedAction(toolName: "run_shell", arguments: ["command": "rm -rf /"], literal: "rm -rf /")
+        if case .failure = PlannerExtraction.compile(dangerousAction, goal: "run command \"rm -rf /\"") {
+            check(true, "run_shell det extraction 20.129a: dangerous command blocked by sandbox at compile gate")
+        } else {
+            check(false, "run_shell det extraction 20.129a: dangerous command should have been blocked")
+        }
+        // 2. Safe command compiles and preserves literal byte-for-byte
+        let safeAction = ExtractedAction(toolName: "run_shell", arguments: ["command": "git status"], literal: "git status")
+        var sh129Compiled = false
+        if case .success(let plan) = PlannerExtraction.compile(safeAction, goal: "run command \"git status\""),
+           plan.steps.count == 1,
+           let step = plan.steps.first,
+           step.toolName == "run_shell",
+           step.arguments["command"] == "git status" {
+            sh129Compiled = true
+        }
+        check(sh129Compiled, "run_shell det extraction 20.129b: safe command compiles and preserves argument")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

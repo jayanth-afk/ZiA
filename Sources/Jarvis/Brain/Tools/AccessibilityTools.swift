@@ -57,7 +57,11 @@ struct ClickElementTool: JarvisTool {
     let description = "Clicks an interactive UI element by name or label in the frontmost application"
     let impact: PermissionGate.ActionImpact = .safeMutation
     let parameterSpec: [ToolParameterSpec] = [
-        ToolParameterSpec(name: "element_label", kind: .string, required: true, description: "Label or title of the element to click")
+        ToolParameterSpec(name: "element_label", kind: .string, required: true, description: "Label or title of the element to click"),
+        ToolParameterSpec(name: "expected_app", kind: .string, required: false, description: "Declared postcondition: app expected frontmost after click"),
+        ToolParameterSpec(name: "expected_element_exists", kind: .string, required: false, description: "Declared postcondition: element expected to exist"),
+        ToolParameterSpec(name: "expected_element_disappears", kind: .string, required: false, description: "Declared postcondition: element expected to disappear"),
+        ToolParameterSpec(name: "expected_focused", kind: .string, required: false, description: "Declared postcondition: element expected focused")
     ]
 
     static func isDestructiveLabel(_ label: String) -> Bool {
@@ -88,9 +92,9 @@ struct ClickElementTool: JarvisTool {
         if let expectedApp = arguments["expected_app"] as? String {
             meta["expected_app"] = expectedApp
         }
-        if let hasPostcondition = arguments["has_postcondition"] as? String {
-            meta["has_postcondition"] = hasPostcondition
-        }
+        if let value = arguments["expected_element_exists"] as? String { meta["expected_element_exists"] = value }
+        if let value = arguments["expected_element_disappears"] as? String { meta["expected_element_disappears"] = value }
+        if let value = arguments["expected_focused"] as? String { meta["expected_focused"] = value }
 
         return ToolResult(
             success: true,
@@ -105,6 +109,26 @@ struct ClickElementTool: JarvisTool {
             NSWorkspace.shared.frontmostApplication?.localizedName ?? "none"
         }
         return ObservationResult(observations: ["frontmostApp": frontmost], isAvailable: true)
+    }
+
+    func observe(expected: ToolResult) async throws -> ObservationResult {
+        await MainActor.run {
+            guard AccessibilityBridge.shared.isTrusted else { return .unavailable(reason: "Accessibility permission not granted") }
+            var values: [String: String] = ["frontmostApp": NSWorkspace.shared.frontmostApplication?.localizedName ?? ""]
+            for key in ["expected_element_exists", "expected_element_disappears"] {
+                if let label = expected.metadata[key], !label.isEmpty {
+                    let result = AccessibilityBridge.shared.elementExists(matchingLabel: label)
+                    guard result.isAvailable else { return .unavailable(reason: "Could not observe element '\(label)'") }
+                    values[key] = String(result.exists)
+                }
+            }
+            if let label = expected.metadata["expected_focused"], !label.isEmpty {
+                let result = AccessibilityBridge.shared.isElementFocused(matchingLabel: label)
+                guard result.isAvailable else { return .unavailable(reason: "Could not observe focus for '\(label)'") }
+                values["expected_focused"] = String(result.focused)
+            }
+            return ObservationResult(observations: values)
+        }
     }
 
     func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
@@ -122,8 +146,14 @@ struct ClickElementTool: JarvisTool {
                 return .failed("Expected frontmost application '\(expectedApp)' after click, but observed '\(frontmost)'")
             }
         }
-        if expected.metadata["has_postcondition"] == "true" {
-            return .passed
+        if let label = expected.metadata["expected_element_exists"] {
+            return observed.observations["expected_element_exists"] == "true" ? .passed(expected: "element \(label) exists", observed: "exists") : .failed("Expected element '\(label)' to exist", expected: "exists", observed: "missing")
+        }
+        if let label = expected.metadata["expected_element_disappears"] {
+            return observed.observations["expected_element_disappears"] == "false" ? .passed(expected: "element \(label) disappears", observed: "missing") : .failed("Expected element '\(label)' to disappear", expected: "missing", observed: "exists")
+        }
+        if let label = expected.metadata["expected_focused"] {
+            return observed.observations["expected_focused"] == "true" ? .passed(expected: "element \(label) focused", observed: "focused") : .failed("Expected element '\(label)' to be focused", expected: "focused", observed: "not focused")
         }
         return .inconclusive("Click executed; no deterministic postcondition specified to verify state mutation")
     }
@@ -168,6 +198,18 @@ struct SetTextTool: JarvisTool {
         return ObservationResult(observations: ["frontmostApp": frontmost], isAvailable: true)
     }
 
+    func observe(expected: ToolResult) async throws -> ObservationResult {
+        await MainActor.run {
+            guard AccessibilityBridge.shared.isTrusted else { return .unavailable(reason: "Accessibility permission not granted") }
+            let label = expected.metadata["elementLabel"]
+            let value = AccessibilityBridge.shared.readElementValue(matchingLabel: label)
+            guard value.isAvailable else {
+                return .unavailable(reason: "Could not observe current AX value for \(label ?? "focused element")")
+            }
+            return ObservationResult(observations: ["currentValue": value.value ?? ""])
+        }
+    }
+
     func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
         guard expected.success else {
             return .failed("set_text execution failed")
@@ -175,13 +217,14 @@ struct SetTextTool: JarvisTool {
         guard observed.isAvailable else {
             return .unavailable(observed.reason ?? "UI observation unavailable")
         }
-        if let expectedVal = expected.metadata["expectedValue"], let observedVal = observed.observations["currentValue"] {
-            if observedVal == expectedVal {
-                return .passed
-            } else {
-                return .failed("Expected field value '\(expectedVal)', but observed '\(observedVal)'")
-            }
+        guard let expectedVal = expected.metadata["expectedValue"] else {
+            return .inconclusive("No expected value was recorded for set_text")
         }
-        return .passed
+        guard let observedVal = observed.observations["currentValue"] else {
+            return .unavailable("Current AX value was not observed", expected: expectedVal)
+        }
+        return observedVal == expectedVal
+            ? .passed(reason: "Observed field value matches expected text", expected: expectedVal, observed: observedVal)
+            : .failed("Expected field value '\(expectedVal)', but observed '\(observedVal)'", expected: expectedVal, observed: observedVal)
     }
 }

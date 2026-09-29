@@ -112,7 +112,9 @@ struct RunShellTool: JarvisTool {
     let impact: PermissionGate.ActionImpact = .destructive
     let parameterSpec: [ToolParameterSpec] = [
         ToolParameterSpec(name: "command", kind: .string, required: true, description: "Shell command to run; must pass the security sandbox"),
-        ToolParameterSpec(name: "expected_file", kind: .string, required: false, description: "Optional file path expected to exist after command execution")
+        ToolParameterSpec(name: "expected_file", kind: .string, required: false, description: "Optional file path expected to exist after command execution"),
+        ToolParameterSpec(name: "expected_file_non_empty", kind: .string, required: false, description: "Require expected_file to have non-zero size"),
+        ToolParameterSpec(name: "expected_directory", kind: .string, required: false, description: "Optional directory expected to exist after command execution")
     ]
 
     func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
@@ -124,6 +126,8 @@ struct RunShellTool: JarvisTool {
         if let expectedFile = arguments["expected_file"] as? String {
             meta["expectedFile"] = expectedFile
         }
+        if let nonEmpty = arguments["expected_file_non_empty"] as? String { meta["expectedFileNonEmpty"] = nonEmpty }
+        if let directory = arguments["expected_directory"] as? String { meta["expectedDirectory"] = directory }
 
         let output = try await ShellExecutor.shared.execute(command)
         let success = output.exitCode == 0
@@ -144,20 +148,28 @@ struct RunShellTool: JarvisTool {
     func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
         guard expected.success else {
             let code = expected.metadata["exitCode"] ?? "unknown"
-            return .failed("Shell process failed with exit code \(code)")
+            return .failed("Shell process failed with exit code \(code)", expected: "exit code 0", observed: "exit code \(code)")
         }
         guard observed.isAvailable else {
-            return .unavailable("Observation mechanism unavailable")
+            return .unavailable("Observation mechanism unavailable", expected: "filesystem observation", observed: "unavailable")
         }
         if let expectedFile = expected.metadata["expectedFile"], !expectedFile.isEmpty {
-            let exists = FileManager.default.fileExists(atPath: expectedFile)
-            if exists {
-                return .passed
-            } else {
-                return .failed("Expected file does not exist after command: \(expectedFile)")
+            let state = FileSystemObserver.shared.observe(path: expectedFile)
+            guard state.exists && state.isRegularFile else {
+                return .failed("Expected file does not exist after command: \(expectedFile)", expected: "regular file at \(expectedFile)", observed: state.exists ? "directory" : "missing")
             }
+            if expected.metadata["expectedFileNonEmpty"] == "true", (state.fileSize ?? 0) == 0 {
+                return .failed("Expected file '\(expectedFile)' to be non-empty", expected: "size > 0", observed: "0 bytes")
+            }
+            return .passed(reason: "Expected file observed on disk", expected: "regular file at \(expectedFile)", observed: "\(state.fileSize ?? 0) bytes")
         }
-        return .passed
+        if let expectedDirectory = expected.metadata["expectedDirectory"], !expectedDirectory.isEmpty {
+            let state = FileSystemObserver.shared.observe(path: expectedDirectory)
+            return state.isDirectory
+                ? .passed(reason: "Expected directory observed on disk", expected: "directory at \(expectedDirectory)", observed: "directory")
+                : .failed("Expected directory does not exist after command: \(expectedDirectory)", expected: "directory at \(expectedDirectory)", observed: state.exists ? "regular file" : "missing")
+        }
+        return .passed(reason: "Shell command exited successfully; no side-effect was declared", expected: "exit code 0", observed: "exit code 0")
     }
 }
 

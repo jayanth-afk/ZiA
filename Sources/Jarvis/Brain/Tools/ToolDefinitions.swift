@@ -40,6 +40,10 @@ struct ObservationResult: Sendable {
         isAvailable: false,
         reason: "Observation mechanism unavailable"
     )
+
+    static func unavailable(reason: String) -> ObservationResult {
+        ObservationResult(observations: [:], isAvailable: false, reason: reason)
+    }
 }
 
 /// Explicit, structured outcome of post-action verification.
@@ -47,19 +51,32 @@ struct ObservationResult: Sendable {
 struct ToolVerificationResult: Sendable, Equatable {
     let outcome: VerificationOutcome
     let reason: String?
+    let expectedState: String?
+    let observedState: String?
 
-    static let passed = ToolVerificationResult(outcome: .passed, reason: nil)
-
-    static func failed(_ reason: String) -> ToolVerificationResult {
-        ToolVerificationResult(outcome: .failed, reason: reason)
+    init(outcome: VerificationOutcome, reason: String? = nil, expectedState: String? = nil, observedState: String? = nil) {
+        self.outcome = outcome
+        self.reason = reason
+        self.expectedState = expectedState
+        self.observedState = observedState
     }
 
-    static func inconclusive(_ reason: String) -> ToolVerificationResult {
-        ToolVerificationResult(outcome: .inconclusive, reason: reason)
+    static let passed = ToolVerificationResult(outcome: .passed)
+
+    static func passed(reason: String? = nil, expected: String? = nil, observed: String? = nil) -> ToolVerificationResult {
+        ToolVerificationResult(outcome: .passed, reason: reason, expectedState: expected, observedState: observed)
     }
 
-    static func unavailable(_ reason: String) -> ToolVerificationResult {
-        ToolVerificationResult(outcome: .unavailable, reason: reason)
+    static func failed(_ reason: String, expected: String? = nil, observed: String? = nil) -> ToolVerificationResult {
+        ToolVerificationResult(outcome: .failed, reason: reason, expectedState: expected, observedState: observed)
+    }
+
+    static func inconclusive(_ reason: String, expected: String? = nil, observed: String? = nil) -> ToolVerificationResult {
+        ToolVerificationResult(outcome: .inconclusive, reason: reason, expectedState: expected, observedState: observed)
+    }
+
+    static func unavailable(_ reason: String, expected: String? = nil, observed: String? = nil) -> ToolVerificationResult {
+        ToolVerificationResult(outcome: .unavailable, reason: reason, expectedState: expected, observedState: observed)
     }
 
     var isSuccess: Bool {
@@ -104,6 +121,10 @@ protocol JarvisTool: Sendable {
     /// Step 2: Observe the real-world state of the system
     func observe() async throws -> ObservationResult
 
+    /// Metadata-aware observation avoids shared mutable "last target" state when
+    /// multiple tool executions are in flight.
+    func observe(expected: ToolResult) async throws -> ObservationResult
+
     /// Step 3: Detailed verification distinguishing passed, failed, inconclusive, and unavailable
     func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult
 
@@ -113,6 +134,7 @@ protocol JarvisTool: Sendable {
 
 // Default implementations
 extension JarvisTool {
+    func observe(expected: ToolResult) async throws -> ObservationResult { try await observe() }
     func verify(expected: ToolResult, observed: ObservationResult) -> Bool {
         return verifyDetailed(expected: expected, observed: observed).isSuccess
     }

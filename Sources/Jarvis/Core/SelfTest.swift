@@ -2557,6 +2557,16 @@ enum SelfTest {
         )
         check(!shellSideEffectResult.isSuccess && shellSideEffectResult.outcome == VerificationOutcome.failed, "TEST G: RunShell fails verification when expected side-effect file does not exist despite exit code 0")
 
+        // 19.7b Filesystem observations are one-shot, typed state rather than
+        // process-return-code evidence. Use a controlled temporary path only.
+        let verificationTemp = FileManager.default.temporaryDirectory.appendingPathComponent("jarvis-verification-\(UUID().uuidString)")
+        try? Data("verified".utf8).write(to: verificationTemp)
+        let observedFile = FileSystemObserver.shared.observe(path: verificationTemp.path)
+        check(observedFile.exists && observedFile.isRegularFile && (observedFile.fileSize ?? 0) > 0, "TEST G.1: FileSystemObserver reports actual temporary file state")
+        let absentFile = FileSystemObserver.shared.observe(path: verificationTemp.appendingPathComponent("absent").path)
+        check(!absentFile.exists, "TEST G.2: FileSystemObserver reports absent state without guessing")
+        try? FileManager.default.removeItem(at: verificationTemp)
+
         // 19.8 TEST H: Tool regression — SetVolume deterministic verification
         let phase19SetVolumeTool = SetVolumeTool()
         let volumeExpected = ToolResult(

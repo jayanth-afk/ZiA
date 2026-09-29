@@ -27,7 +27,7 @@ final class ToolExecutor {
         timer.mark(.actionExecuted)
 
         // 3. Observe
-        let observed = try await tool.observe()
+        let observed = try await tool.observe(expected: expected)
         timer.mark(.actionObserved)
 
         // 4. Verify
@@ -40,8 +40,8 @@ final class ToolExecutor {
             JarvisLogger.actions.error("Verification failed for tool '\(toolName)': [\(verification.outcome.rawValue)] \(reasonStr)")
             throw JarvisError.verificationFailed(
                 action: toolName,
-                expected: expected.output,
-                actual: "[\(verification.outcome.rawValue)] \(reasonStr)"
+                expected: verification.expectedState ?? expected.output,
+                actual: verification.observedState ?? "[\(verification.outcome.rawValue)] \(reasonStr)"
             )
         }
 

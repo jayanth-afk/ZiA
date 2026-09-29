@@ -372,6 +372,7 @@ enum SelfTest {
         let trashMatch = router.match("empty trash")
         check(trashMatch?.intent == "system.emptyTrash", "Matches empty trash")
         check(trashMatch?.impact == .destructive, "Empty trash is classified destructive")
+        DestructiveActionManager.shared.cancel()
         var trashBlocked = false
         do {
             _ = try PermissionGate.shared.isAuthorized(actionName: "system.emptyTrash", impact: trashMatch!.impact)
@@ -482,6 +483,7 @@ enum SelfTest {
         check(DirectAnswerRouter.decide(goal: "search the web for Swift 6 release notes") == .planner, "Web task → planner")
         check(DirectAnswerRouter.decide(goal: "echo hello from the shell") == .planner, "Shell task → planner")
         check(DirectAnswerRouter.decide(goal: "what files should I delete from the folder") == .planner, "Question containing action verb stays ambiguous → planner (no over-refusal)")
+        check(DirectAnswerRouter.decide(goal: "who wrote the play Hamlet?") == .directAnswer, "Literary question containing 'play' routes to directAnswer (not action verb)")
 
         print("\n─── Planner Reliability: named-tool hint grounding ───")
         check(!MLXPlanner.testHookToolNamesMentioned(in: "use the audit_failing_tool and then echo recovery_completed", toolNames: ["audit_failing_tool", "run_shell"]).isEmpty, "Goal-named tools are force-included in planner catalog")

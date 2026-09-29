@@ -111,7 +111,7 @@ enum DirectAnswerRouter {
             "run ", "execute ", "open ", "launch ", "search for", "search the web", "search online", "look up", "find ",
             "fetch", "download", "list ", "show ", "read ", "write ", "create ",
             "delete ", "remove ", "copy ", "move ", "set ", "print ", "make ",
-            "kill ", "quit ", "close ", "empty ", "play ", "install ", "uninstall "
+            "kill ", "quit ", "close ", "empty ", "install ", "uninstall "
         ]
         let startsQuestion = questionStarters.contains { g.hasPrefix($0) }
         let hasActionVerb = actionVerbs.contains { g.contains($0) }

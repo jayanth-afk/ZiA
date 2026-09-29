@@ -3805,6 +3805,169 @@ enum SelfTest {
         }
         check(physicalReadSuccess, "read_file physical E2E 20.146: extraction → compile → validate → execute → verify matches disk byte-for-byte")
 
+        // 20.147 Verified reference vs unresolved reference E2E contract (Shell execution):
+        // 1. Action 1 establishes verified output via ToolExecutor.
+        // 2. Action 2 refers to that state via $step.1.output.
+        // 3. ReferenceResolver resolves it to the verified value.
+        // 4. Concrete resolved argument reaches execution.
+        // 5. Verification confirms the result.
+        // 6. Unresolved version asks for clarification, never fabricates.
+        var verifiedReferenceE2ESuccess = false
+        var unresolvedClarificationSuccess = false
+        let e2eRefSem = DispatchSemaphore(value: 0)
+
+        Task { @MainActor in
+            let prevAutonomy = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 2
+            defer { Config.shared.autonomyLevel = prevAutonomy }
+
+            let sm = TaskStateMachine.shared
+            let task = sm.createTask(title: "VerifiedRefE2E", goal: "establish verified state and reference it")
+            let shellTool = ToolRegistry.shared.getTool(named: "run_shell")
+            let shellSpecs = shellTool?.parameterSpec ?? []
+
+            // 1. First action establishes verified state/output
+            let token = "verified_ctx_token_\(Int.random(in: 10000...99999))"
+            if let result1 = try? await ToolExecutor.shared.execute(toolName: "run_shell", arguments: ["command": "echo \(token)"]),
+               result1.success, result1.verification?.outcome == .passed {
+                let trimmedOutput = result1.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                let record1 = StepResolutionRecord(
+                    stepNumber: 1,
+                    toolName: "run_shell",
+                    rawOutput: trimmedOutput,
+                    completedAt: Date(),
+                    verification: .passed
+                )
+                _ = try? sm.appendResolutionRecord(record1, for: task.id)
+
+                // 2. Second request refers to that state naturally
+                let recs = sm.resolutionRecords(for: task.id)
+                let rawStep2Args = ["command": "echo resolved=$step.1.output"]
+
+                // 3. ReferenceResolver resolves it to the verified value
+                if let resolvedArgs = try? ReferenceResolver.resolveStepArguments(
+                    rawArguments: rawStep2Args,
+                    currentStepNumber: 2,
+                    toolParameterSpecs: shellSpecs,
+                    resolutionRecords: recs,
+                    environmentContext: nil
+                ), (resolvedArgs["command"] as? String) == "echo resolved=\(token)" {
+
+                    // 4. Concrete resolved argument reaches execution
+                    if let result2 = try? await ToolExecutor.shared.execute(toolName: "run_shell", arguments: resolvedArgs) {
+                        // 5. Verification confirms the result
+                        if result2.verification?.outcome == .passed &&
+                           result2.output.contains("resolved=\(token)") {
+                            verifiedReferenceE2ESuccess = true
+                        }
+                    }
+                }
+            }
+
+            // 6. Unresolved version of the same reference asks for clarification and rejects fabricated command
+            let unresolvedGoal = "run that command"
+            let refusalReason = DirectAnswerRouter.refusalReason(for: unresolvedGoal)
+            let fabricatedPlan = AgentPlan(goal: unresolvedGoal, steps: [PlanStep(id: "s1", toolName: "run_shell", arguments: ["command": "your_command"], purpose: "run")])
+            let validatorRejection: Bool
+            if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(fabricatedPlan),
+               tool == "run_shell", reason.contains("unresolved command reference") {
+                validatorRejection = true
+            } else {
+                validatorRejection = false
+            }
+
+            if refusalReason == .unresolvedCommandReference && validatorRejection {
+                unresolvedClarificationSuccess = true
+            }
+
+            e2eRefSem.signal()
+        }
+
+        while e2eRefSem.wait(timeout: .now() + 0.05) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        check(verifiedReferenceE2ESuccess, "verified reference E2E 20.147: verified state → ReferenceResolver resolution → execution → verification passed")
+        check(unresolvedClarificationSuccess, "unresolved reference E2E 20.148: unresolved reference → clarification, never fabricates or executes")
+
+        // 20.149 Verified file reference vs unresolved file reference E2E contract (File write → read):
+        var verifiedFileRefSuccess = false
+        var unresolvedFileRefSuccess = false
+        let e2eFileSem = DispatchSemaphore(value: 0)
+
+        Task { @MainActor in
+            let sm = TaskStateMachine.shared
+            let task = sm.createTask(title: "VerifiedFileRefE2E", goal: "write file and read via reference")
+            let readFileSpecs = ToolRegistry.shared.getTool(named: "read_file")?.parameterSpec ?? []
+
+            let testFilePath = "build/selftest_verified_ref_file.txt"
+            let filePayload = "Zia verified reference payload: \(UUID().uuidString)"
+
+            // 1. Action 1 writes file and establishes verified state
+            if let writeResult = try? await ToolExecutor.shared.execute(toolName: "write_file", arguments: ["path": testFilePath, "content": filePayload]),
+               writeResult.success, writeResult.verification?.outcome == .passed {
+
+                let record1 = StepResolutionRecord(
+                    stepNumber: 1,
+                    toolName: "write_file",
+                    rawOutput: testFilePath,
+                    structuredOutput: ["path": testFilePath],
+                    completedAt: Date(),
+                    verification: .passed
+                )
+                _ = try? sm.appendResolutionRecord(record1, for: task.id)
+
+                // 2. Action 2 refers to the verified file via $step.1.path
+                let recs = sm.resolutionRecords(for: task.id)
+                let rawStep2Args = ["path": "$step.1.path"]
+
+                // 3. ReferenceResolver resolves $step.1.path to testFilePath
+                if let resolvedArgs = try? ReferenceResolver.resolveStepArguments(
+                    rawArguments: rawStep2Args,
+                    currentStepNumber: 2,
+                    toolParameterSpecs: readFileSpecs,
+                    resolutionRecords: recs,
+                    environmentContext: nil
+                ), (resolvedArgs["path"] as? String) == testFilePath {
+
+                    // 4. Concrete resolved argument reaches execution
+                    if let readResult = try? await ToolExecutor.shared.execute(toolName: "read_file", arguments: resolvedArgs) {
+                        // 5. Verification confirms content matches
+                        if readResult.verification?.outcome == .passed && readResult.output == filePayload {
+                            verifiedFileRefSuccess = true
+                        }
+                    }
+                }
+            }
+
+            try? FileManager.default.removeItem(atPath: testFilePath)
+
+            // 6. Unresolved version of the same reference asks for clarification and rejects fabricated path
+            let unresolvedFileGoal = "read that file"
+            let fileRefusalReason = DirectAnswerRouter.refusalReason(for: unresolvedFileGoal)
+            let fabricatedFilePlan = AgentPlan(goal: unresolvedFileGoal, steps: [PlanStep(id: "s1", toolName: "read_file", arguments: ["path": "/path/to/non-system/file"], purpose: "read")])
+            let fileValidatorRejection: Bool
+            if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(fabricatedFilePlan),
+               tool == "read_file", reason.contains("unresolved file reference") {
+                fileValidatorRejection = true
+            } else {
+                fileValidatorRejection = false
+            }
+
+            if fileRefusalReason == .unresolvedFileReference && fileValidatorRejection {
+                unresolvedFileRefSuccess = true
+            }
+
+            e2eFileSem.signal()
+        }
+
+        while e2eFileSem.wait(timeout: .now() + 0.05) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        check(verifiedFileRefSuccess, "verified file reference E2E 20.149: written file → ReferenceResolver resolution → read_file execution → verified content")
+        check(unresolvedFileRefSuccess, "unresolved file reference E2E 20.150: unresolved file reference → clarification, never fabricates or executes")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

@@ -94,6 +94,26 @@ enum PlannerRoutingBenchmark {
         RoutingCase(id: "arg-punct", goal: "print the line \"ready, set; go!\" using echo in the shell", kind: .plannerTool, toolFamily: "shell", expectedLiteral: "ready, set; go!", repetitions: 3),
         // Literal containing numbers (router-proof phrasing: no "echo …" prefix).
         RoutingCase(id: "arg-numbers", goal: "write the phrase build 42 passed using run_shell", kind: .plannerTool, toolFamily: "shell", expectedLiteral: "build 42 passed", repetitions: 3),
+
+        // ── open_app control cases: L0 router must remain unaffected ──
+        // These must stay on the .deterministic route after the extraction
+        // expansion — they prove the new extractor does not shadow the L0 router.
+        RoutingCase(id: "ctrl-det-open-launch", goal: "launch Calculator", kind: .deterministic, toolFamily: nil, expectedLiteral: nil, repetitions: 3),
+        RoutingCase(id: "ctrl-det-open-switch", goal: "switch to Terminal", kind: .deterministic, toolFamily: nil, expectedLiteral: nil, repetitions: 3),
+
+        // ── open_app extraction cases: new deterministic extractor (0 model calls) ──
+        // Routed through planDecomposed; the L0 router will NOT catch these
+        // because they are polite/indirect forms not in matchAppCommand().
+        RoutingCase(id: "oa-det-please-open", goal: "please open Safari", kind: .plannerTool, toolFamily: "app", expectedLiteral: "Safari", repetitions: 3),
+        RoutingCase(id: "oa-det-can-you", goal: "can you open Notes", kind: .plannerTool, toolFamily: "app", expectedLiteral: "Notes", repetitions: 3),
+
+        // ── web_search extraction cases: 0.5B model extraction ──
+        // Each exercises a different surface form of a search request.
+        // expectedLiteral tracks the query span for argument preservation.
+        RoutingCase(id: "ws-history-rome", goal: "search for the history of Rome", kind: .plannerWeb, toolFamily: "web", expectedLiteral: "the history of Rome", repetitions: 3),
+        RoutingCase(id: "ws-look-up", goal: "look up the boiling point of water", kind: .plannerWeb, toolFamily: "web", expectedLiteral: "the boiling point of water", repetitions: 3),
+        RoutingCase(id: "ws-google", goal: "google Swift programming tutorials", kind: .plannerWeb, toolFamily: "web", expectedLiteral: "Swift programming tutorials", repetitions: 3),
+        RoutingCase(id: "ws-lit-numbers", goal: "search for WWDC 2026 session videos", kind: .plannerWeb, toolFamily: "web", expectedLiteral: "WWDC 2026 session videos", repetitions: 3),
     ]
 
     /// Offline segments (no model): structural repair replay of the observed
@@ -339,6 +359,15 @@ enum PlannerRoutingBenchmark {
         case "web":
             return lowered.contains("http") || lowered.contains("url") || lowered.contains("result")
                 || lowered.contains("no results") || lowered.contains("[1]")
+        case "app":
+            // open_app tool output: the launcher returns a human-readable
+            // confirmation containing the app name, or a system-level
+            // response indicating the app was opened/switched to.
+            return lowered.contains("opened") || lowered.contains("launched")
+                || lowered.contains("switched") || lowered.contains("safari")
+                || lowered.contains("notes") || lowered.contains("calculator")
+                || lowered.contains("xcode") || lowered.contains("terminal")
+                || lowered.contains("already") || lowered.contains("front")
         default:
             return false
         }

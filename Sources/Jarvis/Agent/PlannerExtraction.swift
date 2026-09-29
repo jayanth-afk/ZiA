@@ -175,6 +175,91 @@ enum PlannerExtraction {
             literal: literal)
     }
 
+    /// Deterministically capture a polite or indirect open-application request
+    /// whose prefix unambiguously identifies the tool and whose remainder is
+    /// the application name. This covers forms that `DeterministicRouter`
+    /// intentionally does not handle (it requires crisp structural prefixes and
+    /// an `AppLauncher.canResolve()` guard; this layer does neither — it only
+    /// extracts a typed argument).
+    ///
+    /// IMPORTANT: The L0 `DeterministicRouter.matchAppCommand()` handles the
+    /// canonical `open/launch/start/switch to <app>` forms with 0 model calls
+    /// BEFORE this extractor is ever reached. Do NOT add those prefixes here;
+    /// doing so would silently compete with the L0 router (which runs first).
+    ///
+    /// Accepted prefix forms (longest-first to avoid short-prefix shadowing):
+    ///   open the app called <app>   · launch the app called <app>
+    ///   open the app <app>          · launch the app <app>
+    ///   please open <app>           · please launch <app>  · please start <app>
+    ///   can you open <app>          · can you launch <app>
+    ///
+    /// All other forms (including `open <app>`, `launch <app>`, `switch to
+    /// <app>`) fall through to the 0.5B model or the L0 router respectively.
+    static func explicitOpenAppExtraction(goal: String) -> ExtractedAction? {
+        let lower = goal.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !lower.isEmpty else { return nil }
+
+        // Compound guard: multi-action utterances must go to the planner.
+        // Applied before prefix matching so an adversarial compound request
+        // that happens to start with a recognised prefix is never matched.
+        let compoundMarkers = [" and then", ", then", " then ", " & ", " also ",
+                               " and open", " and launch", " and start", " or "]
+        if compoundMarkers.contains(where: { lower.contains($0) }) { return nil }
+
+        // Negation guard: "don't open X", "do not launch X", etc.
+        let negations = ["don't", "do not", "never ", "not open", "not launch",
+                         "without opening", "without launching"]
+        if negations.contains(where: { lower.contains($0) }) { return nil }
+
+        // Question guard at the START of the utterance — except "can you …"
+        // which is an accepted polite prefix, not a genuine question.
+        let questionStarters = ["what ", "why ", "how ", "when ", "is ", "are ",
+                                "does ", "which ", "who ", "where "]
+        if questionStarters.contains(where: { lower.hasPrefix($0) }) { return nil }
+
+        // Accepted prefix forms, ordered longest-first to prevent short-prefix
+        // shadowing (e.g. "open the app" must not match before "open the app called").
+        let prefixes: [String] = [
+            "open the app called ",
+            "launch the app called ",
+            "open the app ",
+            "launch the app ",
+            "please open ",
+            "please launch ",
+            "please start ",
+            "can you open ",
+            "can you launch ",
+        ]
+
+        for prefix in prefixes {
+            guard lower.hasPrefix(prefix) else { continue }
+            // Slice the original goal (not the lowercased copy) to preserve
+            // case for app names like "Xcode", "GitHub Desktop", etc.
+            var appName = String(goal.dropFirst(prefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Strip common trailing punctuation.
+            while let last = appName.last, ".?!,".contains(last) {
+                appName = String(appName.dropLast())
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            // Post-strip validation guards.
+            guard !appName.isEmpty,
+                  appName.count <= 100,
+                  !appName.lowercased().contains(" and "),
+                  !appName.contains(", "),
+                  !appName.contains(";"),
+                  !appName.lowercased().contains(" or "),
+                  !appName.lowercased().contains(" then ") else { return nil }
+            // The app name is the literal anchor: the compiler's adoption gate
+            // will verify it is a contiguous span of the original goal.
+            return ExtractedAction(
+                toolName: "open_app",
+                arguments: ["app_name": appName],
+                literal: appName)
+        }
+        return nil
+    }
+
     // MARK: Parsing
 
     /// Parse the bounded extraction JSON the decomposition prompt requests:

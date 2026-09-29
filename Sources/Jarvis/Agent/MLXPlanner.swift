@@ -577,6 +577,31 @@ actor MLXPlanner {
             }
         }
 
+        // Deterministic open_app extraction for polite/indirect forms
+        // ("please open X", "can you open X", "open the app [called] X").
+        // Canonical forms ("open X", "launch X", "switch to X") are handled by
+        // DeterministicRouter BEFORE planDecomposed is ever called — those forms
+        // will never reach this block.
+        // On compile failure: fall through to the model path (soft failure).
+        // On compile success: return the validated plan immediately (0 model calls).
+        if let extractedApp = PlannerExtraction.explicitOpenAppExtraction(goal: goal) {
+            let compileResultApp = await MainActor.run { PlannerExtraction.compile(extractedApp, goal: goal) }
+            switch compileResultApp {
+            case .success(let plan):
+                await MainActor.run {
+                    ArgumentPreservationRecorder.shared.recordCompilation(
+                        originalGoal: goal,
+                        extractedLiteral: extractedApp.literal,
+                        compiledLiteral: PlannerExtraction.compiledValue(carrying: extractedApp.literal, in: plan))
+                }
+                JarvisLogger.brain.info("MLXPlanner used open_app deterministic extraction (0 model calls)")
+                return plan
+            case .failure(let error):
+                // Soft fall-through: the model gets a chance at an unusual request.
+                JarvisLogger.brain.warning("open_app det extraction compile failed (\(error.description)) — falling through to model")
+            }
+        }
+
         // Catalog: identical deterministic hint + forced-inclusion logic as
         // plan(), plus the recency web hint so freshness-sensitive goals see
         // the web tools.

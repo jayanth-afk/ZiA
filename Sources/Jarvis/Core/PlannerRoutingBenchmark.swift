@@ -127,6 +127,10 @@ enum PlannerRoutingBenchmark {
         // ── write_file extraction cases: new deterministic extractor (0 model calls) ──
         RoutingCase(id: "wf-det-write-text", goal: "write the text 'benchmark_literal_token_1' to build/bm_wf1.txt", kind: .plannerTool, toolFamily: "file", expectedLiteral: "benchmark_literal_token_1", repetitions: 3),
         RoutingCase(id: "wf-det-save-file", goal: "save 'benchmark_literal_token_2' to file build/bm_wf2.txt", kind: .plannerTool, toolFamily: "file", expectedLiteral: "benchmark_literal_token_2", repetitions: 3),
+
+        // ── fetch_url extraction cases: new deterministic extractor (0 model calls) ──
+        RoutingCase(id: "fu-det-fetch-url", goal: "fetch the url https://example.com", kind: .plannerWeb, toolFamily: "web", expectedLiteral: "https://example.com", repetitions: 3),
+        RoutingCase(id: "fu-det-download-url", goal: "download url https://example.com", kind: .plannerWeb, toolFamily: "web", expectedLiteral: "https://example.com", repetitions: 3),
     ]
 
     /// Offline segments (no model): structural repair replay of the observed
@@ -400,6 +404,11 @@ enum PlannerRoutingBenchmark {
         case "web":
             return lowered.contains("http") || lowered.contains("url") || lowered.contains("result")
                 || lowered.contains("no results") || lowered.contains("[1]")
+                || lowered.contains("opened") || lowered.contains("browser")
+                || lowered.contains("apple events") || lowered.contains("safari")
+                || lowered.contains("chrome") || lowered.contains("unavailable")
+                || lowered.contains("example.com") || lowered.contains("wikipedia")
+                || lowered.contains("ycombinator") || lowered.contains("news.ycombinator.com")
         case "app":
             // open_app tool output: the launcher returns a human-readable
             // confirmation containing the app name, or a system-level

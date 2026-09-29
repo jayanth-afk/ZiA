@@ -250,6 +250,14 @@ enum PlannerExtraction {
                   !appName.contains(";"),
                   !appName.lowercased().contains(" or "),
                   !appName.lowercased().contains(" then ") else { return nil }
+            // A URL is never an app name: an explicit-URL goal must go to the
+            // open_browser URL extractor (or the planner), never open_app.
+            let lowerAppName = appName.lowercased()
+            if appName.contains("://") || lowerAppName.hasPrefix("www.")
+                || lowerAppName.hasSuffix(".com") || lowerAppName.hasSuffix(".org")
+                || lowerAppName.hasSuffix(".net") || lowerAppName.hasSuffix(".io") {
+                return nil
+            }
             // The app name is the literal anchor: the compiler's adoption gate
             // will verify it is a contiguous span of the original goal.
             return ExtractedAction(
@@ -332,6 +340,137 @@ enum PlannerExtraction {
                 toolName: "set_volume",
                 arguments: ["level": String(level)],
                 literal: levelStr)
+        }
+        return nil
+    }
+
+    /// Deterministically capture an explicit, bounded URL-opening request
+    /// where the goal contains exactly ONE bare http(s) URL or one bare
+    /// domain (e.g. "example.com") after an explicit open/go/visit/browse
+    /// verb. The URL is copied byte-for-byte from the goal — the extractor
+    /// never constructs, completes, or "fixes" a URL. Everything else
+    /// (multi-URL goals, prose around the URL, missing verbs, unknown TLDs)
+    /// returns nil and falls through to the model path.
+    ///
+    /// IMPORTANT: This layer extracts a typed argument only. It never opens
+    /// anything: the compiled plan must pass PlanValidator and the tool goes
+    /// through the standard PermissionGate / ToolExecutor / active-tab
+    /// observation pipeline (open_browser has real verification).
+    static func explicitURLOpenExtraction(goal: String) -> ExtractedAction? {
+        let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGoal.isEmpty else { return nil }
+        let lower = trimmedGoal.lowercased()
+
+        // Compound guard: multi-action utterances must go to the planner.
+        let compoundMarkers = [" and then", ", then", " then ", " & ", " also ", " or "]
+        if compoundMarkers.contains(where: { lower.contains($0) }) { return nil }
+
+        // Negation guard: "don't open X", "do not visit X", etc.
+        let negations = ["don't", "do not", "never ", "not open", "not visit",
+                         "without opening", "without visiting"]
+        if negations.contains(where: { lower.contains($0) }) { return nil }
+
+        // Question guard at the START of the utterance.
+        let questionStarters = ["what ", "why ", "how ", "when ", "is ", "are ",
+                                "does ", "which ", "who ", "where ", "can i "]
+        if questionStarters.contains(where: { lower.hasPrefix($0) }) { return nil }
+
+        // Meta/discussion guard: talking ABOUT urls/websites is not a request
+        // to open one.
+        if lower.contains("how to") || lower.contains("what is a") || lower.contains("explain") {
+            return nil
+        }
+
+        // Exactly one URL-like token in the goal (0.5B-safety: multi-URL
+        // requests are compound and must go to the planner).
+        func urlTokens(in text: String) -> [String] {
+            text.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        }
+        let httpTokens = urlTokens(in: trimmedGoal).filter { token in
+            let l = token.lowercased()
+            return l.contains("://")
+        }
+        let domainPattern = "^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\\.(com|org|net|io|edu|gov|co|dev|app|ai)([/?#].*)?$"
+        guard let domainRegex = try? NSRegularExpression(pattern: domainPattern, options: [.caseInsensitive]) else { return nil }
+        let bareDomainTokens = urlTokens(in: trimmedGoal).filter { token in
+            var t = token
+            while let last = t.last, ".?!,:;\"'".contains(last) { t = String(t.dropLast()) }
+            let ns = t as NSString
+            return domainRegex.firstMatch(in: t, options: [], range: NSRange(location: 0, length: ns.length)) != nil
+                && !t.lowercased().contains("://")
+                && !t.contains("@")
+        }
+        // Both forms present, or multiple domains → ambiguous, fail closed.
+        if httpTokens.count + bareDomainTokens.count != 1 { return nil }
+
+        // Accepted verb prefixes (lowercased goal), longest-first.
+        let prefixes: [String] = [
+            "please open the website ", "can you open the website ",
+            "please go to the website ", "can you go to the website ",
+            "please visit the website ", "can you visit the website ",
+            "open the website ", "go to the website ", "visit the website ",
+            "browse the website ",
+            "please open the site ", "can you open the site ",
+            "open the site ", "go to the site ", "visit the site ",
+            "please open ", "can you open ",
+            "please go to ", "can you go to ",
+            "please visit ", "can you visit ",
+            "open ", "go to ", "visit ", "browse ",
+        ]
+
+        for prefix in prefixes {
+            guard lower.hasPrefix(prefix) else { continue }
+            var target = String(trimmedGoal.dropFirst(prefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Strip common trailing punctuation (never strips path chars).
+            while let last = target.last, ".?!,:;".contains(last) { target = String(target.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines) }
+            guard !target.isEmpty, target.count <= 2_048 else { return nil }
+            // The remainder must be exactly the one URL/domain token found
+            // earlier (modulo surrounding quotes the user may have added).
+            var candidate = target
+            if candidate.count >= 2,
+               (candidate.first == "\"" && candidate.last == "\"")
+                || (candidate.first == "'" && candidate.last == "'")
+                || (candidate.first == "“" && candidate.last == "”") {
+                candidate = String(candidate.dropFirst().dropLast())
+            }
+            let candidateIsHTTP = candidate.lowercased().contains("://")
+            let nsCandidate = candidate as NSString
+            let candidateIsDomain = !candidateIsHTTP
+                && domainRegex.firstMatch(in: candidate, options: [], range: NSRange(location: 0, length: nsCandidate.length)) != nil
+                && !candidate.contains("@")
+            guard candidateIsHTTP || candidateIsDomain else { return nil }
+            let matchesFound = candidateIsHTTP
+                ? (httpTokens.count == 1 && httpTokens[0].trimmingCharacters(in: CharacterSet(charactersIn: "\"'“”")) == candidate)
+                : (bareDomainTokens.count == 1 && bareDomainTokens[0].trimmingCharacters(in: CharacterSet(charactersIn: ".?!,:;\"'")) == candidate)
+            guard matchesFound else { return nil }
+
+            // Normalize bare domains to https:// — scheme completion is
+            // deterministic and never changes the user's host.
+            var urlString: String
+            if candidateIsHTTP {
+                urlString = candidate
+            } else {
+                urlString = "https://\(candidate)"
+            }
+            // Scheme+host sanity: http(s) only, has a host dot, no spaces,
+            // no credentials, no whitespace/control characters.
+            let lowerURL = urlString.lowercased()
+            guard lowerURL.hasPrefix("http://") || lowerURL.hasPrefix("https://") else { return nil }
+            guard let comps = URLComponents(string: urlString), comps.host != nil,
+                  comps.host?.contains(".") == true,
+                  comps.user == nil, comps.password == nil else { return nil }
+            guard !urlString.contains(" "), !urlString.contains("\t"),
+                  !urlString.contains("\n"), !urlString.contains("\r") else { return nil }
+            guard urlString.unicodeScalars.allSatisfy({ $0.value >= 0x20 && $0.value != 0x7F }) else { return nil }
+
+            // The URL (as the user gave it, pre-normalization) is the literal
+            // anchor: the compiler's adoption gate verifies it is a contiguous
+            // span of the original goal byte-for-byte.
+            return ExtractedAction(
+                toolName: "open_browser",
+                arguments: ["url": urlString],
+                literal: candidate)
         }
         return nil
     }
@@ -489,7 +628,9 @@ enum PlannerExtraction {
     ///   - Must target an unambiguous http:// or https:// URL.
     ///   - URL delimiters (single quotes, double quotes, angle brackets) stripped cleanly.
     ///   - Valid URL scheme (http or https) and non-empty host required.
-    ///   - SSRF guards: blocked cloud metadata IPs (169.254.169.254, metadata.google.internal).
+    ///   - Strict SSRF guards: loopback, local/private network ranges (10.0.0.0/8, 172.16.0.0/12,
+    ///     192.168.0.0/16, 127.0.0.0/8), and cloud metadata endpoints rejected.
+    ///   - Embedded user:pass credentials rejected.
     ///   - Rejects question starters, negations, compound commands, multi-URL commands.
     ///
     /// Returns nil when ambiguous or unsupported (fall through to MLXPlanner model path).
@@ -498,11 +639,18 @@ enum PlannerExtraction {
         guard !trimmedGoal.isEmpty else { return nil }
         let lower = trimmedGoal.lowercased()
 
-        // Compound guard
+        // Compound guard: multi-action utterances must go to the planner.
         let compoundMarkers = [" and then", ", then", " then ", " & ", " also ", " or "]
         if compoundMarkers.contains(where: { lower.contains($0) }) { return nil }
 
-        // Negation guard
+        // Multiple fetch verbs or multiple URLs indicate compound/batch operation
+        let httpCount = trimmedGoal.components(separatedBy: "http://").count - 1 + trimmedGoal.components(separatedBy: "https://").count - 1
+        if httpCount > 1 { return nil }
+        if lower.components(separatedBy: "fetch").count > 2 || lower.components(separatedBy: "download").count > 2 {
+            return nil
+        }
+
+        // Negation guard: "don't fetch ...", "do not download ...", etc.
         let negations = ["don't", "do not", "never ", "not fetch", "not download", "without fetching"]
         if negations.contains(where: { lower.contains($0) }) { return nil }
 
@@ -549,13 +697,19 @@ enum PlannerExtraction {
         let urlString = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !urlString.isEmpty else { return nil }
 
-        // Must be http or https
+        // Reject mismatched or dangling delimiters
+        let illegalDelimiters = ["'", "\"", "“", "”", "<", ">"]
+        if illegalDelimiters.contains(where: { urlString.hasPrefix($0) || urlString.hasSuffix($0) }) {
+            return nil
+        }
+
+        // Must be http or https scheme
         let lowerURL = urlString.lowercased()
         guard lowerURL.hasPrefix("http://") || lowerURL.hasPrefix("https://") else {
             return nil
         }
 
-        // Must parse as valid URL with a host
+        // Must parse as valid URL with a non-empty host
         guard let urlObj = URL(string: urlString),
               let host = urlObj.host,
               !host.isEmpty,
@@ -564,14 +718,34 @@ enum PlannerExtraction {
             return nil
         }
 
-        // SSRF / internal metadata protection
-        let lowerHost = host.lowercased()
-        let blockedHosts = [
-            "169.254.169.254",
-            "metadata.google.internal",
-            "instance-data"
-        ]
-        if blockedHosts.contains(lowerHost) {
+        // Embedded credentials guard: reject user:pass@host
+        if let user = urlObj.user, !user.isEmpty { return nil }
+        if let password = urlObj.password, !password.isEmpty { return nil }
+
+        // SSRF / loopback / private network / cloud metadata protection
+        let lowerHost = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        let isPrivateOrBlocked: Bool = {
+            if lowerHost == "localhost" || lowerHost == "127.0.0.1" || lowerHost == "0.0.0.0" || lowerHost == "::1" {
+                return true
+            }
+            if lowerHost == "169.254.169.254" || lowerHost == "metadata.google.internal" || lowerHost == "instance-data" {
+                return true
+            }
+            if lowerHost.hasSuffix(".localhost") || lowerHost.hasSuffix(".local") || lowerHost.hasSuffix(".internal") || lowerHost.hasSuffix(".lan") {
+                return true
+            }
+            if lowerHost.hasPrefix("127.") || lowerHost.hasPrefix("10.") || lowerHost.hasPrefix("192.168.") {
+                return true
+            }
+            if lowerHost.hasPrefix("172.") {
+                let parts = lowerHost.split(separator: ".")
+                if parts.count >= 2, let second = Int(parts[1]), second >= 16 && second <= 31 {
+                    return true
+                }
+            }
+            return false
+        }()
+        if isPrivateOrBlocked {
             return nil
         }
 

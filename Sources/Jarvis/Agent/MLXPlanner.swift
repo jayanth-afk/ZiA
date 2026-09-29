@@ -664,6 +664,29 @@ actor MLXPlanner {
             }
         }
 
+        // Deterministic URL-open extraction for goals containing exactly one
+        // explicit http(s) URL or bare domain after an open/go/visit/browse
+        // verb ("go to example.com", "open https://www.wikipedia.org").
+        // Canonical app forms without a URL never match; the L0 router handles
+        // those first anyway. On compile failure: fall through to the model.
+        if let extractedURL = PlannerExtraction.explicitURLOpenExtraction(goal: goal) {
+            let compileResultURL = await MainActor.run { PlannerExtraction.compile(extractedURL, goal: goal) }
+            switch compileResultURL {
+            case .success(let plan):
+                await MainActor.run {
+                    ArgumentPreservationRecorder.shared.recordCompilation(
+                        originalGoal: goal,
+                        extractedLiteral: extractedURL.literal,
+                        compiledLiteral: PlannerExtraction.compiledValue(carrying: extractedURL.literal, in: plan))
+                }
+                JarvisLogger.brain.info("MLXPlanner used URL-open deterministic extraction (0 model calls)")
+                return plan
+            case .failure(let error):
+                // Soft fall-through: the model gets a chance at an unusual request.
+                JarvisLogger.brain.warning("URL-open det extraction compile failed (\(error.description)) — falling through to model")
+            }
+        }
+
         // Catalog: identical deterministic hint + forced-inclusion logic as
         // plan(), plus the recency web hint so freshness-sensitive goals see
         // the web tools.
@@ -860,6 +883,15 @@ actor MLXPlanner {
             families.insert("web")
         }
         if g.hasPrefix("open ") && (g.contains("http") || g.contains(".com") || g.contains(".org") || g.contains(".io") || g.contains(".net")) {
+            families.remove("app")
+            families.insert("web")
+        }
+        // URL-bearing goals route to the web family regardless of verb so the
+        // planner always sees a browser tool ("go to example.com", "visit
+        // https://…"). The deterministic URL extractor handles the canonical
+        // shapes before the model is ever consulted.
+        if g.contains("http://") || g.contains("https://")
+            || g.range(of: #"\b(go to|visit|browse)\s+\S+\.(com|org|net|io|edu|gov|co|dev|app|ai)\b"#, options: .regularExpression) != nil {
             families.remove("app")
             families.insert("web")
         }

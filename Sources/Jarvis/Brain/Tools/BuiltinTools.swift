@@ -325,12 +325,32 @@ struct OpenBrowserTool: JarvisTool {
         let browserType = BrowserType(rawValue: browserName) ?? .defaultBrowser
 
         let opened = try await BrowserManager.shared.open(url: url, in: browserType)
+        // Resolve the app that actually received the URL. For the Default
+        // browser this is the system's registered http(s) handler (e.g. Safari
+        // or Chrome), which makes active-tab observation possible instead of a
+        // guaranteed .unavailable verdict for the most common request shape.
+        let effectiveBrowser = await MainActor.run { Self.effectiveBrowser(for: browserType, url: url) }
         return ToolResult(
             success: opened,
             output: "Opened \(url.absoluteString) in \(browserType.rawValue)",
             sideEffects: ["browser_opened"],
-            metadata: ["targetURL": url.absoluteString, "browser": browserType.rawValue]
+            metadata: ["targetURL": url.absoluteString, "browser": browserType.rawValue, "effectiveBrowser": effectiveBrowser.rawValue]
         )
+    }
+
+    /// The browser whose active tab can be observed: an explicitly named
+    /// Safari/Chrome request maps to itself; the Default browser maps to the
+    /// system's registered http(s) handler when that handler is Safari or
+    /// Chrome. Everything else keeps its own identity (observation stays
+    /// explicitly unavailable — never a fabricated verdict).
+    @MainActor
+    private static func effectiveBrowser(for requested: BrowserType, url: URL) -> BrowserType {
+        guard requested == .defaultBrowser else { return requested }
+        guard let handler = NSWorkspace.shared.urlForApplication(toOpen: url) else { return requested }
+        let bundleID = handler.deletingPathExtension().lastPathComponent
+        if bundleID == "com.apple.Safari" { return .safari }
+        if bundleID == "com.google.Chrome" { return .chrome }
+        return requested
     }
 
     func observe() async throws -> ObservationResult {
@@ -338,7 +358,11 @@ struct OpenBrowserTool: JarvisTool {
     }
 
     func observe(expected: ToolResult) async throws -> ObservationResult {
-        guard let browserName = expected.metadata["browser"], let browser = BrowserType(rawValue: browserName) else {
+        // Observe the app that actually received the URL (Default resolves to
+        // the registered handler in execute). Falls back to the requested
+        // browser when the metadata was not recorded.
+        let browserName = expected.metadata["effectiveBrowser"] ?? expected.metadata["browser"]
+        guard let browserName, let browser = BrowserType(rawValue: browserName) else {
             return .unavailable(reason: "Browser identity was not recorded")
         }
         guard browser == .safari || browser == .chrome else {

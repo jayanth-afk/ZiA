@@ -3232,6 +3232,115 @@ enum SelfTest {
         }
         check(physicalE2ESuccess, "write_file physical E2E 20.66: extraction → compile → validate → execute → verify matches disk byte-for-byte")
 
+        // 20.67–20.86 URL-open deterministic extractor: positive, variants,
+        // adversarial, compile. Purely offline (0 model calls).
+
+        // 20.67 Positive bare domain: "go to example.com" → https://example.com
+        let url67 = PlannerExtraction.explicitURLOpenExtraction(goal: "go to example.com")
+        check(url67?.toolName == "open_browser" && url67?.arguments["url"] == "https://example.com" && url67?.literal == "example.com",
+              "url-open det extraction 20.67: 'go to example.com' → https://example.com")
+
+        // 20.68 Positive full https URL: "open https://www.wikipedia.org" (byte-exact)
+        let url68 = PlannerExtraction.explicitURLOpenExtraction(goal: "open https://www.wikipedia.org")
+        check(url68?.toolName == "open_browser" && url68?.arguments["url"] == "https://www.wikipedia.org" && url68?.literal == "https://www.wikipedia.org",
+              "url-open det extraction 20.68: full https URL copied byte-for-byte")
+
+        // 20.69 Positive 'visit the website' phrase
+        let url69 = PlannerExtraction.explicitURLOpenExtraction(goal: "visit the website https://news.ycombinator.com")
+        check(url69?.arguments["url"] == "https://news.ycombinator.com",
+              "url-open det extraction 20.69: 'visit the website <url>' accepted")
+
+        // 20.70 Positive polite prefix: "please go to example.org"
+        let url70 = PlannerExtraction.explicitURLOpenExtraction(goal: "please go to example.org")
+        check(url70?.arguments["url"] == "https://example.org",
+              "url-open det extraction 20.70: polite prefix accepted")
+
+        // 20.71 Positive 'can you open the website' variant
+        let url71 = PlannerExtraction.explicitURLOpenExtraction(goal: "can you open the website example.io")
+        check(url71?.arguments["url"] == "https://example.io",
+              "url-open det extraction 20.71: 'can you open the website' accepted")
+
+        // 20.72 Positive 'browse' verb
+        let url72 = PlannerExtraction.explicitURLOpenExtraction(goal: "browse arxiv.org")
+        check(url72?.arguments["url"] == "https://arxiv.org",
+              "url-open det extraction 20.72: 'browse <domain>' accepted")
+
+        // 20.73 Positive quoted URL: "open \"https://www.apple.com\""
+        let url73 = PlannerExtraction.explicitURLOpenExtraction(goal: "open \"https://www.apple.com\"")
+        check(url73?.arguments["url"] == "https://www.apple.com" && url73?.literal == "https://www.apple.com",
+              "url-open det extraction 20.73: quoted URL delimiters stripped")
+
+        // 20.74 Positive trailing punctuation: "go to example.com."
+        let url74 = PlannerExtraction.explicitURLOpenExtraction(goal: "go to example.com.")
+        check(url74?.arguments["url"] == "https://example.com",
+              "url-open det extraction 20.74: trailing punctuation stripped")
+
+        // 20.75 Positive URL with path: "open https://developer.apple.com/tutorials/"
+        let url75 = PlannerExtraction.explicitURLOpenExtraction(goal: "open https://developer.apple.com/tutorials/")
+        check(url75?.arguments["url"] == "https://developer.apple.com/tutorials/",
+              "url-open det extraction 20.75: URL with path preserved byte-for-byte")
+
+        // 20.76 Positive http scheme (explicit, allowed as given)
+        let url76 = PlannerExtraction.explicitURLOpenExtraction(goal: "open http://info.cern.ch")
+        check(url76?.arguments["url"] == "http://info.cern.ch",
+              "url-open det extraction 20.76: explicit http URL accepted as given")
+
+        // 20.77 Adversarial negation: "don't open https://www.wikipedia.org"
+        check(PlannerExtraction.explicitURLOpenExtraction(goal: "don't open https://www.wikipedia.org") == nil,
+              "url-open det extraction 20.77: negation guard rejects 'don't open <url>'")
+
+        // 20.78 Adversarial question: "what is https://www.wikipedia.org?"
+        check(PlannerExtraction.explicitURLOpenExtraction(goal: "what is https://www.wikipedia.org?") == nil,
+              "url-open det extraction 20.78: question guard rejects 'what is <url>'")
+
+        // 20.79 Adversarial compound: "go to example.com and then open Safari"
+        check(PlannerExtraction.explicitURLOpenExtraction(goal: "go to example.com and then open Safari") == nil,
+              "url-open det extraction 20.79: compound guard rejects 'and then'")
+
+        // 20.80 Adversarial two URLs: "open example.com and example.org"
+        check(PlannerExtraction.explicitURLOpenExtraction(goal: "open example.com and example.org") == nil,
+              "url-open det extraction 20.80: multi-domain goal rejected")
+
+        // 20.81 Adversarial credentials: "open https://user:pass@example.com"
+        check(PlannerExtraction.explicitURLOpenExtraction(goal: "open https://user:pass@example.com") == nil,
+              "url-open det extraction 20.81: URL with embedded credentials rejected")
+
+        // 20.82 Adversarial unknown TLD: "go to internalserver.corplocal"
+        check(PlannerExtraction.explicitURLOpenExtraction(goal: "go to internalserver.corplocal") == nil,
+              "url-open det extraction 20.82: unknown TLD rejected (falls to planner)")
+
+        // 20.83 Adversarial no verb: "example.com" alone
+        check(PlannerExtraction.explicitURLOpenExtraction(goal: "example.com") == nil,
+              "url-open det extraction 20.83: bare domain without open verb rejected")
+
+        // 20.84 Adversarial URL plus prose: "open https://www.wikipedia.org and read the article about Rome"
+        check(PlannerExtraction.explicitURLOpenExtraction(goal: "open https://www.wikipedia.org and read the article about Rome") == nil,
+              "url-open det extraction 20.84: URL + trailing prose rejected (not a pure URL goal)")
+
+        // 20.85 Adversarial app-vs-URL disambiguation: 'open Safari' never matches (no URL token)
+        check(PlannerExtraction.explicitURLOpenExtraction(goal: "open Safari") == nil,
+              "url-open det extraction 20.85: app name is not a URL → nil (L0/app paths unaffected)")
+
+        // 20.86 Compile gate: URL-open ExtractedAction compiles, validates through
+        // PlanValidator, and preserves the URL byte-for-byte in the compiled plan.
+        let url86Extraction = ExtractedAction(
+            toolName: "open_browser",
+            arguments: ["url": "https://www.wikipedia.org"],
+            literal: "https://www.wikipedia.org")
+        var url86Compiled = false
+        if case .success(let plan) = PlannerExtraction.compile(url86Extraction, goal: "open https://www.wikipedia.org"),
+           plan.steps.count == 1,
+           plan.steps.first?.toolName == "open_browser",
+           plan.steps.first?.arguments["url"] == "https://www.wikipedia.org" {
+            url86Compiled = true
+        }
+        check(url86Compiled,
+              "url-open det extraction 20.86: compile gate passes, URL preserved in compiled plan")
+
+        // 20.87 open_app extractor must NOT capture URL goals (regression guard).
+        check(PlannerExtraction.explicitOpenAppExtraction(goal: "please open https://www.wikipedia.org") == nil,
+              "url-open det extraction 20.87: open_app extractor refuses URL target (routes to open_browser path)")
+
         // ── fetch_url bounded extraction tests (20.67 - 20.84) ──
         let fu67 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch the url https://example.com")
         check(fu67?.toolName == "fetch_url" && fu67?.arguments["url"] == "https://example.com" && fu67?.literal == "https://example.com",
@@ -3304,6 +3413,44 @@ enum SelfTest {
         } else {
             check(false, "fetch_url det extraction 20.84: compile gate failed")
         }
+
+        let fu85 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch http://localhost:8080/health")
+        check(fu85 == nil, "fetch_url det extraction 20.85: localhost rejected")
+
+        let fu86 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch http://127.0.0.1:3000/api")
+        check(fu86 == nil, "fetch_url det extraction 20.86: loopback 127.0.0.1 rejected")
+
+        let fu87 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch http://192.168.1.1/admin")
+        check(fu87 == nil, "fetch_url det extraction 20.87: private range 192.168.0.0/16 rejected")
+
+        let fu88 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch http://10.0.0.1/status")
+        check(fu88 == nil, "fetch_url det extraction 20.88: private range 10.0.0.0/8 rejected")
+
+        let fu89 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch http://172.16.0.1/config")
+        check(fu89 == nil, "fetch_url det extraction 20.89: private range 172.16.0.0/12 rejected")
+
+        let fu90 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch https://admin:secret@example.com/dashboard")
+        check(fu90 == nil, "fetch_url det extraction 20.90: embedded user credentials rejected")
+
+        let fu91 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch data:text/html,<h1>Hello</h1>")
+        check(fu91 == nil, "fetch_url det extraction 20.91: data: scheme rejected")
+
+        let fu92 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch ftp://ftp.example.com/file.txt")
+        check(fu92 == nil, "fetch_url det extraction 20.92: ftp: scheme rejected")
+
+        let fu93 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch https://example.com and https://swift.org")
+        check(fu93 == nil, "fetch_url det extraction 20.93: multiple URLs rejected")
+
+        let fu94 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch https://example.com and tell me the title")
+        check(fu94 == nil, "fetch_url det extraction 20.94: URL with trailing prose rejected")
+
+        let fu95 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch the url 'https://example.com\"")
+        check(fu95 == nil, "fetch_url det extraction 20.95: mismatched delimiters rejected")
+
+        let complexURL2 = "https://api.example.com:8443/v1/search?q=swift%206&sort=desc#results"
+        let fu96 = PlannerExtraction.explicitFetchURLExtraction(goal: "fetch the url \(complexURL2)")
+        check(fu96?.arguments["url"] == complexURL2 && fu96?.literal == complexURL2,
+              "fetch_url det extraction 20.96: port, encoded query, and fragment preserved byte-for-byte")
 
 
         print("\n══════════════════════════════════════════")

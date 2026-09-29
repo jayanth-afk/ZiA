@@ -1,70 +1,102 @@
-# PROJECT_CONTEXT.md — Zia / JARVIS Engineering State & Handoff
+# PROJECT_CONTEXT.md — Zia / JARVIS Engineering State & Canonical Handoff
 
 > **Document Status:** CANONICAL REPOSITORY HANDOFF DOCUMENT  
 > **Repository Path:** `/Users/jayanthpranaykonada/Zia`  
-> **Generation Date:** 2026-09-28  
+> **Generation Date:** 2026-09-29  
 > **Target Audience:** Incoming Autonomous Coding Agents (Claude Opus, Gemini, Codex, Antigravity)  
 > **Operational Rule:** **EVIDENCE > MEMORY > ASSUMPTION.** Every claim in this document is labeled with an explicit evidentiary verification status.
 
 ---
 
-## 32. MILESTONE 4A: DETERMINISTIC POST-ACTION VERIFICATION
+# CURRENT VERIFIED STATE
 
-**Implemented and verified in the root checkout on 2026-09-29.** The tool pipeline is now `execute → metadata-aware observe → verify → task-state propagation`; action success alone never marks a task step verified.
+- **Date:** 2026-09-29 `[VERIFIED FROM SYSTEM ENVIRONMENT]`
+- **Current HEAD Commit:** `fd4bf87a3b495ac18ef3dda20dc126d2dcc11c54` `[VERIFIED: git rev-parse HEAD]`
+- **Latest Commit Message:** `fix: accept verified silent actions in agent execution` `[VERIFIED: git log -1]`
+- **Previous Milestone Commit:** `ae8b0ca1562639de61b49d853387ba3e08622fd1` (`feat: harden voice planning and exact literal routing`) `[VERIFIED: git log]`
+- **Active Branch:** `master` `[VERIFIED: git branch --show-current]`
+- **Working Tree State:** Tracked tree is clean. 8 untracked diagnostic/evidence files preserved under `build/` (`bench_probe.swift`, `escalation-audit-evidence.txt`, `goal-probe-spaces.txt`, `routing-benchmark-live.txt`, `routing-benchmark-live2.txt`, `routing-benchmark-live3.txt`, `routing-benchmark-run.txt`, `selftest-final.txt`). `[VERIFIED: git status --short]`
 
-- `VerificationOutcome` has five explicit states: `passed`, `failed`, `inconclusive`, `unavailable`, and `notApplicable`. Only `passed` is verified or referenceable.
-- `ToolVerificationResult` records the expected state, observed state, and reason. `ToolExecutor` propagates this evidence and fails closed for every non-passed outcome.
-- `OpenAppTool` compares the requested application to native `NSWorkspace` frontmost-app observation.
-- `SetTextTool` performs fresh AX target resolution and exact post-mutation value read-back. A missing AX observation is `unavailable`.
-- `ClickElementTool` requires an observed deterministic postcondition (frontmost app, element existence/disappearance, or focus); a bare AXPress is `inconclusive`.
-- `RunShellTool` supports declared `expected_file`, `expected_file_non_empty`, and `expected_directory` postconditions using the bounded one-shot `FileSystemObserver`.
-- AX observations re-resolve elements after actions to avoid stale element handles. No OCR, screenshot, or model inference is used as verification evidence.
+### CURRENT VERIFIED BASELINE
+- **Canonical SelfTest Result:** **624 passed, 0 failed** across 20 phases. `[VERIFIED BY TEST: execution of ./.build/debug/Jarvis --self-test]`
+- **Offline Replay Benchmark:** **15/15 passed** (structural repair of malformed shapes + deterministic compilation gates). `[VERIFIED FROM BENCHMARK: Sources/Jarvis/Core/PlannerRoutingBenchmark.swift:102-120]`
+- **Live Routing Benchmark Matrix (30 runs across 10 cases + 5 rerun):**
+  - Structural conformance: **30/30** (and **35/35** including rerun)
+  - Semantic correctness: **30/30** on final run (and **35/35** including rerun)
+  - Route classification: `directAnswer` 3/3, `deterministic` 6/6, `planner` 20/21 (rerun: 5/5), `escalation` 1/21 (rerun: 0/5)
+  - Argument preservation on rerun: **5/5 byte-exact**
+  - *Crucial Finding:* The shell benchmark cases (`ctrl-planner-shell`, `arg-spaces`, `arg-numbers`, `arg-punct`, `arg-unusual`) matched `PlannerExtraction.explicitShellEchoExtraction` and therefore ran via deterministic extraction with **0 model calls**. They must **NOT** be cited as evidence of general 0.5B model extraction capability. `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Agent/PlannerExtraction.swift:151-176, MLXPlanner.swift:562-578]`
+- **Physical E2E Tool Verification (`write_file`):**
+  - Genuinely exercised the local model extraction path (did NOT match `explicitShellEchoExtraction`).
+  - 1 planner generation attempt, `parseFailed = false`, `validatorError = none`, `repair = false`.
+  - Exact token `jarvis_e2e_k9w4t21790655668` preserved: `extracted == compiled == executed == preserved`.
+  - Deterministic file re-read and byte-exact comparison passed at `build/jarvis-e2e-jarvis_e2e_k9w4t21790655668.txt`. `[VERIFIED BY PHYSICAL E2E: build/e2e-physical.txt, build/jarvis-e2e-jarvis_e2e_k9w4t21790655668.txt]`
 
-**Regression evidence:** `swift build` completed and `.build/debug/Jarvis --self-test` reported **547 passed, 0 failed**. Phase 19 includes adversarial mismatched app/text/filesystem/browser-navigation cases plus downstream ReferenceResolver rejection. The filesystem coverage uses a controlled temporary file. Actual browser frontmost state was observed as `Brave Browser`; no arbitrary UI mutation was performed outside controlled test paths.
+### CURRENT PRODUCTION CONFIGURATION
+- **Normal Production Model:** `qwen2.5-7b` (configured in `Config.shared.localNormalModel`, fallback default `"qwen2.5-7b"`) `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Core/Config.swift:193]`
+- **Reflex Model:** `qwen2.5-3b` (configured in `Config.shared.localReflexModel`, fallback default `"qwen2.5-3b"`) `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Core/Config.swift:188]`
+- **Autonomy Level:** `1` (Supervised: read-only and safe mutations authorized; destructive actions require Preview/Commit confirmation) `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Core/Config.swift:35]`
+- **Local On-Device Planner Worker:** `mlx-community/Qwen2.5-0.5B-Instruct-4bit` on Apple Metal via persistent Python worker `mlx_worker.py` (used for bounded local planning and structured extraction) `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Brain/Workers/mlx_worker.py:8, MLXProvider.swift:51]`
+- **Cloud/External Provider Strategy:**
+  - `GroqProvider` is implemented (`https://api.groq.com/openai/v1/chat/completions`) as an optional low-latency external intelligence accelerator. Groq is **NOT** a mandatory dependency, **NOT** the deterministic execution authority, and its finite quota must **NEVER** become a hidden architectural dependency. Local models remain the persistent baseline. `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Brain/Providers/GroqProvider.swift]`
+  - `OpenRouterProvider` is implemented (`https://openrouter.ai/api/v1/chat/completions`) and wired to `OpenRouterTierBProvider` for Milestone 3 escalation. `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Brain/Providers/OpenRouterProvider.swift, EscalationPipeline.swift:136-187]`
 
-`OpenBrowserTool` now records the requested URL/browser and verifies Safari or Chrome navigation through active-tab observation. Default, Arc, and Brave browser tab inspection remains explicitly `unavailable` rather than being treated as successful navigation.
+### CURRENT VERIFICATION & EXECUTION POLICIES
+- **Post-Action Verification:** 5-state mechanical verification (`VerificationOutcome`: `.passed`, `.failed`, `.inconclusive`, `.unavailable`, `.notApplicable`). Only `.passed` counts as verified or referenceable. `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Brain/Tools/ToolDefinitions.swift:48-84]`
+- **Silent Action Outcome Policy:** `AgentStepOutcomePolicy` accepts empty tool stdout **only** if the tool's deterministic verification outcome is `.passed` (e.g. `echo x > file` writes the file without stdout). Failed execution or failed verification strictly fails closed. `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Agent/AgentLoop.swift:6-12]`
 
-Bounded DOM tools are now registered: `inspect_browser_page` returns a capped title/URL/text/link snapshot, `extract_browser_text` requires exactly one selector match, and `click_browser_link` only clicks a unique anchor after its href satisfies a declared URL fragment. It then verifies the active tab moved from its initial URL and reached the expected fragment. It cannot submit forms or click arbitrary buttons. Regression checks cover matching/mismatched page snapshots, ambiguous extraction, navigation, and unavailable observation. Latest complete run: **557 passed, 0 failed** (one immediately preceding run had a timing-only emergency-stop latency flake, then a clean full pass).
+### CURRENT MAJOR MILESTONES (ALL VERIFIED IN ROOT CHECKOUT)
+1. **Milestone 1 — Live Desktop Ambient Context Binding:** `$ambient.current_app` captured from `NSWorkspace`, 300s freshness guard, safe-fail on unsupported slots.
+2. **Milestone 2 — Deterministic Accessibility Bridge & Fast UI Mode:** `inspect_ui`, `click_element`, `set_text`, destructive keyword screening, sub-50ms AX inspection without vision models.
+3. **Milestone 3 — Lossless Escalation Pipeline (Tier A → Tier B):** `EscalationPipeline`, `EscalationContext`, privacy gate (`DataClassifier`), `PlanValidator` post-escalation enforcement, state/reference continuity, emergency-stop integration.
+4. **Milestone 4A — High-Reliability Deterministic Verification:** Active-tab observation, DOM snapshots, single-element extraction, link navigation verification, bounded text entry (`fill_browser_text`), exact read-back.
+5. **Planner Decomposition & Direct-Answer Routing:** Router layer (L0 deterministic, L1 direct answer), recency safety net, bounded single-action extraction IR (`ExtractedAction`), deterministic compiler (`PlannerExtraction.compile`), byte-exact argument preservation recorder.
 
-Physical browser limitation: Safari active-tab URL observation succeeded, but Safari DOM JavaScript is blocked until the user enables “Allow JavaScript from Apple Events” in Safari Settings → Developer. Chrome’s active tab was on a sign-in page; its DOM was not inspected. Browser DOM behavior therefore has offline regression evidence but no physical DOM pass yet.
+### KNOWN UNRESOLVED LIMITATIONS
+- 0.5B model extraction is reliable **only on tightly bounded supported shapes**; arbitrary complex goals fall back to the legacy whole-plan generation path. `[VERIFIED FROM CODE/BENCHMARK]`
+- Tier-B cloud escalation can occasionally produce unparseable or schema-invalid plans (e.g. `arg-unusual #2` substituted argument and took 53,202ms). `[VERIFIED FROM BENCHMARK: build/routing-benchmark-final.txt:176]`
+- Escalation incurs substantial latency compared to local/deterministic paths. `[VERIFIED FROM BENCHMARK]`
+- Emergency stop latency tests can be sensitive to host system load (latest test passed at 43.58ms against a 50ms bound). `[VERIFIED FROM SELFTEST]`
+- Physical browser DOM automation in Safari requires the user to enable *"Allow JavaScript from Apple Events"* in Safari Developer settings. `[VERIFIED FROM CODE/DOCS]`
+- Chrome active-tab automation was unverified on sign-in pages to prevent credential leakage. `[VERIFIED HISTORICAL]`
+- Acoustic DSP wake-word engine remains deferred; wake detection relies on streaming `SFSpeechRecognizer` transcript matching. `[VERIFIED FROM CURRENT CODE]`
+- `swift test` fails under macOS Command Line Tools-only environment; the in-process `SelfTest` runner (`Jarvis --self-test`) is the canonical suite. `[VERIFIED FROM BUILD ENVIRONMENT]`
+- Four to five shell benchmark cases in the routing matrix were handled by deterministic `explicitShellEchoExtraction` rather than model generation. `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Agent/PlannerExtraction.swift:151-176]`
 
-Browser text entry is now available through `fill_browser_text`. It accepts one unique CSS match on Safari or Chrome, supports only ordinary text/search/url/tel inputs and textareas, caps selector/text sizes, uses JSON-safe script arguments, dispatches input/change events, and never submits the form. Post-action verification reads the same field and requires an exact value match; unavailable browser automation remains explicitly unavailable. Regression coverage advances the latest full self-test run to **560 passed, 0 failed**. Physical DOM entry remains unverified until Safari’s JavaScript-from-Apple-Events setting is enabled; no live sign-in page was modified.
-
-The `write_file` tool provides bounded UTF-8 file creation and verifies exact read-back. `FileManagerJarvis` resolves canonical parent paths before writes/deletes so path-prefix lookalikes do not cause false blocks and symlink traversal into protected system directories is denied. Tests exercise a controlled `~/Library/Caches` file and a symlink to `/System`. Latest suite: **550 passed, 0 failed** after these additions.
-
-Known environment limitation: `swift test` remains unavailable under the Command Line Tools-only environment; the in-process `SelfTest` executable is the canonical suite.
+### CURRENT OPEN ENGINEERING QUESTION & PROPOSED NEXT WORK
+- **Core Open Architectural Question:** *How should Zia combine deterministic routing, bounded extraction, local models (0.5B/3B/7B), and Groq efficiently while preserving safety, strictly adhering to the 9 Frozen Principles, and minimizing unnecessary model/API usage?*
+- **Potential Next Decisions [PROPOSED / PENDING ARCHITECTURAL REVIEW]:**
+  1. Systematic local-vs-Groq latency and reliability benchmark.
+  2. Bounded extraction grammar expansion beyond single shell/file shapes.
+  3. Dynamic routing policy design between local reflex, local planner, and external acceleration.
+  *Note: No routing expansion or Groq coupling has been pre-selected; all options remain pending architectural review.*
 
 ---
 
 ## Table of Contents
 1. [Section 1 — Project Identity](#section-1--project-identity)
 2. [Section 2 — Frozen Architectural Principles](#section-2--frozen-architectural-principles)
-3. [Section 3 — Complete Architecture](#section-3--complete-architecture)
+3. [Section 3 — Complete Architecture & Execution Pipeline](#section-3--complete-architecture--execution-pipeline)
 4. [Section 4 — Repository Map](#section-4--repository-map)
-5. [Section 5 — Deterministic Mac Control](#section-5--deterministic-mac-control)
-6. [Section 6 — Voice System](#section-6--voice-system)
-7. [Section 7 — Task State](#section-7--task-state)
-8. [Section 8 — Reference Resolution](#section-8--reference-resolution)
-9. [Section 9 — Planner Subsystem](#section-9--planner-subsystem)
-10. [Section 10 — Experiment A (Sequential Planning)](#section-10--experiment-a-sequential-planning)
-11. [Section 11 — Experiment B (Normalizer B)](#section-11--experiment-b-normalizer-b)
-12. [Section 12 — ShellExecutor & Phase 1 Correctness](#section-12--shellexecutor--phase-1-correctness)
-13. [Section 13 — Phase 1 Test Evidence](#section-13--phase-1-test-evidence)
-14. [Section 14 — Emergency Stop & Safety Boundaries](#section-14--emergency-stop--safety-boundaries)
-15. [Section 15 — Permissions & Authority Matrix](#section-15--permissions--authority-matrix)
-16. [Section 16 — Verification Mechanics & False-Success Defenses](#section-16--verification-mechanics--false-success-defenses)
-17. [Section 17 — Recovery & State Transitions](#section-17--recovery--state-transitions)
-18. [Section 18 — Testing Infrastructure & Inventories](#section-18--testing-infrastructure--inventories)
-19. [Section 19 — Performance, Resource Usage & Latency](#section-19--performance-resource-usage--latency)
-20. [Section 20 — Known Bugs, Race Conditions & Technical Debt](#section-20--known-bugs-race-conditions--technical-debt)
-21. [Section 21 — Deferred Features & Out-of-Scope Items](#section-21--deferred-features--out-of-scope-items)
-22. [Section 22 — Model Tier Strategy](#section-22--model-tier-strategy)
-23. [Section 23 — Git, Branch & Checkpoint History](#section-23--git-branch--checkpoint-history)
-24. [Section 24 — Evidence Artifacts & Archives](#section-24--evidence-artifacts--archives)
-25. [Section 25 — Current State Snapshot](#section-25--current-state-snapshot)
-26. [Section 26 — Next Engineering Roadmap](#section-26--next-engineering-roadmap)
-27. [Section 27 — Agent Handoff Instructions](#section-27--agent-handoff-instructions)
-28. [Section 28 — Reference Resolution — Implementation & Verification](#section-28--reference-resolution--implementation--verification)
+5. [Section 5 — Model, Intelligence & Provider Strategy](#section-5--model-intelligence--provider-strategy)
+6. [Section 6 — Deterministic Mac Control](#section-6--deterministic-mac-control)
+7. [Section 7 — Voice Subsystem](#section-7--voice-subsystem)
+8. [Section 8 — Task State & Authoritative Lifecycle](#section-8--task-state--authoritative-lifecycle)
+9. [Section 9 — Reference Resolution Subsystem](#section-9--reference-resolution-subsystem)
+10. [Section 10 — Accessibility Subsystem & Fast UI Mode](#section-10--accessibility-subsystem--fast-ui-mode)
+11. [Section 11 — Post-Action Verification & False-Success Defenses](#section-11--post-action-verification--false-success-defenses)
+12. [Section 12 — Lossless Escalation Pipeline (Milestone 3)](#section-12--lossless-escalation-pipeline-milestone-3)
+13. [Section 13 — Planner Subsystem & Bounded Extraction](#section-13--planner-subsystem--bounded-extraction)
+14. [Section 14 — Empirical Experiments Archive (Experiments A & B)](#section-14--empirical-experiments-archive-experiments-a--b)
+15. [Section 15 — Performance & Latency Telemetry](#section-15--performance--latency-telemetry)
+16. [Section 16 — Testing Infrastructure & Inventories](#section-16--testing-infrastructure--inventories)
+17. [Section 17 — Known Limitations & Operational Boundaries](#section-17--known-limitations--operational-boundaries)
+18. [Section 18 — Explicitly Deferred Features & Out-of-Scope Items](#section-18--explicitly-deferred-features--out-of-scope-items)
+19. [Section 19 — Git History, Key Commits & Branch State](#section-19--git-history-key-commits--branch-state)
+20. [Section 20 — Evidence Artifacts & Archives](#section-20--evidence-artifacts--archives)
+21. [Section 21 — Current Engineering Roadmap](#section-21--current-engineering-roadmap)
+22. [Section 22 — Senior Agent Handoff Rules](#section-22--senior-agent-handoff-rules)
+23. [Section 23 — Historical Milestones Archive](#section-23--historical-milestones-archive)
 
 ---
 
@@ -72,18 +104,18 @@ Known environment limitation: `swift test` remains unavailable under the Command
 
 - **Project Name:** Zia (internal codebase identifier: `Jarvis`, module name: `Jarvis`, package name: `zia`) `[VERIFIED FROM CURRENT CODE: Package.swift:5-6]`
 - **Repository Path:** `/Users/jayanthpranaykonada/Zia` `[VERIFIED FROM CURRENT CODE]`
-- **Mission & Vision:** An always-on, voice-and-text accessible, low-latency, deterministic, highly safe autonomous assistant for macOS. It bridges physical hardware perception (mic, audio, screen capture) with deterministic OS automation and on-device/cloud multi-step agent planning.
+- **Mission & Vision:** An always-on, voice-and-text accessible, low-latency, deterministic, highly safe autonomous assistant for macOS. It bridges physical hardware perception (microphone, audio playback, screen capture) with deterministic OS automation and on-device/cloud multi-step agent planning.
 - **Current Target Platform:** Apple Silicon macOS (minimum deployment target: macOS Sonoma 14.0, running on macOS 27.x / Darwin arm64) `[VERIFIED FROM CURRENT CODE: Package.swift:8]`
 - **Toolchain & Build Environment:**
   - Swift 6.0 Language Mode (`swift-version 6`) with strict concurrency checking `[VERIFIED FROM CURRENT CODE: Package.swift:1]`
-  - Host Toolchain: `/Library/Developer/CommandLineTools` (Xcode Command Line Tools only, **Xcode.app is NOT installed** on this machine) `[VERIFIED BY PHYSICAL TEST: xcode-select -p]`
+  - Host Toolchain: `/Library/Developer/CommandLineTools` (Xcode Command Line Tools only, **Xcode.app is NOT installed** on this host machine) `[VERIFIED BY PHYSICAL TEST: xcode-select -p]`
   - Compiler Flags: `BareSlashRegexLiterals`, `ConciseMagicFile`, `ForwardTrailingClosures`, `ExistentialAny` `[VERIFIED FROM CURRENT CODE: Package.swift:31-34]`
 - **Primary Dependencies:**
   - `HotKey` (0.2.1): Global macOS keyboard shortcut registration `[VERIFIED FROM CURRENT CODE: Package.swift:15]`
   - `KeychainAccess` (4.2.2): macOS Keychain wrapper for secure cloud API key storage `[VERIFIED FROM CURRENT CODE: Package.swift:17]`
   - `mlx` / `mlx_lm`: Python virtual environment (`.venv-mlx` with Python 3.12) running a persistent worker process (`mlx_worker.py`) for on-device Apple Metal neural network inference `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Brain/Workers/mlx_worker.py]`
 - **Build System:** Swift Package Manager (SPM). Build invocation: `swift build` or `./Scripts/build-app.sh debug|release`.
-- **Test Strategy:** Native in-process test runner `SelfTest` (`swift run Jarvis --self-test` or `./Jarvis --self-test`). **Note:** Standard `swift test` fails on this machine because standalone Command Line Tools lacks `XCTest.framework`. All automated verification must use the native `SelfTest` suite. `[VERIFIED BY TEST: SelfTest.swift]`
+- **Test Strategy:** Native in-process test runner `SelfTest` (`swift run Jarvis --self-test` or `./.build/debug/Jarvis --self-test`). Standard `swift test` fails on this machine because standalone Command Line Tools lacks `XCTest.framework`. All automated verification uses the canonical `SelfTest` suite. `[VERIFIED BY TEST: SelfTest.swift]`
 
 ---
 
@@ -91,31 +123,31 @@ Known environment limitation: `swift test` remains unavailable under the Command
 
 These 9 operational principles are frozen and must never be violated in any implementation:
 
-1. **Intelligence Never Equals Authority** `[VERIFIED FROM CURRENT CODE: PermissionGate.swift, CommandSandbox.swift]`
+1. **Intelligence Never Equals Authority** `[VERIFIED FROM CURRENT CODE: PermissionGate.swift, CommandSandbox.swift, PlanValidator.swift]`
    - A model (whether 0.5B local or 400B cloud) is an untrusted text-generator. It proposes steps or plans; it NEVER has direct execution authority.
    - Authority resides exclusively in deterministic gatekeepers: `CommandSandbox`, `PermissionGate`, and `DestructiveActionManager`.
 2. **Fail Open to Intelligence, Not Authority** `[VERIFIED FROM CURRENT CODE: PermissionGate.swift:53-56]`
    - If an LLM fails, crashes, hallucinates, or returns invalid syntax, the system safely degrades or asks the user.
    - If a permission check or sandbox validation is ambiguous, it MUST FAIL CLOSED. It never defaults to permitting an action.
-3. **State Over Transcript** `[VERIFIED FROM CURRENT CODE: TaskStateMachine.swift:153-166]`
-   - The ground truth of any task is its explicit typed state machine (`TaskState`, `TaskStep.verification`, `currentStepIndex`), never an LLM's conversational chat history or narrative claims.
-4. **Cheapest Sufficient Intelligence** `[VERIFIED FROM CURRENT CODE: DeterministicRouter.swift, IntentClassifier.swift]`
-   - 0 model calls > local 0.5B reflex model > local 0.5B planner > cloud model.
+3. **State Over Transcript** `[VERIFIED FROM CURRENT CODE: TaskStateMachine.swift:153-166, ReferenceResolver.swift:42-66]`
+   - The ground truth of any task is its explicit typed state machine (`TaskState`, `TaskStep.verification`, `currentStepIndex`, `StepResolutionRecord`), never an LLM's conversational chat history or narrative claims.
+4. **Cheapest Sufficient Intelligence** `[VERIFIED FROM CURRENT CODE: DeterministicRouter.swift, IntentClassifier.swift, DirectAnswerRouter.swift]`
+   - Hierarchy: 0 model calls (deterministic matchers) > local small reflex model (3B) > local planner (0.5B/3B/7B) > cloud provider (Groq/Claude/OpenAI).
    - If a request can be executed deterministically via regex/intent matching (e.g. "what time is it", "open Safari", "set volume to 40"), it routes with 0 model calls and < 1ms latency.
-5. **Lossless Escalation** `[VERIFIED FROM CURRENT CODE: ProviderManager.swift, AgentLoop.swift]`
-   - When a lower-tier model or local recovery fails, the complete context, previous error traces, and exact validator rejections are preserved losslessly as input to the next escalation tier.
+5. **Lossless Escalation** `[VERIFIED FROM CURRENT CODE: EscalationPipeline.swift, ProviderManager.swift, AgentLoop.swift]`
+   - When a lower-tier model or local recovery fails, the complete context, previous error traces, completed steps, verified outputs, and exact validator rejections are preserved losslessly as structured input to the next escalation tier.
 6. **Commit Points Gate Irreversibility** `[VERIFIED FROM CURRENT CODE: DestructiveActionManager.swift]`
-   - Destructive, non-undoable operations (e.g. `sleep mac`, `rm -rf`, emptying trash) MUST require a two-phase `PREVIEW -> COMMIT` protocol with an explicit 60-second expiration window. Spoken single-shot commands can only generate previews.
-7. **Evidence Before Green** `[VERIFIED FROM CURRENT CODE: SelfTest.swift:1153-1166]`
+   - Destructive, non-undoable operations (e.g. `system.sleep`, `rm -rf`, emptying trash) MUST require a two-phase `PREVIEW -> COMMIT` protocol with an explicit 60-second expiration window. Spoken single-shot commands can only generate previews.
+7. **Evidence Before Green** `[VERIFIED FROM CURRENT CODE: ToolDefinitions.swift:48-84, SelfTest.swift]`
    - No task, step, or PR is considered green or completed based on assertion of intent. Success requires deterministic physical or mechanical postcondition verification (`VerificationOutcome.passed`).
-8. **Zero-Model-Call Coverage Should Increase** `[VERIFIED FROM CURRENT CODE: DeterministicRouter.swift:18-23]`
+8. **Zero-Model-Call Coverage Should Increase** `[VERIFIED FROM CURRENT CODE: DeterministicRouter.swift:18-23, PlannerExtraction.swift:151-176]`
    - Engineering effort should continually expand deterministic, zero-model-call routing to cover more common macOS actions.
 9. **Fast Interaction Loop Must Never Wait for Deep Task Execution** `[VERIFIED FROM CURRENT CODE: AgentLoop.swift:34-45]`
-   - Voice responses, UI animations, HUD feedback, and Emergency Stop monitors run asynchronously and concurrently off the long-running execution workers. The main UI thread never blocks on tool execution.
+   - Voice responses, UI animations, HUD feedback, and Emergency Stop monitors run asynchronously and concurrently off long-running execution workers. The main UI thread never blocks on tool execution.
 
 ---
 
-## Section 3 — Complete Architecture
+## Section 3 — Complete Architecture & Execution Pipeline
 
 ### Execution Pipeline Flow
 
@@ -133,60 +165,78 @@ These 9 operational principles are frozen and must never be violated in any impl
   └── NO
        │
        ▼
-[ L1: Small Intent Classification ]
-  DirectAnswerRouter / IntentClassifier (Reflex slot)
-  ├── Chit-Chat / Direct Fact ──► Fast Direct Answer
-  └── Complex Goal
+[ L1: Small Intent Classification & Direct Answer ]
+  DirectAnswerRouter / IntentClassifier (Reflex slot: Qwen2.5-3B)
+  ├── Static Fact / Chit-Chat ──► Fast Direct Answer (No Planner)
+  ├── Recency Fact ("current", "today's") ──► Forces Tool/Web Path
+  └── Action / Complex Goal
        │
        ▼
 [ L2: Agent Loop Engagement ]
   TaskStateMachine registers task (state = CREATED)
+  Captures live TaskEnvironmentContext (frontmost app from NSWorkspace)
        │
        ▼
 [ Planning Phase (PLANNING) ]
-  MLXPlanner (Qwen2.5-0.5B-Instruct-4bit on Metal)
-  Emits candidate AgentPlan JSON
+  Bounded Single-Action Extraction OR Whole-Plan Generation
+  (Local MLX Qwen2.5-0.5B-4bit on Metal)
+  ├── Single-line explicit echo: PlannerExtraction.explicitShellEchoExtraction (0 model calls)
+  ├── Supported single-action goal: Bounded prompt emits {"tool": ..., "arguments": ..., "literal": ...}
+  └── Arbitrary multi-step goal: Legacy whole-plan AgentPlan JSON
        │
        ▼
 [ Deterministic Compiler & Validator ]
+  PlannerExtraction.compile produces PlanStep / AgentPlan
   PlanValidator checks:
-  - Valid JSON extraction
+  - Valid JSON extraction & schema conformance
   - Registered tools only (in live ToolRegistry)
-  - Required arguments present & correct types
+  - Required arguments present & correct scalar types
   - No smuggled/undeclared arguments
-  - CommandSandbox safety check
-  ├── Fails ──► Bounded Repair (1 attempt with exact error)
-  └── Passes
+  - DAG reference validation ($step.M references M < currentStep)
+  - CommandSandbox safety check (deferred if reference tokens present)
+  ├── Validation Failure ──► Tier-A Repair (bounded to 1 attempt)
+  ├── Tier-A Exhausted ──► EscalationPipeline (Milestone 3 Lossless Escalation)
+  └── Passes Validation
        │
        ▼
 [ Permission & Authority Check ]
   PermissionGate checks AutonomyLevel (L0, L1, L2, L3)
-  ├── Destructive ──► DestructiveActionManager (PREVIEW -> COMMIT)
+  ├── Destructive (keywords / verbs) ──► DestructiveActionManager (PREVIEW -> COMMIT)
   └── Authorized
        │
        ▼
+[ Pre-Execution Reference Resolution ]
+  ReferenceResolver resolves $step.<N>.output, $step.<N>.<field>, $ambient.<slot>
+  CommandSandbox & PermissionGate evaluate concrete resolved command
+       │
+       ▼
 [ Execution Phase (RUNNING) ]
-  TaskWorkerPool spawns TaskWorker
-  Executes BuiltinTools / ShellExecutor / FileManager / SystemControl
+  TaskWorkerPool executes tool via ToolExecutor
+  (BuiltinTools / AccessibilityTools / ShellExecutor / FileManager / SystemControl)
        │
        ▼
 [ Observation & Verification (VERIFYING) ]
-  ToolResult side-effects observed
-  Postcondition verified mechanically (VerificationOutcome = .passed / .failed)
+  Tool observes deterministic state mutation (NSWorkspace, AX readback, file check, URL check)
+  ToolVerificationResult evaluates outcome:
+  - .passed: Mechanically confirmed side effect
+  - .failed / .inconclusive / .unavailable: Non-passing outcome
+  AgentStepOutcomePolicy: empty output accepted only if outcome == .passed
+  StepResolutionRecord saved to TaskStateMachine (only .passed is referenceable)
        │
        ▼
 [ Task State Update ]
-  TaskStateMachine updates progress, steps, and history
+  TaskStateMachine updates progress and step verification
+  ├── Step Failed ──► Replan / Recovery / Escalation
   ├── More steps ──► Loop next step
   └── All steps complete & verified ──► State = COMPLETED
 ```
 
-### Recovery Escalation Ladder
-1. **Cheap Retry:** Immediate re-attempt if transient I/O or network glitch.
-2. **Tier-A Repair:** Feed exact validator error string + live schema back to MLXPlanner (bounded to 1 repair attempt).
-3. **Tier-A Replan:** Up to `3 + plan.steps.count` replanning cycles, pruning invalid steps and preserving valid observations.
-4. **Tier-B / Tier-C Lossless Escalation:** Pass full task state, step history, and error ledger to larger local model or Cloud Provider (Claude/OpenAI).
-5. **User Clarification / Fail-Closed:** If budgets or retries are exhausted, fail to user with actionable diagnostic report.
+### Complete Recovery Escalation Ladder
+1. **Cheap Retry:** Immediate re-attempt if transient I/O glitch.
+2. **Tier-A Repair:** Feed exact validator error string + live tool schema back to `MLXPlanner` (bounded to 1 repair attempt).
+3. **Tier-A Replan:** Prunes invalid steps and preserves valid prior observations; limited by `maxRetries` (default 3).
+4. **Tier-B Lossless Escalation:** Pass full structured task IR, completed steps, verified outputs, failure reasons, and privacy sensitivity to `EscalationPipeline` (OpenRouter or designated Tier-B provider).
+5. **Fail-Closed / User Clarification:** If budgets, retries, or escalation exhaust, report actionable diagnostic failure to user.
 
 ---
 
@@ -221,19 +271,22 @@ These 9 operational principles are frozen and must never be violated in any impl
 │       │       ├── URLFetcher.swift           # Asynchronous web page scraper
 │       │       └── WebSearch.swift            # Web search provider integration
 │       ├── Agent/
-│       │   ├── AgentLoop.swift                # Autonomous orchestration loop
-│       │   ├── DirectAnswerRouter.swift       # Bypasses planner for trivial chit-chat/facts
+│       │   ├── AgentLoop.swift                # Autonomous orchestration loop & StepOutcomePolicy
+│       │   ├── DirectAnswerRouter.swift       # Direct answer classification & recency gating
 │       │   ├── DirectComposer.swift           # Tool-null step composer
-│       │   ├── MLXPlanner.swift               # Local Qwen2.5-0.5B planner with ledger
+│       │   ├── EscalationPipeline.swift       # Milestone 3 lossless escalation to Tier B
+│       │   ├── MLXPlanner.swift               # Local MLX planner with ledger & extraction wiring
 │       │   ├── PlanNormalizerB.swift          # Experiment B single-shape normalizer (disabled in prod)
-│       │   ├── PlanValidator.swift            # Deterministic schema & sandbox validator
+│       │   ├── PlannerExtraction.swift        # Bounded extraction IR, parser, repair, compiler
+│       │   ├── PlanValidator.swift            # Deterministic schema, reference & sandbox validator
+│       │   ├── ReferenceResolver.swift        # Milestone 1 & 8 typed reference parser and resolver
 │       │   ├── TaskStateMachine.swift         # Thread-safe task lifecycle state machine
 │       │   ├── TaskWorker.swift               # Worker unit executing single tool steps
 │       │   └── TaskWorkerPool.swift           # GCD queue worker pool with M4 concurrency limits
 │       ├── App/
 │       │   ├── AppDelegate.swift              # App lifecycle and menu bar wiring
 │       │   ├── AppState.swift                 # Global state machine: OFF, SLEEP, ACTIVE
-│       │   └── JarvisApp.swift                # App entry point (executes SelfTest.runAll() on launch)
+│       │   └── JarvisApp.swift                # App entry point (supports --self-test, --goal, etc.)
 │       ├── Brain/
 │       │   ├── BrainRouter.swift              # Model router based on task domain
 │       │   ├── IntentClassifier.swift         # Classifies intent into domains (.coding, .web, etc.)
@@ -246,34 +299,38 @@ These 9 operational principles are frozen and must never be violated in any impl
 │       │   ├── Providers/
 │       │   │   ├── ClaudeProvider.swift       # Anthropic Claude API provider
 │       │   │   ├── GeminiProvider.swift       # Google Gemini API provider
-│       │   │   ├── GroqProvider.swift         # Groq API provider (low latency)
+│       │   │   ├── GroqProvider.swift         # Groq API provider (external speed accelerator)
 │       │   │   ├── MLXProvider.swift          # Local Python MLX worker bridge (Apple Metal)
 │       │   │   ├── OpenAIProvider.swift       # OpenAI API provider
 │       │   │   ├── OpenRouterProvider.swift   # OpenRouter multi-model provider
 │       │   │   └── Provider.swift             # LLMProvider protocol & capability matrix
 │       │   ├── Tools/
-│       │   │   ├── BuiltinTools.swift         # Builtin tools (run_shell, open_app, web_search, etc.)
-│       │   │   ├── ToolDefinitions.swift      # Schema specifications (ToolParameterSpec)
-│       │   │   ├── ToolExecutor.swift         # Dynamic tool execution dispatcher
+│       │   │   ├── AccessibilityTools.swift   # inspect_ui, click_element, set_text
+│       │   │   ├── BuiltinTools.swift         # run_shell, open_app, write_file, browser DOM tools
+│       │   │   ├── ToolDefinitions.swift      # ToolVerificationResult, ObservationResult, specs
+│       │   │   ├── ToolExecutor.swift         # Dynamic tool execution dispatcher & verification
 │       │   │   └── ToolRegistry.swift         # Central registry of available tools
 │       │   └── Workers/
 │       │       └── mlx_worker.py              # Persistent Python MLX inference daemon
 │       ├── Core/
-│       │   ├── Config.swift                   # Persistent configuration (autonomy, wake words, budgets)
+│       │   ├── Config.swift                   # Persistent configuration (autonomy, model slots)
 │       │   ├── DataClassifier.swift           # PII and credential privacy detector
 │       │   ├── Errors.swift                   # Typed JarvisError enum
+│       │   ├── EscalationAudit.swift          # Milestone 3 escalation test assertions
 │       │   ├── EventBus.swift                 # Publish-subscribe decoupled event bus
-│       │   ├── Events.swift                   # Typed event declarations (EmergencyStop, TaskStateChanged)
+│       │   ├── Events.swift                   # Typed event declarations (EmergencyStop, etc.)
 │       │   ├── HotkeyManager.swift            # Global hotkey binding
+│       │   ├── IntegrationAudit.swift         # System integration verification suite
 │       │   ├── KeychainManager.swift          # macOS Keychain CRUD
 │       │   ├── LockedValue.swift              # Thread-safe @unchecked Sendable NSLock box
 │       │   ├── Logger.swift                   # os.Logger logging categories
 │       │   ├── NetworkMonitor.swift           # NWPathMonitor network reachability
 │       │   ├── PhysicalDemonstration.swift    # Physical verification test harness
 │       │   ├── PipelineTimer.swift            # Latency and telemetry stage timer
+│       │   ├── PlannerRoutingBenchmark.swift  # 10-case live and offline routing benchmark
 │       │   ├── ResourceManager.swift          # Memory pressure monitor & model eviction
 │       │   ├── SchemaExperiment.swift         # Schema contract experiment harness (D-A to D-F)
-│       │   ├── SelfTest.swift                 # Native test suite (451 deterministic tests)
+│       │   ├── SelfTest.swift                 # Canonical test suite (624 deterministic tests)
 │       │   └── SequentialExperiment.swift     # Experiment A harness (B1-B5 multi-step benchmarks)
 │       ├── Memory/
 │       │   ├── ConversationStore.swift        # SQLite persistent chat history
@@ -317,11 +374,53 @@ These 9 operational principles are frozen and must never be violated in any impl
 
 ---
 
-## Section 5 — Deterministic Mac Control
+## Section 5 — Model, Intelligence & Provider Strategy
+
+`[VERIFIED FROM CURRENT CODE: Config.swift, ProviderManager.swift, MLXProvider.swift, GroqProvider.swift, OpenRouterProvider.swift]`
+
+### Intended Intelligence Philosophy
+```
+Deterministic Matchers (0 model calls, < 1ms)
+            │
+            ▼ (non-deterministic)
+Cheapest Sufficient Local Intelligence (Qwen2.5-3B reflex / 0.5B MLX bounded planner)
+            │
+            ▼ (complex reasoning / general tasks)
+Stronger Local Intelligence (Qwen2.5-7B normal production model)
+            │
+            ▼ (when justified by complexity / speed / failure)
+External / Cloud Escalation (Groq for ultra-low latency, OpenRouter/Claude/OpenAI for Tier B)
+            │
+            ▼ (if offline or quota exhausted)
+Graceful Local Fallback (return to local intelligence, never fail open)
+```
+
+### Component Model Assignments
+| Component / Role | Config Slot | Assigned Model | Provider / Execution Medium | Status |
+|---|---|---|---|---|
+| Intent Classifier & Fast Reflex | `reflex` | `qwen2.5-3b` | Local on-device MLX | Verified default in `Config.swift:188` |
+| General Queries & Chit-Chat | `normal` | `qwen2.5-7b` | Local on-device MLX | Verified default in `Config.swift:193` |
+| Bounded Planning & Extraction | In-process | `mlx-community/Qwen2.5-0.5B-Instruct-4bit` | Local Metal via persistent `mlx_worker.py` | Verified in `mlx_worker.py:8`, `MLXPlanner.swift:8` |
+| Low-Latency Speed Acceleration | `speed` | `llama-3.3-70b-versatile` | `GroqProvider` (`api.groq.com`) | Implemented provider, optional accelerator |
+| Deep Reasoning / Tier-B Escalation | `deep` / `openrouter` | `nvidia/nemotron-3-ultra-550b-a55b:free` or Anthropic Claude | `OpenRouterProvider` / `ClaudeProvider` | Implemented in `EscalationPipeline.swift` |
+| Vision / Multimodal Understanding | `vision` | Configurable | `GeminiProvider` / `ClaudeProvider` | Implemented provider slot |
+
+### Groq Architectural Positioning
+- **What Groq Is:** An external, high-throughput cloud provider (`GroqProvider.swift`) accessing LPUs at ~300 tokens/sec.
+- **What Groq Is NOT:**
+  - Groq is **NOT** the deterministic execution authority (Principle 1).
+  - Groq is **NOT** a required architectural dependency. Zia must boot, route, validate, and execute fully offline without Groq.
+  - Groq's finite quota must **NEVER** become a hidden architectural bottleneck.
+- **Local Fallback Invariant:** If Groq is unreachable, offline, or returns HTTP 429/5xx, execution must cleanly fall back to local models or return an explicit user error.
+- **Benchmark Status:** Local Qwen 7B and Groq latencies have **not yet been benchmarked on the current production configuration**. Any proposed local-vs-Groq routing threshold is marked `[PROPOSED / NOT YET BENCHMARKED]`.
+
+---
+
+## Section 6 — Deterministic Mac Control
 
 `[VERIFIED FROM CURRENT CODE: DeterministicRouter.swift, SystemControl.swift, SelfTest.swift:202-237]`
 
-The system implements 11 high-reliability, zero-model-call native controls that execute in < 1ms:
+The system implements 11 high-reliability, zero-model-call native controls executing in < 1ms:
 
 | Action Intent | Example Utterance | Impact Level | Verification Mechanism | SelfTest Verified |
 |---|---|---|---|---|
@@ -333,293 +432,46 @@ The system implements 11 high-reliability, zero-model-call native controls that 
 | `clipboard.read` / `.write` / `.clear` | "what's on my clipboard", "copy hello to clipboard", "clear clipboard" | `.readOnly` / `.safeMutation` | `NSPasteboard.general` read/write roundtrip | ✅ Yes |
 | `folder.open` / `folder.list` | "open downloads", "list desktop", "show documents files" | `.safeMutation` / `.readOnly` | FileManager directory listing / NSWorkspace open | ✅ Yes |
 | `system.screenshot` | "take a screenshot", "capture screen" | `.readOnly` | File generation & non-zero byte size verification | ✅ Yes |
-| `system.lock` | "lock mac", "lock screen" | `.safeMutation` | SACLockScreenImmediate call | ✅ Yes |
+| `system.lock` | "lock mac", "lock screen" | `.safeMutation` | `SACLockScreenImmediate` call | ✅ Yes |
 | `system.sleep` | "sleep mac", "put mac to sleep" | `.destructive` | Two-phase PREVIEW -> COMMIT protocol (`DestructiveActionManager`) | ✅ Yes (dry-run) |
 | `shell.echo` | "echo hello", "run echo hello" | `.safeMutation` | ShellExecutor stdout capture (guarded against compound commands) | ✅ Yes |
 
 ### Compound-Command Routing Hardening
 `[VERIFIED FROM CURRENT CODE: DeterministicRouter.swift:188-218, SelfTest.swift:1535-1542]`
-- Previously, compound requests containing `echo` (such as `"echo recovery_started, then use audit_failing_tool, then echo recovery_completed"`) were erroneously intercepted by the deterministic router, bypassing the planner.
-- Commit `9971809` added strict compound guards: any goal containing `, then`, `;`, `&&`, `|`, or shell metacharacters is rejected by the fast echo path and routed to `MLXPlanner`.
+- Compound requests containing `echo` (such as `"echo recovery_started, then use audit_failing_tool, then echo recovery_completed"`) are rejected by the fast echo path and routed to `MLXPlanner`.
+- Strict compound guards reject any goal containing `, then`, `;`, `&&`, `|`, or shell metacharacters from deterministic bypass.
 
 ---
 
-## Section 6 — Voice System
+## Section 7 — Voice Subsystem
 
-`[VERIFIED FROM CURRENT CODE: AudioCapture.swift, SpeechRecognizer.swift, WakeWordDetector.swift, EmergencyInterrupt.swift]`
+`[VERIFIED FROM CURRENT CODE: AudioCapture.swift, SpeechRecognizer.swift, WakeWordDetector.swift, EmergencyInterrupt.swift, VoicePipeline.swift]`
 
 - **Microphone Capture:** `AudioCapture.swift` uses `AVAudioEngine` tapping the input node with 16kHz, mono 16-bit PCM format.
 - **Speech Recognition:** `SpeechRecognizer.swift` utilizes Apple's `SFSpeechRecognizer` configured with `requiresOnDeviceRecognition = true` for zero-cloud, offline processing.
 - **Wake Word Detection (`WakeWordDetector.swift`):**
-  - **IMPLEMENTED:** Transcript wake-alias spotting. Operates on partial and final transcripts from `SFSpeechRecognizer`. Matches configured aliases: `"Jarvis"`, `"Zia"`, `"Ziya"`. Supports conversational prefixes: `"hey"`, `"hi"`, `"hello"`, `"ok"`, `"okay"`, `"please"`, `"yo"`.
-  - **NOT YET IMPLEMENTED / DEFERRED:** Acoustic DSP wake-word engine (e.g. Porcupine, openWakeWord, or CoreML micro-model running continuously on raw audio buffers). The system currently relies on the on-device Apple speech recognizer streaming.
-- **Text-to-Speech:** `TTSEngine.swift` wraps `AVSpeechSynthesizer` with rate `0.52`, pitch `1.0`, and selected neural voices (e.g. "Samantha" or "Daniel").
-- **Barge-In / Emergency Voice Stop:** If speaking when a wake word or emergency phrase is uttered, `AudioPlayer` and `TTSEngine` stop immediately within < 50ms.
-- **Permissions:** Depends on macOS Microphone (`NSMicrophoneUsageDescription`) and Speech Recognition (`NSSpeechRecognitionUsageDescription`) authorizations embedded in `Info.plist`. `[VERIFIED BY PHYSICAL TEST]`
+  - **IMPLEMENTED:** Transcript wake-alias spotting operating on partial and final transcripts from `SFSpeechRecognizer`. Matches configured aliases: `"Jarvis"`, `"Zia"`, `"Ziya"`. Supports conversational prefixes: `"hey"`, `"hi"`, `"hello"`, `"ok"`, `"okay"`, `"please"`, `"yo"`.
+  - **DEFERRED:** Acoustic DSP wake-word engine (e.g. Porcupine, openWakeWord, or CoreML micro-model on raw audio buffers).
+- **Text-to-Speech:** `TTSEngine.swift` wraps `AVSpeechSynthesizer` with rate `0.52`, pitch `1.0`, and neural voices.
+- **Barge-In / Emergency Voice Stop:** If speaking when a wake word or emergency phrase is uttered, `AudioPlayer` and `TTSEngine` stop immediately (< 50ms).
+- **Authoritative Agent Routing (`ae8b0ca`):** Non-deterministic voice requests enter `AgentLoop.run(goal:)`, the same authoritative path used by the text overlay, removing the prior provider-only `BrainRouter` bypass for spoken requests.
 
 ---
 
-## Section 7 — Task State
+## Section 8 — Task State & Authoritative Lifecycle
 
-`[VERIFIED FROM CURRENT CODE: TaskStateMachine.swift:1-150]`
+`[VERIFIED FROM CURRENT CODE: TaskStateMachine.swift:1-320]`
 
-The actual `JarvisTask` and `TaskStep` structures hold:
-- `id: UUID`
-- `title: String`, `goal: String`
+The authoritative `JarvisTask` and `TaskStep` structures hold:
+- `id: UUID`, `title: String`, `goal: String`
 - `state: TaskState` (`CREATED`, `PLANNING`, `RUNNING`, `VERIFYING`, `COMPLETED`, `FAILED`, `RECOVERING`, `REPLANNING`, `CANCELLED`)
 - `steps: [TaskStep]` (`id`, `stepNumber`, `description`, `toolName`, `arguments: [String: String]`, `state`, `output`, `error`, `verification: VerificationOutcome?`)
+- `resolutionRecords: [StepResolutionRecord]` (structured records of verified step outputs)
+- `environmentContext: TaskEnvironmentContext?` (snapshot of frontmost app and ambient state)
 - `currentStepIndex: Int`, `maxRetries: Int`, `retryCount: Int`
 - `createdAt: Date`, `updatedAt: Date`, `completedAt: Date?`, `error: String?`
 
-### Audit of Purported Context Variables:
-| Field Name | Status | Analysis |
-|---|---|---|
-| `current_app` | **ABSENT** | Not present on `JarvisTask` or `TaskStep`. Tracked ephemerally in `AppLauncher` only. |
-| `current_file` | **ABSENT** | Not present in task state. |
-| `current_webpage` | **ABSENT** | Tracked only inside `BrowserManager` active tab cache, not in task state. |
-| `current_selection` | **ABSENT** | Not implemented. |
-| `last_search_results` | **ABSENT** | Retained inside `SourceManager` citations, not in `JarvisTask`. |
-| `last_artifact` | **ABSENT** | Not present in task state. |
-| `pending_confirmation` | **DESIGNED / PARTIAL** | Implemented in `DestructiveActionManager.shared.pendingAction`, but not directly a property of `JarvisTask`. |
-
----
-
-## Section 8 — Reference Resolution
-
-`[VERIFIED FROM CURRENT CODE: ReferenceResolver.swift, AgentLoop.swift, PlanValidator.swift, TaskStateMachine.swift, SelfTest.swift:1645-1940]`
-
-- **Current Status:** **IMPLEMENTED & VERIFIED (Phase 15 Engine Active, 25/25 Tests Passing).**
-- **Architecture & Grammar:**
-  - Wire Representation: Preserves `[String: String]` on `PlanStep` and `TaskStep` for zero wire breakage.
-  - Strict Token Grammar:
-    - `$step.<N>.output` / `$step.<N>`: Prior verified step output.
-    - `$step.<N>.<field>`: Deterministic JSON field extraction from structured outputs.
-    - `$ambient.<slot>`: Environmental state (`current_app` live from `NSWorkspace`; remaining slots strictly fail with `ambientSlotUnavailable`).
-    - Ordinary dollar strings (e.g. `"$100"`, `"$HOME"`) remain literals.
-  - Template/Embedded Support: Commands such as `cat $step.1.output` or `echo $step.1.output` are parsed into `.template` with strict token extraction.
-- **Execution Integration & Permissions:**
-  - Reference resolution happens **immediately before execution** in `AgentLoop.swift`.
-  - Permission gate & `CommandSandbox.shared.isSafe` evaluate the **concrete resolved argument** (e.g. `cat /etc/passwd`, NOT `cat $step.1.output`).
-  - Step outputs are addressable **ONLY IF** `verification == .passed`.
-- **Complete Details:** See [Reference Resolution — Implementation & Verification](#reference-resolution--implementation--verification) below.
-
----
-
-## Section 9 — Planner Subsystem
-
-`[VERIFIED FROM CURRENT CODE: MLXPlanner.swift, PlanValidator.swift, ToolDefinitions.swift]`
-
-- **Current Engine:** `MLXPlanner.swift` running local `mlx-community/Qwen2.5-0.5B-Instruct-4bit` on Apple Metal via Python worker `mlx_worker.py`.
-- **Generation Budget:** Maximum 2 attempts per planning cycle (Attempt 1 = Initial, Attempt 2 = Schema-aware Repair).
-- **Prompt Structure:**
-  - Embeds live tool catalog generated dynamically from `ToolRegistry.shared.getToolDefinitions()`.
-  - Injects live parameter schemas (`name`, `kind`, `required`, `description`).
-  - Explicitly shows CORRECT vs WRONG examples for `run_shell` (`command` must be ONE complete scalar string).
-- **Repair Prompting (Change B):**
-  - Carries the exact error from `PlanValidator`, the relevant tool's schema, a corrected example, and the original invalid JSON, demanding a targeted correction.
-- **Parser & Extraction:**
-  - Extracts JSON wrapped in markdown fences (` ```json ... ``` `) or raw braces.
-  - Multi-object recovery: if the model outputs multiple JSON objects back-to-back, the parser takes the first valid object.
-  - Brace-slip repair: repairs orphaned trailing `purpose` blocks.
-  - Terminators: strips hallucinated `JSON:` echoes from argument values.
-- **Validation Rules (`PlanValidator.swift`):**
-  - Unknown tools rejected (`.unknownTool`).
-  - Missing required arguments rejected (`.missingArgument`).
-  - Undeclared/smuggled arguments rejected (`.unknownArgument`).
-  - Type mismatch (e.g. non-integer passed to int) rejected (`.typeMismatch`).
-  - Unsafe shell commands rejected at plan-time (`.unsafeOperation`).
-  - Empty steps array rejected (`.emptyPlan`).
-- **Deterministic Authority vs Planner Intelligence:**
-  - The model proposes JSON.
-  - `PlanValidator` grounds the proposal against the immutable `ToolRegistry`.
-  - The model has ZERO authority to execute unapproved tools or bypass sandbox checks.
-
----
-
-## Section 10 — Experiment A (Sequential Planning)
-
-`[VERIFIED FROM GIT/EVIDENCE ARTIFACT: build/seq-A2-B1.txt, Sources/Jarvis/Core/SequentialExperiment.swift, Tests/JarvisTests/SequentialLifecycleTests.swift]`
-
-- **Hypothesis:** Generating steps one-by-one sequentially (`.sequential` mode) would improve multi-step goal completion on the 0.5B model compared to single-shot whole-plan generation (`.fullPlan`).
-- **Benchmark Suite:**
-  - `B1`: 3-step independent echo (`alpha_one`, `bravo_two`, `charlie_three`)
-  - `B2`: 3-step dependent echo (`baseline_marker_42` + uppercase + done)
-  - `B3`: Reference resolution probe (`reference_probe_77`, then echo "it" - probe only)
-  - `B4`: Canonical D-A exact-token single step
-  - `B5`: Canonical D-F-multi 3 steps with mid-failing tool
-- **Empirical Results:**
-  - **Baseline (Single-Shot `.fullPlan`):** Multi-step scored **3/15 PASS** (20%).
-  - **Experiment A (Sequential Next-Step):** Multi-step scored **0/15 PASS** (0%).
-- **Why Experiment A Failed:**
-  1. **Repetition Loops:** The 0.5B model entered catastrophic next-step loops, generating `echo alpha_one` over and over across all 8 planning cycles instead of advancing to `bravo_two`.
-  2. **Latency Explosion:** Each step required a separate model generation. B1 took 8 planner calls per run, causing massive latency inflation without advancing the task.
-  3. **Recovery State Exhaustion:** Reached max recovery attempts (`maxTotalAttempts`) and aborted in `FAILED` state.
-- **Historical Bugs Discovered & Fixed During Experiment A:**
-  - **Bug A (Illegal State Transition):** In sequential recovery, planning failure left the state machine in `REPLANNING`. A subsequent DONE check attempted `REPLANNING -> VERIFYING`, which violated the transition table. Fixed by ensuring the recovery chain explicitly transitions `REPLANNING -> RUNNING` before verifying. `[VERIFIED BY TEST: SelfTest.swift:1135-1151]`
-  - **Bug B (Zero-Step DONE False-Success):** The model emitted `DONE` with zero executed steps or with unverified steps. Fixed by introducing the deterministic completion gate: `!steps.isEmpty && steps.allSatisfy { $0.verification == .passed }`. `[VERIFIED BY TEST: SelfTest.swift:1153-1166]`
-- **Final Decision:** **EXPERIMENT A WAS REJECTED / NOT PROMOTED.** The system remains on single-shot full-plan generation (`.fullPlan`).
-
----
-
-## Section 11 — Experiment B (Normalizer B)
-
-`[VERIFIED FROM GIT/EVIDENCE ARTIFACT: /tmp/experiment-b-preservation/offline-replay-run.txt, Sources/Jarvis/Agent/PlanNormalizerB.swift]`
-
-- **Hypothesis:** The 0.5B planner frequently emits a malformed `run_shell` shape:
-  `{"command": "echo", "args": "jarvis_planner_e2e_verified"}`
-  instead of the single scalar `{"command": "echo jarvis_planner_e2e_verified"}`. During model repair, the model often drops its token and adopts the example `echo hello`. Normalizing this single shape deterministically before validation would allow the model's own token to reach execution without repair corruption.
-- **Predeclared Offline Gate:**
-  - Rule: Normalizer B would only be considered for live production testing if $\ge 50\%$ of historical literal-bearing attempts matched this exact normalizable shape.
-- **Empirical Replay Results (`offline-replay-run.txt`):**
-  - Total historical attempts examined: 29
-  - Attempts matching the normalizable shape: 11
-  - Percentage: **37.9%** ($11 / 29$)
-  - **GATE RESULT: FAIL** (37.9% < 50.0%)
-- **Discrepancy Audit (25 Literal Attempts vs 27 Candidates):**
-  - **Rule:** Do NOT fabricate reconciliation. Do not reconstruct missing JSON. Do not double-count attempt records, validation summaries, and audit excerpts.
-  - Across the raw capture logs (`fc-audit.txt`, `fc-seg-DA.txt`, `ii-seg-DA.txt`), 27 literal candidate strings appeared in log text, but only 25 distinct model generation attempts actually contained literal-bearing payloads (the remainder were diagnostic summaries and log header repetitions).
-- **Current Status:**
-  - `PlanNormalizerB.swift` exists in the tree with unit tests in `Tests/JarvisTests/PlanNormalizerBTests.swift`.
-  - `normalizerBEnabled = false` (default OFF in production code).
-  - **Live Experiment B has NOT run and must NOT be enabled in production** because it failed the offline gate.
-
----
-
-## Section 12 — ShellExecutor & Phase 1 Correctness
-
-`[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Actions/Terminal/ShellExecutor.swift]`
-
-`ShellExecutor.swift` was recently audited, redesigned, and verified to eliminate critical process lifecycle and concurrency flaws.
-
-### Bugs Identified in Baseline Code:
-1. **No Process-Group Isolation:** `process.terminate()` sent SIGTERM only to the parent PID. Grandchild processes (e.g. `bash -c "sleep 300 &"`) survived emergency stops as orphaned processes.
-2. **Timeout Never Enforced:** `timeoutSeconds: Double = 30.0` was accepted in the method signature but never read or scheduled. Runaway commands hung forever.
-3. **Busy-Wait Polling Loop:** The baseline polled `try await Task.sleep(nanoseconds: 50_000_000)` in a tight loop, wasting CPU and adding up to 50ms latency to cancellation.
-4. **Non-Idempotent Termination / Crash:** Calling `process.terminate()` on an already-terminated process or unlaunched process could crash with `NSInvalidArgumentException`.
-5. **No SIGKILL Escalation:** Only SIGTERM was sent; processes catching or ignoring SIGTERM survived indefinitely.
-6. **Kernel Pipe Buffer Deadlock:** Reading `stdoutPipe` and `stderrPipe` via `readDataToEndOfFile()` occurred *after* `waitUntilExit()`. For outputs exceeding the macOS pipe buffer (64KB), the child blocked on `write()` while the parent blocked on `waitUntilExit()`, deadlocking the system.
-
-### Verified Fix Implementation:
-- **POSIX Process Grouping:** macOS Foundation `Process` spawns processes with `PGID == PID`. Calling `setpgid(pid, pid)` post-launch fails with `EACCES (errno 13)` because `execve()` has already executed. `ShellExecutor` correctly signals the entire tree using POSIX `killpg(pid, SIGTERM)`.
-- **Thread-Safe `ProcessScope`:**
-  ```swift
-  final class ProcessScope: @unchecked Sendable {
-      let pid: pid_t
-      private let lock = NSLock()
-      private var isKilled = false
-      ...
-  ```
-  Guarantees atomic termination rights across concurrent callers (Emergency Stop, Timeout Task, Swift Task cancellation).
-- **SIGKILL Escalation:** A 500ms grace window is observed after SIGTERM. If any process in the group still exists (`kill(pid, 0) == 0`), it escalates unconditionally to `killpg(pid, SIGKILL)`.
-- **Event-Driven Exit (Zero Polling):** Uses `process.terminationHandler` bridged to `CheckedContinuation<Void, Never>` through a thread-safe `ContinuationGate`. The actor suspends cooperatively, allowing incoming `cancelAll()` requests to process in < 1ms.
-- **Concurrent Pipe Streaming:** Detached asynchronous tasks read `stdoutPipe` and `stderrPipe` concurrently while the process runs, preventing buffer deadlocks on outputs > 64KB (tested up to 500KB).
-- **Swift 6 Strict Concurrency:** All captured state in `withTaskCancellationHandler` is strictly Sendable. Zero concurrency warnings or data-race hazards.
-
----
-
-## Section 13 — Phase 1 Test Evidence
-
-`[VERIFIED BY TEST: SelfTest.swift:986-1046, ShellExecutorTests.swift]`
-
-Phase 1 ShellExecutor correctness was verified through:
-1. Standalone isolated prototype test script exercising all 6 edge cases simultaneously.
-2. 5 new deterministic tests added directly into Phase 6 of `SelfTest.swift`.
-
-### SelfTest Phase 6 Execution Results:
-```
-─── Phase 6: ShellExecutor & Process Lifecycle ───
-  ✓ ShellExecutor executes command and captures stdout
-  ✓ ShellExecutor handles >64KB output without pipe deadlock
-  ✓ ShellExecutor terminates command on deterministic timeout
-  ✓ ShellExecutor terminates process upon Swift Task cancellation
-  ✓ ShellExecutor cancelAll is idempotent and cleans process groups
-  ✓ ShellExecutor preserves process isolation between concurrent commands
-  ✓ ShellExecutor prevents false success when process traps SIGTERM
-  ✓ ShellExecutor honors pre-launch task cancellation
-```
-
-### Full Native Suite Test Count:
-- **Baseline before Phase 1:** 446 passed, 0 failed `[VERIFIED FROM GIT/EVIDENCE ARTIFACT: build/seq-A2-selftest-final.txt]`
-- **Current after Phase 1 Audit & Hardening:** **454 passed, 0 failed** `[VERIFIED BY TEST: execution of /Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis --self-test]`
-- **Regressions:** **0**
-
----
-
-## Section 14 — Emergency Stop & Safety Boundaries
-
-`[VERIFIED FROM CURRENT CODE: EmergencyInterrupt.swift, EventBus.swift, ShellExecutor.swift:187-195]`
-
-### Emergency Stop Call Graph & Propagation:
-```
-[ Trigger: Voice Phrase ("stop", "abort", "halt") OR UI Stop Button OR HotKey ]
-                                 │
-                                 ▼
-                 EmergencyInterrupt.shared.trigger()
-                                 │
-                                 ▼
-             EventBus.shared.publish(EmergencyStopEvent)
-                                 │
-         ┌───────────────────────┼────────────────────────┐
-         ▼                       ▼                        ▼
-  TTSEngine.stop()     SpeechRecognizer.cancel()   ShellExecutor.cancelAll()
-  AudioPlayer.stop()                                      │
-         │                       │                        ▼
-         │                       │            killpg(pid, SIGTERM)
-         ▼                       ▼            [+500ms -> SIGKILL]
-  AgentLoop.emergencyCancel()  TaskWorkerPool.cancelAll()
-         │                       │
-         ▼                       ▼
-  TaskState -> .cancelled    Workers halted
-```
-
-### Safety Guarantees:
-- **Descendant Process Elimination:** POSIX `killpg` guarantees that any process tree spawned by `ShellExecutor` is wiped out.
-- **Idempotence:** `ProcessScope` uses an `NSLock` and atomic boolean flag. Calling `cancelAll()` multiple times in rapid succession is completely crash-safe.
-- **Immediate Response:** Execution latency from emergency trigger to signal dispatch is < 1ms.
-
----
-
-## Section 15 — Permissions & Authority Matrix
-
-`[VERIFIED FROM CURRENT CODE: PermissionGate.swift, DestructiveActionManager.swift]`
-
-| Autonomy Level | Level Name | Read-Only Impact | Safe Mutation Impact | Destructive Impact |
-|---|---|---|---|---|
-| **L0** | Read-Only | **AUTHORIZED** | **DENIED** | **DENIED** |
-| **L1** | Supervised (Default) | **AUTHORIZED** | **AUTHORIZED** | **DENIED** unless explicitly confirmed via Preview/Commit |
-| **L2** | Autonomous | **AUTHORIZED** | **AUTHORIZED** | **AUTHORIZED** |
-| **L3** | Full | **AUTHORIZED** | **AUTHORIZED** | **AUTHORIZED** |
-
-### Destructive Action Protocol (`DestructiveActionManager`):
-- Action marked `.destructive` (e.g. `system.sleep`, `rm -rf`).
-- Spoken/typed command triggers `requestPreview()`: creates `PendingAction` and returns guidance ("PREVIEW: ... Say confirm to execute").
-- User must speak or type `"confirm <intent>"` or `"commit"` within **60 seconds**.
-- `popPendingAction()` atomically claims and deletes the action, preventing double-commit.
-- Emergency Stop or `"cancel"` immediately purges pending actions.
-
----
-
-## Section 16 — Verification Mechanics & False-Success Defenses
-
-`[VERIFIED FROM CURRENT CODE: TaskStateMachine.swift:51-61, SelfTest.swift:1153-1166, BuiltinTools.swift]`
-
-- **Mechanical vs Declared Verification:**
-  - A step's completion is NEVER accepted based on the model's text claim ("I have created the file").
-  - Every tool execution returns a `ToolResult(success: Bool, output: String, sideEffects: [String])`.
-  - `TaskStep.verification` is explicitly set to `.passed` or `.failed`.
-- **False-Success Defenses:**
-  1. **Non-Zero Shell Exit Codes:** If `ShellExecutor` returns `exitCode != 0`, `ToolResult.success` is `false`.
-  2. **Zero-Step DONE Rejection (Bug B Guard):** `AgentLoop` will refuse to transition a task to `.completed` if `steps.isEmpty`.
-  3. **Unverified Step Gate:** All executed steps must have `verification == .passed` before `.completed` is reachable.
-  4. **Postcondition Checking:** System controls verify physical outcomes (e.g. `DisplayServicesGetBrightness` verifies display changed, `NSPasteboard` verifies text copied).
-
----
-
-## Section 17 — Recovery & State Transitions
-
-`[VERIFIED FROM CURRENT CODE: TaskStateMachine.swift:18-49, AgentLoop.swift:200-260]`
-
-### State Transition Matrix:
+### Task State Transition Invariants
 - `CREATED` $\rightarrow$ `PLANNING`, `RUNNING`, `CANCELLED`
 - `PLANNING` $\rightarrow$ `RUNNING`, `FAILED`, `CANCELLED`
 - `RUNNING` $\rightarrow$ `VERIFYING`, `FAILED`, `CANCELLED`
@@ -627,802 +479,377 @@ Phase 1 ShellExecutor correctness was verified through:
 - `FAILED` $\rightarrow$ `RECOVERING`, `CANCELLED`
 - `RECOVERING` $\rightarrow$ `REPLANNING`, `FAILED`, `CANCELLED`
 - `REPLANNING` $\rightarrow$ `RUNNING`, `FAILED`, `CANCELLED`
-- `COMPLETED` $\rightarrow$ *Terminal* (no transitions)
-- `CANCELLED` $\rightarrow$ *Terminal* (no transitions)
-
-### Replan & Bounded Retries:
-- `maxRetries` per task defaults to 3.
-- `AgentLoop` limits total step attempts across the life of a task to `3 + plan.steps.count`.
-- Replan failure context is clipped to 160 characters to avoid prompt inflation on small models.
-- At most 2 prior step observations are retained during replanning.
+- `COMPLETED` and `CANCELLED` are terminal states.
+- **Bug A Fix [VERIFIED]:** Recovery transition table guarantees `REPLANNING -> RUNNING` before verifying, preventing invalid `REPLANNING -> VERIFYING` transitions.
+- **Bug B Fix [VERIFIED]:** `COMPLETED` is reachable **only if** `!steps.isEmpty && steps.allSatisfy { $0.verification == .passed }`. Zero-step or unverified tasks strictly fail closed.
 
 ---
 
-## Section 18 — Testing Infrastructure & Inventories
+## Section 9 — Reference Resolution Subsystem
 
-`[VERIFIED BY TEST: SelfTest.swift, Tests/JarvisTests/]`
+`[VERIFIED FROM CURRENT CODE: ReferenceResolver.swift, AgentLoop.swift:316,667, PlanValidator.swift:370-385, SelfTest.swift:1700-1940]`
 
-### Testing Environments:
-1. **In-Process Native Test Runner (`SelfTest.swift`):**
-   - **Command:** `swift run Jarvis --self-test` or `./.build/out/Products/Debug/Jarvis --self-test`
-   - **Environment:** Standalone macOS Command Line Tools (no Xcode needed).
-   - **Historical Evolution:**
-     - Baseline (Frozen Contract v1.0, 2026-09-26): **302 passed, 1 failed** (debug timer flake).
-     - After Integration & Router Hardening: **446 passed, 0 failed**.
-     - **Current State (After Phase 1 Audit & Hardening):** **454 passed, 0 failed**.
-2. **Unit Test Target (`Tests/JarvisTests`):**
-   - `AppStateTests.swift`
-   - `EventBusTests.swift`
-   - `PipelineTimerTests.swift`
-   - `PlanNormalizerBTests.swift`
-   - `SequentialLifecycleTests.swift`
-   - `ShellExecutorTests.swift`
-   - **Limitation:** Running via `swift test` fails on this machine due to missing `XCTest.framework` in standalone Command Line Tools.
+- **Status:** **FULLY IMPLEMENTED & CANONICALLY VERIFIED (Phase 15, 25/25 Tests Passing).**
+  *(Any older note claiming Reference Resolution is absent was true only prior to commit `9971809` and is strictly historical).*
 
----
+### Grammar & Token Specification
+- `$step.<N>.output` or `$step.<N>`: Full raw string output of prior step $N$.
+- `$step.<N>.<field>`: Deterministic JSON key extraction from step $N$'s structured output.
+- `$ambient.<slot>`: Environmental slot snapshot.
+  - `$ambient.current_app`: Authoritative live frontmost application name via `NSWorkspace.shared.frontmostApplication?.localizedName`. Volatile age threshold is 300.0s (5 minutes). Stale snapshots throw `staleAmbientSlot`.
+  - Remaining slots (`current_file`, `current_webpage`, `current_selection`, `last_search_results`, `last_artifact`, `pending_confirmation`) deterministically throw `ambientSlotUnavailable(slot)`.
+- **Literal Dollar Preservation:** Non-reference strings (e.g. `"$100"`, `"$HOME"`, `"costs $5.00"`) remain `.literal` strings and are never corrupted.
+- **Template / Embedded References:** Commands like `echo $step.1.output` or `cat $step.1.url` are parsed as `.template` containing identified `ReferenceTokenMatch` items.
 
-## Section 19 — Performance, Resource Usage & Latency
-
-`[VERIFIED FROM GIT/EVIDENCE ARTIFACT: build/FROZEN_CONTRACT_V1_REPORT.md, build/fc-audit.txt]`
-
-- **Deterministic Controls:**
-  - Route match & execution latency: **< 1.0 ms**
-  - Model calls: **0**
-  - Network calls: **0**
-- **MLX Local Planner (Qwen2.5-0.5B-Instruct-4bit on Apple M4 Metal):**
-  - Time To First Token (TTFT): **231 ms – 480 ms**
-  - Generation Speed: **70.3 – 119.4 tokens/second**
-  - Full Plan Generation Latency: **497 ms – 3,680 ms**
-  - Model Load Latency (from SSD to Unified Memory): **1,599 ms – 2,167 ms**
-- **Voice System Latency:**
-  - TTS playback start: **~150 ms – 300 ms**
-  - Emergency voice stop halt latency: **< 50 ms**
-- **System Footprint:**
-  - Resident Memory (RSS): **~850 MB – 1.4 GB** (including resident 4-bit 0.5B model)
-  - Memory Pressure Gate: `ResourceManager` sets reserve threshold at 1,024 MB; refuses model load under `CRITICAL` pressure.
+### Invariants & Validation Rules
+1. **DAG Ordering:** Step $N$ can only reference Step $M$ where $M < N$. Forward references ($M > N$) and self-references ($M == N$) are rejected at both plan-validation time and resolution time.
+2. **Pre-Execution Concrete Resolution:** Arguments are resolved **immediately before execution** in `AgentLoop.swift`.
+3. **Authority Evaluates Resolved Command:** `PermissionGate` and `CommandSandbox.shared.isSafe` evaluate the **concrete, resolved command** (e.g. `cat /etc/passwd`, NOT `cat $step.1.output`).
+4. **Verified Outputs Only:** Prior step outputs are addressable **ONLY IF** `verification == .passed`. Steps with `.failed`, `.inconclusive`, or `.unavailable` deterministically block resolution.
 
 ---
 
-## Section 20 — Known Bugs, Race Conditions & Technical Debt
+## Section 10 — Accessibility Subsystem & Fast UI Mode
 
-| Bug / Debt Item | Severity | Subsystem | Status / Evidence | Recommended Action |
-|---|---|---|---|---|
-| Standalone `swift test` fails without Xcode | Medium | Build / CI | `XCTest` unavailable in Command Line Tools SDK | Keep `SelfTest` as primary CI runner; or configure standalone testing runner |
-| Reference resolution absent | High | AgentLoop / Compiler | Goals like "do X, then do it again" cannot bind outputs | Implement typed reference table & syntax in PlanValidator |
-| 0.5B Model syntax & multi-step planning ceiling | High | MLXPlanner | Multi-step completion rate is low (0/15 on SeqA, 3/15 baseline) | Add Tier B candidate (2B–4B model) for complex agent goals |
-| Purported task state variables absent | Medium | TaskStateMachine | `current_app`, `current_file`, etc. absent on `JarvisTask` | Explicitly bind desktop context when accessibility bridge is invoked |
-| Acoustic DSP wake word absent | Low | Voice / WakeWord | Wake detection uses speech recognizer transcript matching | Introduce dedicated lightweight audio buffer keyword spotter |
+`[VERIFIED FROM CURRENT CODE: AccessibilityBridge.swift, FastUIMode.swift, AccessibilityTools.swift, ToolRegistry.swift, SelfTest.swift:2030-2200]`
+
+- **Status:** **IMPLEMENTED & VERIFIED (Phase 17 Suite, 29/29 Tests Passing).**
+- **Architecture:** Provides deterministic AX interactions for the frontmost application without requiring vision models, OCR, or screenshots.
+
+### Registered Tools
+1. `inspect_ui` (`InspectUITool`):
+   - Impact: `.readOnly` (L0 Authorized).
+   - Inspects and lists actionable UI hierarchy (buttons, text fields, menu items) via `FastUIMode.shared.describeCurrentUI()`.
+   - Supports optional `filter` argument for targeted substring matching.
+2. `click_element` (`ClickElementTool`):
+   - Impact: `.safeMutation` (L1 Authorized) by default.
+   - **Destructive Verb Screening:** If `element_label` matches destructive keywords (`delete`, `erase`, `format`, `empty trash`, `shut down`, `restart`, `wipe`, `uninstall`, `drop table`, `remove all`), impact is dynamically upgraded to `.destructive`. At L1 Supervised, `PermissionGate` blocks execution unless authorized via `DestructiveActionManager`.
+   - Declared postconditions: `expected_app`, `expected_element_exists`, `expected_element_disappears`, `expected_focused`.
+   - Post-action verification: Re-inspects AX state. A bare `AXPress` without an observed postcondition returns `.inconclusive`.
+3. `set_text` (`SetTextTool`):
+   - Impact: `.safeMutation` (L1 Authorized).
+   - Enters text into editable or focused field via `FastUIMode.shared.setText`.
+   - Post-action verification: Performs fresh AX target resolution and exact post-mutation value read-back. Observed field mismatch returns `.failed`; missing handle returns `.unavailable`.
+
+### Operational Boundaries
+- Physical UI automation requires macOS Accessibility trust (`AXIsProcessTrusted()`). If untrusted, tools return explicit `unavailable` errors.
+- Broad, arbitrary UI automation across background apps is **NOT** supported; actions are bounded to frontmost application elements.
 
 ---
 
-## Section 21 — Deferred Features & Out-of-Scope Items
+## Section 11 — Post-Action Verification & False-Success Defenses
+
+`[VERIFIED FROM CURRENT CODE: ToolDefinitions.swift:48-84, AgentLoop.swift:6-12, SelfTest.swift:2520-2720]`
+
+- **Status:** **IMPLEMENTED & VERIFIED (Milestone 4A, Phase 19 Suite).**
+- **Core Principle:** Execution success (`ToolResult.success == true`) alone **never** marks a step verified. Verification requires mechanical post-action observation.
+
+### 5-State Verification Model (`VerificationOutcome`)
+- `.passed`: Observed postcondition matches expected state. The step is verified and output is referenceable.
+- `.failed`: Observed state contradicts expected state (e.g. wrong frontmost app, wrong field text, file missing).
+- `.inconclusive`: Action executed, but no deterministic postcondition was declared to verify state mutation (e.g. bare click).
+- `.unavailable`: Observation mechanism was unreachable (e.g. Accessibility permission denied, browser AppleScript blocked).
+- `.notApplicable`: Read-only action with no side effects.
+
+### Verified Silent Action Fix (`AgentStepOutcomePolicy`, Commit `fd4bf87`)
+- **Problem Fixed:** Previously, `AgentLoop` treated any empty stdout as a step failure. Redirecting commands (`echo hello > file.txt`) legitimately write artifacts and produce zero stdout, which triggered spurious replanning loops despite successful exit codes and file creation.
+- **Current Policy:**
+  ```swift
+  enum AgentStepOutcomePolicy {
+      static func accepts(_ result: ToolResult) -> Bool {
+          guard result.success else { return false }
+          let hasOutput = !result.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+          return hasOutput || result.verification?.outcome == .passed
+      }
+  }
+  ```
+  Both whole-plan and sequential execution modes use this policy. An action with empty output is accepted **only** if its mechanical verification passed. Failed execution or non-passing verification strictly fails closed.
+
+---
+
+## Section 12 — Lossless Escalation Pipeline (Milestone 3)
+
+`[VERIFIED FROM CURRENT CODE: EscalationPipeline.swift, EscalationAudit.swift, AgentLoop.swift, SelfTest.swift:2330-2520]`
+
+- **Status:** **IMPLEMENTED & VERIFIED (Phase 18 Suite, 15/15 Tests Passing).**
+- **Mission:** When Tier A (0.5B local planner) exhausts repairs or replanning, execution escalates losslessly to Tier B without restarting from unstructured chat logs.
+
+### Escalation Context Schema (`EscalationContext`)
+Transfers authoritative structured state:
+- `taskId: UUID`, `originalGoal: String` (byte-for-byte preserved)
+- `currentStepNumber: Int`, `completedSteps: [TaskStep]`, `verifiedOutputs: [Int: String]`
+- `failedStep: TaskStep?`, `failureReason: String?`, `priorObservations: [String]`
+- `environmentContext: TaskEnvironmentContext?`
+- `sensitivity: DataClassifier.SensitivityLevel`
+- `triggerReason: TriggerReason` (`tierAPlanningExhausted`, `tierARecoveryExhausted`, `executionFailureReplanning`)
+- `attemptCount: Int`, `escalationTimestamp: Date`
+
+### Invariants & Defenses
+1. **Deterministic Privacy Gate:** Evaluated synchronously before any cloud provider is contacted. If `sensitivity` is `.sensitive` or `.highlySensitive`, cloud escalation is refused with `JarvisError.privacyPolicyViolation`.
+2. **Authority Boundary (Principle 1):** Every escalated plan must strictly pass `PlanValidator.validate(plan)`. Unregistered tools, missing arguments, or sandbox violations fail closed.
+3. **No Duplicate Execution:** Completed steps in `TaskStateMachine` are never re-executed.
+4. **Reference Continuity:** Verified step outputs from Tier A remain accessible to Tier B continuation steps.
+5. **Emergency Stop Invariant:** `EscalationPipeline.escalate` refuses handoff before invoking providers if emergency stop is latched, and discards returned plans if stop latches during generation.
+
+---
+
+## Section 13 — Planner Subsystem & Bounded Extraction
+
+`[VERIFIED FROM CURRENT CODE: MLXPlanner.swift, PlannerExtraction.swift, DirectAnswerRouter.swift, SelfTest.swift:2720-2820]`
+
+### Architecture
+```
+MODEL OUTPUT
+    │
+    ▼
+Bounded Structured Extraction (JSON matching schema {"tool": ..., "arguments": ..., "literal": ...})
+    │
+    ▼
+Typed Intermediate Representation (ExtractedAction)
+    │
+    ▼
+Deterministic Compiler (PlannerExtraction.compile)
+    │
+    ▼
+Existing AgentPlan / PlanStep
+    │
+    ▼
+Canonical PlanValidator (Schema, arguments, references, CommandSandbox)
+    │
+    ▼
+PermissionGate & DestructiveActionManager
+    │
+    ▼
+ToolExecutor
+    │
+    ▼
+Deterministic Post-Action Verification
+```
+
+### Critical Differentiation: Deterministic vs Model Extraction
+- **Deterministic Extraction Path (`explicitShellEchoExtraction`):**
+  - Matches explicit single-line requests matching: `write/print the word(s)/phrase/line <payload> using run_shell/the shell`.
+  - Quotes literal payload as one POSIX single-quoted argument, handles quotes as delimiters, fails closed on apostrophes/newlines.
+  - **Makes 0 model calls.**
+  - *Key Clarification:* The 4–5 shell cases in the routing benchmark (`ctrl-planner-shell`, `arg-spaces`, `arg-numbers`, `arg-punct`, `arg-unusual`) used this deterministic path. They represent zero-model-call routing, **NOT** general 0.5B model extraction capability.
+- **Genuine Model Extraction Path:**
+  - Demonstrated by the physical `write_file` E2E test (`build/e2e-physical.txt`).
+  - Model received prompt, generated valid extraction JSON for `write_file`, passed validation with 0 repairs, wrote file to disk, and verified exact byte read-back.
+- **Legacy Whole-Plan Fallback:**
+  - Unbounded or multi-step goals that do not match bounded extraction shapes fall back to legacy `AgentPlan` whole-plan generation.
+
+---
+
+## Section 14 — Empirical Experiments Archive (Experiments A & B)
+
+`[HISTORICAL EVIDENCE: Sources/Jarvis/Core/SequentialExperiment.swift, Sources/Jarvis/Agent/PlanNormalizerB.swift, build/seq-A2-*.txt, /tmp/experiment-b-preservation/offline-replay-run.txt]`
+
+### Experiment A: Sequential Next-Step Planning
+- **Status:** **REJECTED / NOT PROMOTED.**
+- **Hypothesis:** Generating steps one-by-one sequentially (`.sequential`) would improve multi-step goal completion on the 0.5B model compared to single-shot whole-plan generation (`.fullPlan`).
+- **Empirical Results (B1–B5 Benchmarks):**
+  - Baseline (Single-Shot `.fullPlan`): Multi-step scored **3/15 PASS** (20%).
+  - Experiment A (Sequential Next-Step): Multi-step scored **0/15 PASS** (0%).
+- **Why It Failed:**
+  1. *Repetition Loops:* 0.5B model generated the first step repeatedly across all 8 cycles rather than advancing.
+  2. *Latency Explosion:* 8 separate model calls per run caused severe latency without progress.
+  3. *Recovery Exhaustion:* Tasks exhausted recovery limits and aborted in `FAILED` state.
+- **Permanent Value:** Discovered and fixed Bug A (recovery state transition table) and Bug B (zero-step DONE completion gate).
+
+### Experiment B: Normalizer B Single-Shape Normalization
+- **Status:** **DISABLED / NOT WIRED INTO PRODUCTION (GATE FAILED).**
+- **Hypothesis:** Deterministically repairing the split command shape `{"command": "echo", "args": "token"}` to `{"command": "echo token"}` before validation would prevent model repair corruption.
+- **Predeclared Gate:** $\ge 50\%$ of historical literal-bearing attempts must match this exact shape in offline replay.
+- **Empirical Replay Results (`offline-replay-run.txt`):**
+  - Total historical attempts examined: 29
+  - Attempts matching shape: 11
+  - Pass rate: **37.9%** ($11 / 29 < 50\%$)
+  - **Result: GATE FAILED.** Normalizer B was never enabled in production (`normalizerBEnabled = false`).
+
+---
+
+## Section 15 — Performance & Latency Telemetry
+
+`[VERIFIED FROM BENCHMARK & EVIDENCE ARTIFACTS: build/routing-benchmark-final.txt, build/FROZEN_CONTRACT_V1_REPORT.md, SelfTest]`
+
+| Subsystem / Operation | Latency Measurement | Test Context / Conditions | Verification Source |
+|---|---|---|---|
+| **Deterministic Controls (L0)** | **< 1.0 ms** | Regex match & native API dispatch (volume, app, clipboard) | `SelfTest`, `FROZEN_CONTRACT_V1_REPORT.md` |
+| **Deterministic Route Latency** | **1,142 ms – 1,504 ms** | End-to-end command execution (e.g. `open Safari`, `what time is it`) | `build/routing-benchmark-final.txt` |
+| **Direct Answer Route** | **2,779 ms – 3,534 ms** | L1 reflex intent classification + direct answer (no planner) | `build/routing-benchmark-final.txt` |
+| **Local 0.5B MLX TTFT** | **231 ms – 480 ms** | Time to first token on Apple M4 Metal via Python worker | `FROZEN_CONTRACT_V1_REPORT.md` |
+| **Local 0.5B MLX Generation** | **70.3 – 119.4 tok/s** | Token generation speed on Apple M4 Metal | `FROZEN_CONTRACT_V1_REPORT.md` |
+| **Tier-A Local Planner Routing** | **2,058 ms – 2,133 ms** | Bounded shell extraction path (median ~2,080 ms) | `build/routing-benchmark-final.txt` |
+| **Tier-A Web Tool Routing** | **3,447 ms – 6,210 ms** | Recency / explicit search tool path with web search | `build/routing-benchmark-final.txt` |
+| **Tier-B Cloud Escalation** | **53,202 ms** | End-to-end escalation across network and provider | `build/routing-benchmark-final.txt:176` |
+| **Voice TTS Playback Start** | **~150 ms – 300 ms** | `AVSpeechSynthesizer` dispatch | Telemetry logs |
+| **Emergency Stop Dispatch** | **43.58 ms** (bound < 50ms) | Trigger to audio halt, task cancellation, process signal | `SelfTest Phase 13` |
+| **Local Qwen 7B / Groq Speed** | *Not yet benchmarked* | Current production configuration unbenchmarked | Explicitly unmeasured |
+
+---
+
+## Section 16 — Testing Infrastructure & Inventories
+
+`[VERIFIED BY TEST: SelfTest.swift]`
+
+- **Execution Command:** `./.build/debug/Jarvis --self-test` (or `swift run Jarvis --self-test`)
+- **Canonical Current Result:** **624 passed, 0 failed**
+
+### Complete Phase Breakdown
+- **Phase 1: Deterministic Router** (11 native controls, regex matching, compound guards)
+- **Phase 2: Intent Classification** (Domain routing, reflex classification)
+- **Phase 3: Task State Machine** (Lifecycle states, transitions, invalid transition rejection)
+- **Phase 4: Permission Gate & Autonomy** (L0-L3 matrix, authorization levels)
+- **Phase 5: Destructive Actions & Commit Window** (Two-phase Preview/Commit, 60s timeout)
+- **Phase 6: ShellExecutor & Process Lifecycle** (POSIX process groups, `killpg`, pipe streaming >64KB, timeout)
+- **Phase 7: CommandSandbox & Dangerous Shell AST** (Command blocklist, operator validation)
+- **Phase 8: ActionEngine & Dispatch** (Subsystem dispatch, error mapping)
+- **Phase 9: Hotkey & System Control** (Display brightness, system lock, clipboard)
+- **Phase 10: Memory & Conversation Store** (SQLite storage, vector search, Accelerate vDSP)
+- **Phase 11: Vision & ScreenCapture** (Screen capture bounds, mock vision pipelines)
+- **Phase 12: Voice Pipeline & Barge-In** (Audio capture, speech recognition, TTS)
+- **Phase 13: Emergency Interrupt Latency** (Voice & UI trigger halt < 50ms)
+- **Phase 14: MLXPlanner & Dynamic Tool Catalog** (Live schemas, prompt injection, repair)
+- **Phase 15: Reference Resolution Engine** (25 tests: `$step.<N>`, `$ambient`, DAG checks)
+- **Phase 16: Live Desktop Ambient Context Binding** (8 tests: `NSWorkspace` frontmost app, freshness guard)
+- **Phase 17: Accessibility Bridge & Fast UI Tooling** (29 tests: `inspect_ui`, `click_element`, `set_text`, destructive verb gating)
+- **Phase 18: Lossless Escalation Pipeline** (15 tests: `EscalationContext`, privacy gate, Tier B)
+- **Phase 19: High-Reliability Deterministic Verification** (25 tests: 5-state verification, browser navigation, DOM snapshots, text entry, filesystem observer)
+- **Phase 20: Planner Decomposition & Direct-Answer Routing** (Router matrix, recency safety net, bounded extraction IR, structural repair replay, argument preservation recorder, compiler gates)
+
+---
+
+## Section 17 — Known Limitations & Operational Boundaries
+
+`[VERIFIED CURRENT OPERATIONAL BOUNDARIES]`
+
+1. **0.5B Model Complexity Ceiling:** Local 0.5B model is reliable for bounded extraction and single-action tasks, but fails on complex unconstrained multi-step plans without escalation.
+2. **Deterministic Benchmark Cases Were Zero-Model-Call:** The 4–5 shell cases in the routing benchmark matched `explicitShellEchoExtraction` and do not demonstrate LLM extraction strength.
+3. **Escalation Plan Reliability:** Cloud/Tier-B providers can occasionally emit malformed JSON or substituted literals under network variance.
+4. **Escalation Latency Cost:** Cloud escalation can add tens of seconds of latency.
+5. **Emergency Stop Load Sensitivity:** Emergency stop latency assertions pass near the 50ms threshold (e.g. 43.58ms) and can be sensitive to heavy CPU load.
+6. **Browser DOM Physical Automation:** Safari requires explicit manual developer enablement (*"Allow JavaScript from Apple Events"*).
+7. **Acoustic Wake Word Deferred:** Voice system uses speech recognizer transcript streaming; acoustic DSP micro-models remain deferred.
+8. **Toolchain Limitation:** `swift test` cannot run due to missing `XCTest` in macOS Command Line Tools; `SelfTest` is the canonical runner.
+
+---
+
+## Section 18 — Explicitly Deferred Features & Out-of-Scope Items
 
 To prevent scope creep and maintain architectural stability, the following items are **explicitly deferred**:
-1. **Acoustic DSP Wake-Word Engine:** Transcript matching is sufficient for current desktop interaction.
-2. **Heavy Vector Database / Cloud Memory:** SQLite + Accelerate vDSP cosine search meets current needs offline.
+
+1. **Acoustic DSP Wake-Word Engine:** Transcript matching via `SFSpeechRecognizer` is sufficient for current desktop interaction.
+2. **Heavy External Vector Database:** SQLite + Accelerate vDSP cosine similarity meets current memory needs fully offline.
 3. **Continuous Screen Video Ingestion:** ScreenCaptureKit captures frames on-demand (`system.screenshot`), avoiding constant GPU/battery drain.
 4. **Autonomous Self-Modifying Code:** The assistant must never rewrite its own binaries or scripts without explicit human supervision.
-5. **Microservice / Distributed Agent Swarms:** Single-process native macOS architecture is frozen.
+5. **Distributed Microservice Swarms:** The single-process native macOS architecture is frozen.
 
 ---
 
-## Section 22 — Model Tier Strategy
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Tier 0: Deterministic Router (0 parameters, < 1ms)         │
-│  - Handled via regex, prefix matching, macOS system APIs     │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Tier A: Local 0.5B Reflex & Planner (Qwen2.5-0.5B-4bit)    │
-│  - On-device MLX Metal inference                            │
-│  - 0 API cost, offline, 100 tok/s                           │
-│  - Handles intent classification, reflex Q&A, single-shot   │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ (Escalate if complex multi-step)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Tier B: Local 2B–4B Assistant (PLANNED / NEXT)             │
-│  - Qwen2.5-3B or Llama-3.2-3B via MLX                        │
-│  - Handles multi-step dependencies & structured JSON syntax  │
-└──────────────────────────────┬──────────────────────────────┘
-                               │ (Escalate if deep coding/research)
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Tier C: Cloud LLMs (Claude 3.7 Sonnet/Opus, GPT-4o)        │
-│  - Lossless escalation with complete execution & error trace│
-│  - Unbounded reasoning, complex coding, deep analysis        │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Section 23 — Git, Branch & Checkpoint History
+## Section 19 — Git History, Key Commits & Branch State
 
 `[VERIFIED FROM GIT: git log, git status]`
 
 - **Active Branch:** `master`
-- **Current HEAD Commit:** `9971809` — *"fix: prevent compound echo goals from bypassing planner"*
-- **Key Historic Commits:**
-  - `9971809`: Fixed compound command bypass in `DeterministicRouter.swift`.
-  - `b1a7830`: Added append-only planner evidence ledger to `MLXPlanner.swift`.
-  - `c7daa91`: Application bundle packaging (`build-app.sh`) and voice pipeline enhancements.
-  - `27b1af8`: Schema experiment harness (`SchemaExperiment.swift`) and live ToolRegistry schemas.
-  - `52b8f8e`: Autonomy restoration after integration audit.
-  - `7579bba`: LLMProvider protocol, DirectComposer, extended deterministic matchers.
-  - `23eefa7`: Emergency interrupt event wiring and TTS latency tracking.
+- **Current HEAD Commit:** `fd4bf87a3b495ac18ef3dda20dc126d2dcc11c54` — *"fix: accept verified silent actions in agent execution"*
+- **Preceding Key Commits:**
+  - `ae8b0ca`: `feat: harden voice planning and exact literal routing` (voice to agent loop, direct answer routing, planner extraction, preservation recorder).
+  - `9727a4b`: `feat: add verified browser text entry` (`fill_browser_text`).
+  - `b9e55f8`: `feat: add bounded browser DOM interaction` (`inspect_browser_page`, `extract_browser_text`, `click_browser_link`).
+  - `c6af1b4`: `fix: harden filesystem write boundaries` (canonical parent path resolution, symlink defenses).
+  - `7bb8ce8`: `feat: add verified file writing tool` (`write_file` with read-back verification).
+  - `6723286`: `feat: verify bounded browser navigation` (`open_browser` with tab observation).
+  - `12f1000`: `feat: add deterministic post-action verification` (5-state `VerificationOutcome`).
+  - `a591fe6`: `feat: baseline milestones 1-3 verified (ambient context, accessibility tools, lossless escalation, 531 tests)`.
+  - `9971809`: `fix: prevent compound echo goals from bypassing planner`.
 
 ---
 
-## Section 24 — Evidence Artifacts & Archives
+## Section 20 — Evidence Artifacts & Archives
 
-`[VERIFIED FROM FILE SYSTEM]`
+`[VERIFIED FROM REPOSITORY FILESYSTEM]`
 
 | Artifact Path | Description | What It Proves | What It Does NOT Prove |
 |---|---|---|---|
-| `build/FROZEN_CONTRACT_V1_REPORT.md` | Formal audit report across all planner and system controls | Documents baseline 302/1 tests, D-A to D-F failure modes, MLX latency | Does not reflect recent Phase 1 additions |
-| `/tmp/experiment-b-preservation/offline-replay-run.txt` | Raw offline replay log of 29 historical attempts | Proves Normalizer B achieved only 37.9% normalizable rate (GATE FAIL) | Does not justify enabling Normalizer B live |
-| `build/seq-A2-B1.txt` ... `seq-A2-B5.txt` | Raw execution logs from Experiment A sequential testing | Proves Experiment A achieved 0/15 PASS on multi-step benchmarks | Does not mean multi-step is impossible with larger models |
-| `build/seq-A2-selftest-final.txt` | Complete terminal capture of SelfTest run (446 passed) | Confirms 446/446 passing state before Phase 1 | Did not include new ShellExecutor tests |
-| `build/ii-audit3.txt` | Integration audit report (56 points) | Confirms permissions, emergency stop subscribers, and routers | Does not test external cloud endpoints |
+| `build/selftest-final3.txt` | Complete terminal capture of canonical SelfTest run | **624 passed, 0 failed** across all 20 phases | Does not run cloud API calls live |
+| `build/routing-benchmark-final.txt` | 30-run repeated routing benchmark matrix + 5-run rerun | Semantic 30/30, argument preservation 5/5 on rerun | Shell cases were deterministic extraction (0 model calls) |
+| `build/e2e-physical.txt` | Physical E2E `write_file` execution trace | Genuinely exercised model extraction path; 1 attempt; literal preserved | Does not prove arbitrary complex multi-step plans |
+| `build/jarvis-e2e-jarvis_e2e_k9w4t21790655668.txt` | Physical file written by model-routed E2E test | Verified deterministic disk write and byte comparison | N/A |
+| `build/escalation-audit-evidence.txt` | Milestone 3 escalation test assertions capture | Structured context, privacy blocks, and emergency stop invariants pass | Does not prove external cloud provider uptime |
+| `build/seq-A2-B1.txt` ... `B5.txt` | Raw logs from Experiment A sequential testing | Experiment A failed (0/15 PASS) due to repetition loops | Does not mean multi-step is impossible on larger models |
+| `/tmp/experiment-b-preservation/offline-replay-run.txt` | Raw offline replay log of 29 historical attempts | Normalizer B achieved only 37.9% normalizable rate (GATE FAILED) | Does not justify enabling Normalizer B live |
+| `build/FROZEN_CONTRACT_V1_REPORT.md` | Baseline contract audit report | Baseline 302/1 tests, D-A to D-F failure modes, MLX latency | Historical; superseded by 624-test suite |
 
 ---
 
-## Section 25 — Current State Snapshot
+## Section 21 — Current Engineering Roadmap
 
-| Subsystem / Area | Status | Evidence Source | Next Recommended Action |
-|---|---|---|---|
-| **Architecture & Core** | **GREEN** | `Sources/Jarvis/Core/`, `SelfTest.swift` | Preserve frozen principles |
-| **Deterministic Mac Control** | **GREEN** | `DeterministicRouter.swift`, 11 controls | Expand zero-model-call matcher library |
-| **Voice System** | **YELLOW** | `VoicePipeline.swift`, `WakeWordDetector.swift` | Keep transcript wake; defer acoustic DSP |
-| **Emergency Stop** | **GREEN** | `EmergencyInterrupt.swift`, `EventBus.swift` | Validated immediate halt (< 1ms dispatch) |
-| **ShellExecutor (Phase 1)** | **GREEN** | `ShellExecutor.swift`, `SelfTest.swift:365-371` | Keep process-group isolation and streaming |
-| **Task State Machine** | **GREEN** | `TaskStateMachine.swift` | Add typed reference resolution |
-| **Reference Resolution** | **RED / NOT IMPLEMENTED** | `AgentLoop.swift`, `SequentialExperiment.swift` | Design deterministic reference interpolation |
-| **Planner (Tier A 0.5B)** | **YELLOW** | `MLXPlanner.swift`, `PlanValidator.swift` | Bounded to 1 repair; retain single-shot mode |
-| **Experiment A (Sequential)** | **REJECTED** | `seq-A2-*.txt` (0/15 pass) | Do not promote to production |
-| **Experiment B (Normalizer B)**| **REJECTED (GATE FAIL)**| `offline-replay-run.txt` (37.9% < 50%) | Leave disabled in production |
-| **Permissions & Sandbox** | **GREEN** | `PermissionGate.swift`, `CommandSandbox.swift` | Enforce L0/L1/L2 matrix and PREVIEW/COMMIT |
-| **SelfTest Suite** | **GREEN** | 454 passed, 0 failed | Run before and after every commit |
-| **Tier B Local Model (2–4B)** | **PLANNED** | Architecture roadmap | Benchmark 3B candidate on Apple M4 |
-| **Tier C Cloud Fallback** | **GREEN** | `ClaudeProvider.swift`, `OpenAIProvider.swift` | Maintain lossless escalation headers |
+### Immediate Next Open Question
+**How should Zia combine deterministic routing, bounded extraction, local models (0.5B/3B/7B), and Groq efficiently while preserving safety, strictly adhering to the 9 Frozen Principles, and minimizing unnecessary model/API usage?**
+
+### Work Items Under Architectural Review
+1. **Local-vs-Groq Latency & Accuracy Benchmark [PROPOSED / PENDING ARCHITECTURAL REVIEW]:**
+   - Benchmark local Qwen2.5-7B and Qwen2.5-3B against Groq `llama-3.3-70b-versatile` across standard macOS intent tasks.
+   - Measure real TTFT, total latency, memory footprint, and token cost.
+2. **Bounded Extraction Expansion [PROPOSED / PENDING ARCHITECTURAL REVIEW]:**
+   - Expand `PlannerExtraction` to support additional single-action tool shapes (e.g. `open_app`, `system.volume`, `browser_search`) without triggering full-plan generation overhead.
+3. **Hybrid Routing Policy Formalization [PROPOSED / PENDING ARCHITECTURAL REVIEW]:**
+   - Formulate clear routing thresholds: when to use 0-model deterministic routing, when to use local reflex/extraction, when to escalate to external Groq acceleration, and how to maintain zero-cost local fallback.
 
 ---
 
-## Section 26 — Next Engineering Roadmap
+## Section 22 — Senior Agent Handoff Rules
 
-### Immediate (Current Sprint)
-1. **Commit Phase 1 ShellExecutor Work:** Commit the validated `ShellExecutor.swift` and updated `SelfTest.swift` (bringing suite to 454 green tests).
-2. **Maintain Documentation Integrity:** Ensure `PROJECT_CONTEXT.md` is updated whenever architectural changes occur.
+If you are an incoming AI coding agent (Claude Opus, Gemini, Codex, Antigravity) taking over this codebase, follow these non-negotiable rules:
 
-### Short-Term (Next 3–5 Tasks)
-1. **Reference Resolution Engine:** Implement deterministic dataflow binding so Step $N$ can reference Step $M$'s stdout/output without model hallucinations.
-2. **Context Provider Binding:** Connect actual desktop context (frontmost application name via NSWorkspace) into `JarvisTask`.
-3. **Benchmark Tier-B Model Candidate:** Profile a 3B parameter model (e.g. `Qwen2.5-3B-Instruct-4bit`) on MLX to test if multi-step planning reaches $\ge 80\%$ pass rate without exceeding memory budgets.
-4. **App Bundle Distribution:** Verify `./Scripts/build-app.sh release` produces a fully signed, notarizable `build/Jarvis.app`.
-
-### Medium-Term (Major Architectural Capabilities)
-1. **Accessibility Element Actions:** Enable Fast UI mode to click, type, and navigate native macOS applications deterministically via `AccessibilityBridge`.
-2. **Lossless Multi-Tier Escalation Pipeline:** Wire automatic escalation from Tier A (0.5B) $\rightarrow$ Tier B (3B) $\rightarrow$ Tier C (Claude 3.7) when validation retries fail.
-
-### Deferred (Do NOT Build Yet)
-- Continuous video streaming capture.
-- Acoustic neural wake-word engine.
-- Distributed microservice agent networks.
+1. **Accuracy Beats Optimism. Evidence Beats Narrative.**
+   - Never claim a feature exists, is verified, or passes tests without inspecting the actual code and running the test suite.
+2. **Never Violate the 9 Frozen Principles.**
+   - Intelligence never equals authority. The LLM is an untrusted proposer. Authority belongs exclusively to `CommandSandbox`, `PermissionGate`, and `DestructiveActionManager`.
+3. **Never Weaken `PlanValidator` or `CommandSandbox`.**
+   - Do not bypass schema validation or sandbox checks to make tests or benchmarks appear green.
+4. **Canonical Test Runner Rule:**
+   - Always run `./.build/debug/Jarvis --self-test` (or `swift run Jarvis --self-test`). Standard `swift test` is unavailable under Command Line Tools.
+5. **Do Not Reopen Rejected Experiments:**
+   - Experiment A (sequential planning) and Experiment B (Normalizer B) are permanently documented and rejected. Do not re-enable them in production.
+6. **Preserve Untracked Evidence:**
+   - Do not delete or wipe evidence files under `build/`.
+7. **Maintain Documentation Integrity:**
+   - Whenever you verify code or fix bugs, update `PROJECT_CONTEXT.md` with explicit evidence tags.
 
 ---
 
-## Section 27 — Agent Handoff Instructions
-
-If you are an incoming AI coding agent (Claude Opus, Gemini, Codex, Antigravity) taking over this codebase, follow these rules:
-
-### BEFORE EDITING CODE:
-1. **Read this document (`PROJECT_CONTEXT.md`) completely.**
-2. **Check Git Status:** Run `git status` and `git diff` to understand current working tree state.
-3. **Verify the Test Baseline:** Run `/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis --self-test` to verify 454/454 tests pass.
-4. **Evidence Over Memory:** Do not assume a feature exists because an architectural comment mentions it. Verify in the actual source code.
-
-### WHEN EDITING CODE:
-- **Never violate the 9 Frozen Architectural Principles.**
-- **Never weaken `PlanValidator` or `CommandSandbox`.**
-- **Do not edit production source files when asked for an audit or report.**
-- **Preserve Swift 6 Concurrency:** Ensure all cross-isolation types are `@unchecked Sendable` with proper locking, or conform to `Sendable`.
-- **Do not enable Experiment A or Experiment B in production.**
-
-### AFTER EDITING CODE:
-1. **Compile:** Run `swift build`.
-2. **Test:** Run `swift run Jarvis --self-test` (or run debug binary directly). Ensure **zero failures**.
-3. **Record Evidence:** If you fix a bug, add a deterministic test to `SelfTest.swift`.
-4. **Update `PROJECT_CONTEXT.md`:** Document your changes, new test counts, and updated evidence.
-
----
-
-## Latest Verified Engineering State — Phase 1 Audit
-
-**Audit Timestamp:** 2026-09-28T23:10:00+05:30  
-**Current HEAD Commit:** `9971809` (`fix: prevent compound echo goals from bypassing planner`)  
-**Current Branch:** `master` (ahead of `origin/master` by 2 commits)  
-**Phase 1 Implementation Status:** **VERIFIED & HARDENED**  
-
-### 1. Verified ShellExecutor Behavior & Lifecycle
-- **Process Creation [VERIFIED]:**
-  - Executable: `/bin/zsh` via `Process.executableURL`.
-  - Arguments: `["-c", command]` via `Process.arguments`.
-  - Process environment: Clean POSIX inheritance with `.userInitiated` QoS.
-  - Pre-Launch Cancellation Guard: `try Task.checkCancellation()` executed before `process.run()` to prevent spawning orphaned OS processes if the enclosing Swift Task was cancelled prior to launch.
-- **Process-Group Isolation & macOS Foundation Semantics [VERIFIED]:**
-  - On macOS (Darwin/Apple Silicon), Foundation's `Process` spawns child processes using `posix_spawnattr_setflags` with `POSIX_SPAWN_SETPGROUP` flag set to 0.
-  - This guarantees that upon `process.run()`, the child process forms its own process group where `PGID == PID`.
-  - All descendants spawned by `/bin/zsh -c` (including background jobs, subshells, pipelines, and grandchildren) inherit this exact `PGID`.
-  - Attempting to call `setpgid(pid, pid)` from the parent process fails with `EACCES (errno 13)` because `execve()` has already taken place.
-  - POSIX signaling via `killpg(pid, SIGTERM)` and `killpg(pid, SIGKILL)` targets this exact process group, reliably terminating the shell and all of its descendants.
-- **SIGTERM -> SIGKILL Escalation & PID Reuse Defense [VERIFIED]:**
-  - `ProcessScope` manages `killGroup()`. First invocation sends `killpg(pid, SIGTERM)`.
-  - An atomic `isKilled` flag guarantees that `killGroup()` is idempotent; concurrent calls from Task cancellation, timeout, and `cancelAll()` coalesce into a single kill sequence.
-  - A 500ms `DispatchWorkItem` is scheduled to fire `killpg(pid, SIGKILL)` if the process group remains alive.
-  - **PID Reuse Defense:** When `terminationHandler` fires and `waitUntilExit()` completes, `scope.disarmEscalation()` is called immediately to cancel the pending `DispatchWorkItem`. This guarantees `SIGKILL` will not be dispatched 500ms later against a recycled OS PID.
-  - If `killpg` returns `-1` with `errno == ESRCH`, the error is ignored cleanly because the process group has already exited.
-- **Timeout Strategy & Anti-False-Success Defense [VERIFIED]:**
-  - Enforced via a structured `Task` sleeping for `timeoutSeconds`.
-  - Upon timeout expiration, `scope.killGroup()` is invoked and the process group receives `SIGTERM` followed by `SIGKILL`.
-  - **Anti-False-Success Defense:** If a shell command traps `SIGTERM` (e.g., `trap 'exit 0' TERM`) and attempts to exit with 0 upon timeout or cancellation, `ShellExecutor` detects `scope.wasKilled && exitCode == 0` and forcibly overrides the exit status to `143` (POSIX `128 + SIGTERM`). A killed process can NEVER report false success.
-- **Cancellation Strategy [VERIFIED]:**
-  - Pre-launch cancellation throws `CancellationError` without spawning OS processes.
-  - Mid-execution cancellation triggers `onCancel` closure in `withTaskCancellationHandler`, which immediately calls `scope.killGroup()`.
-  - After process exit, if `Task.isCancelled` is true, `CancellationError` is thrown to unwind the Swift Task cleanly.
-- **Concurrent Process Isolation [VERIFIED]:**
-  - Tested with two concurrent commands (Command A: `sleep 2`, Command B: `sleep 0.2`).
-  - Command A was cancelled while Command B was running.
-  - Command B ran to completion with exit code `0` and captured stdout without interference. Each process group is strictly isolated.
-- **Pipe Output Handling (>64KB Buffer Deadlock Prevention) [VERIFIED]:**
-  - Both `stdout` and `stderr` pipes are read concurrently via detached Swift tasks (`Task.detached { fh.readDataToEndOfFile() }`) started BEFORE awaiting process termination.
-  - Verified with 100KB, 250KB, and simultaneous 200KB stdout + 200KB stderr (400KB total) without deadlock or buffer truncation.
-- **Swift 6 Concurrency & Strict Actor Boundaries [VERIFIED]:**
-  - `ShellExecutor` is an `actor`.
-  - Cross-boundary state (`ProcessScope`, `ContinuationGate`) is protected with internal `NSLock` instances and marked `@unchecked Sendable`.
-  - No data races, no memory leaks, no unbounded background task retention.
-- **Emergency Stop Integration [VERIFIED]:**
-  - `EmergencyInterrupt.shared.trigger()` publishes `EmergencyStopEvent` over `EventBus`.
-  - Subscriber invokes `ShellExecutor.shared.cancelAll()`.
-  - All tracked `ProcessScope` instances in `runningScopes` are signaled via `killGroup()` and purged from tracking.
-
----
-
-### 2. Status of Architecture Milestones
-- **Experiment B Status [FROZEN / REJECTED]:**
-  - Status: **HISTORICAL / GATE FAILED**.
-  - Result: 11 / 29 normalizable = 37.9% (< 50% predeclared gate).
-  - Code State: `PlanNormalizerB.swift` exists in tree, but `normalizerBEnabled = false` remains permanently disabled in `AgentLoop.swift`.
-  - Strict Rule: Do NOT enable live Experiment B, do NOT widen regexes, do NOT modify planner behavior.
-- **Reference Resolution Status [IMPLEMENTED & VERIFIED]:**
-  - Status: **IMPLEMENTED & VERIFIED (Phase 15 Engine Active, 25/25 Tests Passing).**
-  - Fully implemented deterministic parser, validator, and resolver in `ReferenceResolver.swift`.
-  - Wired into `AgentLoop.swift`, `PlanValidator.swift`, `TaskStateMachine.swift`, and `MLXPlanner.swift`.
-  - Fully covered in `SelfTest.swift` with 25 dedicated test cases.
-
----
-
-### 3. Verification & Test Evidence
-- **Full Self-Test Suite Command:**
-  `/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis --self-test`
-- **Exact Self-Test Output:**
-  ```
-  ══════════════════════════════════════════
-    Results: 487 passed, 0 failed
-  ══════════════════════════════════════════
-  ✅ ALL TESTS PASSED
-  ```
-- **New Tests Added & Verified in Phase 15 Reference Resolution Suite (SelfTest.swift):**
-  1. `Literal argument remains literal` [VERIFIED]
-  2. `Valid $step.1.output parses` [VERIFIED]
-  3. `Valid $step.1 defaults to output` [VERIFIED]
-  4. `Valid $step.1.field parses` [VERIFIED]
-  5. `Valid ambient reference $ambient.current_app parses` [VERIFIED]
-  6. `Malformed $step rejected` [VERIFIED]
-  7. `Malformed step number $step.foo rejected` [VERIFIED]
-  8. `Step 0 reference $step.0.output rejected` [VERIFIED]
-  9. `Forward reference ($step.3 from step 2) rejected` [VERIFIED]
-  10. `Self reference ($step.2 from step 2) rejected` [VERIFIED]
-  11. `Missing step output fails with missingStepOutput` [VERIFIED]
-  12. `Unverified/failed prior step cannot be consumed` [VERIFIED]
-  13. `Structured JSON field extracted from verified step output` [VERIFIED]
-  14. `Plain-text field extraction rejected deterministically` [VERIFIED]
-  15. `Type adaptation string -> int for parameterSpec.kind == .int` [VERIFIED]
-  16. `Invalid type adaptation throws typeMismatch` [VERIFIED]
-  17. `Unavailable ambient slot fails cleanly with ambientSlotUnavailable` [VERIFIED]
-  18. `Ambient current_app resolves from environmentContext` [VERIFIED]
-  19. `PlanValidator accepts valid reference syntax without type error` [VERIFIED]
-  20. `PlanValidator rejects forward reference at plan validation time` [VERIFIED]
-  21. `PlanValidator rejects malformed reference at plan validation time` [VERIFIED]
-  22. `Permission gate / sandbox checks resolved concrete command` [VERIFIED]
-  23. `Normal literal-only plan validates unchanged` [VERIFIED]
-  24. `Single-step plan validates unchanged` [VERIFIED]
-  25. `End-to-end dataflow: Step 1 output correctly bound to Step 2 argument` [VERIFIED]
-
----
-
-### 4. Remaining Risks & Open Items
-- **Compiler/Testing Limitation [VERIFIED]:**
-  - `swift test` fails due to missing `XCTest.framework` in standalone macOS Command Line Tools.
-  - Native in-process test runner `SelfTest.swift` (`Jarvis --self-test`) is the canonical automated test suite.
-- **Ambient System Monitors [PLANNED]:**
-  - Ambient slot `current_app` is live and authoritative via `NSWorkspace`.
-  - Additional ambient slots (`current_file`, `current_webpage`, etc.) are declared in the schema but safely and deterministically fail closed with `.ambientSlotUnavailable` until reliable system-wide accessibility/browser hooks are integrated.
-
----
-
-## Section 28 — Reference Resolution — Implementation & Verification
-
-`[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Agent/ReferenceResolver.swift, Sources/Jarvis/Agent/AgentLoop.swift, Sources/Jarvis/Agent/PlanValidator.swift, Sources/Jarvis/Agent/TaskStateMachine.swift, Sources/Jarvis/Agent/MLXPlanner.swift, Sources/Jarvis/Core/SelfTest.swift]`
-
-### 1. Architectural Philosophy & Guarantees
-- **Intelligence Never Equals Authority (Principle 1) [VERIFIED]:**
-  The model may emit reference tokens; the model **NEVER** resolves them. Reference resolution is 100% deterministic, executed by Swift native code immediately prior to step dispatch.
-- **State Over Transcript (Principle 3) [VERIFIED]:**
-  Prior step outputs are resolved from structured `StepResolutionRecord` instances stored in `TaskStateMachine`, not by loose regex parsing of unstructured conversational chat logs.
-- **Commit Points Gate Irreversibility (Principle 6) [VERIFIED]:**
-  Reference resolution occurs **before** permission evaluation and sandbox checks. The permission layer and `CommandSandbox` evaluate the concrete, resolved argument (e.g. `cat /etc/passwd`), never the unresolved token `cat $step.1.output`.
-- **Verified Outputs Only (Principle 7) [VERIFIED]:**
-  A step's output is addressable by subsequent steps **only if** `verification == .passed`. A raw exit code 0 is insufficient if post-execution observation/verification failed.
-
----
-
-### 2. Concrete Data Structures
-In `Sources/Jarvis/Agent/ReferenceResolver.swift`:
-```swift
-/// Match of a reference token inside a template argument.
-struct ReferenceTokenMatch: Sendable, Equatable {
-    let token: String
-    let target: ReferenceTarget
-}
-
-/// Strongly typed task argument representing either a literal string, a direct reference,
-/// or a template with embedded references.
-enum TaskArgument: Sendable, Equatable {
-    case literal(String)
-    case reference(ReferenceTarget)
-    case template(template: String, references: [ReferenceTokenMatch])
-}
-
-/// Target of a deterministic reference.
-enum ReferenceTarget: Sendable, Equatable {
-    case stepOutput(stepNumber: Int, field: String?)
-    case ambient(AmbientSlot)
-}
-
-/// Supported ambient slots in Jarvis.
-enum AmbientSlot: String, Sendable, Equatable, CaseIterable {
-    case currentApp = "current_app"
-    case currentFile = "current_file"
-    case currentWebpage = "current_webpage"
-    case currentSelection = "current_selection"
-    case lastSearchResults = "last_search_results"
-    case lastArtifact = "last_artifact"
-    case pendingConfirmation = "pending_confirmation"
-}
-
-/// Structured record of a completed and verified step execution for reference resolution.
-struct StepResolutionRecord: Sendable, Equatable {
-    let stepNumber: Int
-    let toolName: String
-    let rawOutput: String
-    let structuredOutput: [String: String]?
-    let completedAt: Date
-    let verification: VerificationOutcome
-}
-
-/// Ambient environment context snapshot for a task.
-struct TaskEnvironmentContext: Sendable, Equatable {
-    var currentApp: String?
-    var currentFile: String?
-    var currentWebpage: String?
-    var currentSelection: String?
-    var lastSearchResults: [String]?
-    var lastArtifactPath: String?
-    var pendingConfirmation: String?
-    let snapshotTimestamp: Date
-
-    static func captureLive() -> TaskEnvironmentContext {
-        var appName: String?
-        #if canImport(AppKit)
-        appName = NSWorkspace.shared.frontmostApplication?.localizedName
-        #endif
-        return TaskEnvironmentContext(currentApp: appName, snapshotTimestamp: Date())
-    }
-}
-
-/// Deterministic errors emitted during reference parsing, validation, or resolution.
-enum ReferenceResolutionError: Error, Sendable, Equatable, LocalizedError {
-    case malformedReference(String, reason: String)
-    case forwardReference(referencedStep: Int, currentStep: Int)
-    case selfReference(stepNumber: Int)
-    case missingStepOutput(stepNumber: Int)
-    case unverifiedStep(stepNumber: Int, outcome: String)
-    case fieldExtractionFailed(stepNumber: Int, field: String, reason: String)
-    case ambientSlotUnavailable(AmbientSlot)
-    case staleAmbientSlot(AmbientSlot, ageSeconds: Double)
-    case typeMismatch(argument: String, expected: String, actual: String)
-}
-```
-
----
-
-### 3. Wire Syntax & Parsing Grammar
-- **Wire Representation [VERIFIED]:**
-  `PlanStep.arguments` and `TaskStep.arguments` remain `[String: String]`. No serialization breaks.
-- **Syntax Rules:**
-  - `$step.<N>.output` or `$step.<N>`: Full output of Step N.
-  - `$step.<N>.<field>`: Extracts key `<field>` from Step N's structured JSON output dictionary.
-  - `$ambient.<slot>`: Environmental slot value.
-  - Non-reference dollar strings (e.g. `"$100"`, `"$HOME"`) remain `.literal`.
-- **Validation Rules [VERIFIED]:**
-  - `<N>` must be a positive integer > 0. Step 0 is rejected (`$step.0.output` throws `malformedReference`).
-  - Negative integers are rejected (`$step.-1` throws `malformedReference`).
-  - Bare `$step` and malformed step numbers (`$step.foo`) throw `malformedReference`.
-  - DAG Ordering: Step $N$ can only reference Step $M$ where $M < N$. Forward references ($M > N$) and self-references ($M == N$) are rejected at both plan validation time and resolution time.
-
----
-
-### 4. Integration into Agent Subsystems
-- **Task State Machine (`TaskStateMachine.swift`) [VERIFIED]:**
-  `JarvisTask` holds `resolutionRecords: [StepResolutionRecord]` and optional `environmentContext: TaskEnvironmentContext`.
-  Methods added to `TaskStateMachine`:
-  - `appendResolutionRecord(_:for:)`
-  - `resolutionRecords(for:) -> [Int: StepResolutionRecord]`
-  - `setEnvironmentContext(_:for:)`
-  - `environmentContext(for:) -> TaskEnvironmentContext?`
-- **Plan Validator (`PlanValidator.swift`) [VERIFIED]:**
-  - Accepts reference tokens without prematurely failing scalar type checks (e.g. `$step.1.output` for an integer parameter is permitted at plan time; dynamic type checking occurs at resolution time).
-  - Validates DAG direction at plan time ($M < currentStepNumber$).
-  - For `run_shell`, skips plan-time `CommandSandbox` check only if the command contains reference tokens; defers sandbox evaluation to resolution time.
-- **Execution Loop (`AgentLoop.swift`) [VERIFIED]:**
-  - Evaluates `ReferenceResolver.resolveStepArguments` immediately before invoking `ToolExecutor.shared.execute()`.
-  - Immediately passes the resolved concrete arguments to `CommandSandbox.shared.isSafe` for shell execution.
-  - Upon successful verification (`verification == .passed`), appends a `StepResolutionRecord` to `TaskStateMachine`.
-  - If reference resolution fails, records deterministic failure and enters the standard recovery/replanning lifecycle.
-- **Planner Prompt (`MLXPlanner.swift`) [VERIFIED]:**
-  - Prompt instructions updated to teach model reference syntax and consumption rules.
-  - Example 3 added to system prompt demonstrating Step 1 (`run_shell`) -> Step 2 (`set_volume` with `$step.1.output`).
-  - Error translation updated to surface `.invalidReference` context during replan repair attempts.
-
----
-
-### 5. Ambient State Implementation Status
-- **`current_app` [VERIFIED]:** Authoritative live value from `NSWorkspace.shared.frontmostApplication?.localizedName`.
-- **`current_file`, `current_webpage`, `current_selection`, `last_search_results`, `last_artifact`, `pending_confirmation` [DESIGNED ONLY / SAFE FAIL]:**
-  These slots are declared in the schema, but until dedicated background observers are implemented, any attempt to resolve them cleanly throws `.ambientSlotUnavailable(slot)`. The system **never** fabricates values.
-
----
-
-### 6. Test Suite Evidence
-- **Execution Command:**
-  `/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis --self-test`
-- **Baseline Before Sprint:** 454 passed, 0 failed.
-- **New Count After Sprint:** 479 passed, 0 failed (+25 new verified tests).
-- **Regressions:** 0.
-- **Coverage of Required Test Matrix:**
-  - [x] Literal argument remains literal (Test 15.1)
-  - [x] Valid `$step.1.output` (Test 15.2)
-  - [x] Valid `$step.1` implicit output (Test 15.3)
-  - [x] Valid `$step.1.field` (Test 15.4)
-  - [x] Valid `$ambient.current_app` (Test 15.5)
-  - [x] Malformed `$step` rejection (Test 15.6)
-  - [x] Malformed step number `$step.foo` rejection (Test 15.7)
-  - [x] Step 0 rejection `$step.0.output` (Test 15.8)
-  - [x] Forward reference rejection (Test 15.9)
-  - [x] Self reference rejection (Test 15.10)
-  - [x] Missing prior output (Test 15.11)
-  - [x] Unverified prior step rejected (Test 15.12)
-  - [x] Structured JSON field extraction (Test 15.13)
-  - [x] Plain-text field extraction rejection (Test 15.14)
-  - [x] Type adaptation string -> int (Test 15.15)
-  - [x] Invalid type adaptation throws typeMismatch (Test 15.16)
-  - [x] Unavailable ambient slot fails cleanly (Test 15.17)
-  - [x] Ambient current_app resolves (Test 15.18)
-  - [x] PlanValidator accepts valid reference without scalar error (Test 15.19)
-  - [x] PlanValidator rejects forward reference at plan time (Test 15.20)
-  - [x] PlanValidator rejects malformed reference at plan time (Test 15.21)
-  - [x] Permission gate / sandbox checks resolved concrete command (Test 15.22)
-  - [x] Normal literal-only plans remain unchanged (Test 15.23)
-  - [x] Single-step plans remain unchanged (Test 15.24)
-  - [x] End-to-end integration dataflow: Step 1 output correctly bound to Step 2 argument (Test 15.25)
-
----
-
-### 7. Git State at Completion
-- **Active Branch:** `master`
-- **Head Commit:** `9971809cb27a99035322c8f21d6307b7f9480662`
-- **Modified Production Files:**
-  - `Sources/Jarvis/Agent/ReferenceResolver.swift` (new file)
-  - `Sources/Jarvis/Agent/TaskStateMachine.swift` (added resolution records and environment context)
-  - `Sources/Jarvis/Agent/PlanValidator.swift` (reference validation & DAG check)
-  - `Sources/Jarvis/Agent/AgentLoop.swift` (pre-execution resolution & concrete sandbox evaluation)
-  - `Sources/Jarvis/Agent/MLXPlanner.swift` (prompt schema & failed tool name)
-  - `Sources/Jarvis/Core/SelfTest.swift` (Phase 15 test suite)
-  - `PROJECT_CONTEXT.md` (this context document)
-
----
-
-## Section 29 — Multi-AI Delegation Ledger & Milestone 1 Verification
-
-`[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Agent/AgentLoop.swift:122, Sources/Jarvis/Agent/TaskStateMachine.swift:214-225, Sources/Jarvis/Agent/ReferenceResolver.swift:105-108,338-345, Sources/Jarvis/Core/SelfTest.swift:1940-2030]`
-
-### 1. Milestone 1 Implementation — Live Desktop Ambient Context Binding
-- **Objective:** Connect actual desktop context (`NSWorkspace` frontmost application) directly into `JarvisTask.environmentContext` during task initialization in `AgentLoop.swift`, with strict deterministic freshness guards and negative error handling.
-- **Architectural Changes [VERIFIED]:**
-  - **Task Lifecycle Capture (`AgentLoop.swift:122-126`):**
-    `TaskEnvironmentContext.captureLive()` is invoked immediately when `TaskStateMachine.shared.createTask()` is called, creating an immutable snapshot of the active application at the moment of task creation.
-  - **Task State Preservation (`TaskStateMachine.swift:214-225`):**
-    `createTask(title:goal:steps:environmentContext:)` preserves the captured snapshot directly on the created `JarvisTask`.
-  - **Deterministic Freshness Guard (`ReferenceResolver.swift:105-108, 338-345`):**
-    `TaskEnvironmentContext.maxVolatileAgeSeconds` is set to 300.0s (5 minutes). When resolving `$ambient.current_app`, if the snapshot is older than 300s, `ReferenceResolutionError.staleAmbientSlot(.currentApp, ageSeconds:)` is deterministically thrown.
-  - **Negative Error Paths [VERIFIED]:**
-    - Empty or missing `currentApp` throws `ReferenceResolutionError.ambientSlotUnavailable(.currentApp)`.
-    - Malformed slots (e.g. `$ambient.unknown_slot`) throw `ReferenceResolutionError.malformedReference`.
-    - Unsupported ambient slots (e.g. `$ambient.current_file`) throw `ReferenceResolutionError.ambientSlotUnavailable(.currentFile)`.
-    - Permissions / `CommandSandbox.shared.isSafe` evaluate the concrete resolved application name.
-
-### 2. Multi-AI Delegation Ledger
-
-```
-================================================================================
-DELEGATION RECORD #1
-DATE: 2026-09-28
-MODEL: openai/gpt-oss-120b (via Groq Continue Worker)
-TASK: Audit AgentLoop.swift and TaskStateMachine.swift for task creation & context binding
-SCOPE: Single-subsystem entry point investigation (runInternal / runSequential)
-RESULT: Located exact task creation hook in AgentLoop.runInternal. Recommended
-        calling TaskEnvironmentContext.captureLive() at task instantiation.
-VERIFIED BY: Gemini (cross-checked against AgentLoop.swift:122)
-STATUS: ACCEPTED & INTEGRATED.
-================================================================================
-DELEGATION RECORD #2
-DATE: 2026-09-28
-MODEL: openai/gpt-oss-120b (via Groq Continue Worker)
-TASK: Audit staleness and ambient resolution rules in ReferenceResolver.swift
-SCOPE: Volatile slot staleness threshold analysis
-RESULT: Recommended deterministic max-age constant (maxVolatileAgeSeconds = 300s)
-        and per-slot age check throwing staleAmbientSlot.
-VERIFIED BY: Gemini (cross-checked against ReferenceResolver.swift:107, 342)
-STATUS: ACCEPTED & INTEGRATED.
-================================================================================
-DELEGATION RECORD #3
-DATE: 2026-09-28
-MODEL: qwen/qwen3.8-27b (via Groq Continue Worker)
-TASK: Generate 8 Swift SelfTest test cases for Milestone 1 ambient binding
-SCOPE: SelfTest.swift test suite expansion
-RESULT: Generated test skeletons for live capture, state machine preservation,
-        resolution, empty app error, stale app error, malformed slot error,
-        unsupported slot error, and sandbox evaluation.
-VERIFIED BY: Gemini (adapted signatures to match exact internal APIs in SelfTest.swift)
-STATUS: ACCEPTED & EXECUTED.
-================================================================================
-```
-
-### 3. Test Evidence — Phase 16 Suite
-- **Full Self-Test Suite Command:**
-  `/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis --self-test`
-- **Exact Self-Test Output:**
-  ```
-  ══════════════════════════════════════════
-    Results: 487 passed, 0 failed
-  ══════════════════════════════════════════
-  ✅ ALL TESTS PASSED
-  ```
-- **New Tests Added & Verified in Phase 16 Milestone 1 (SelfTest.swift):**
-  1. `Live capture returns frontmost app from NSWorkspace` [VERIFIED]
-  2. `TaskStateMachine preserves environmentContext upon task creation` [VERIFIED]
-  3. `ReferenceResolver resolves $ambient.current_app to captured app` [VERIFIED]
-  4. `Empty currentApp throws ambientSlotUnavailable deterministically` [VERIFIED]
-  5. `Stale ambient currentApp throws staleAmbientSlot deterministically` [VERIFIED]
-  6. `Malformed ambient slot name throws malformedReference` [VERIFIED]
-  7. `Unsupported ambient slot $ambient.current_file throws ambientSlotUnavailable` [VERIFIED]
-  8. `CommandSandbox evaluates resolved concrete ambient command` [VERIFIED]
-
----
-
-## Section 30 — Milestone 2 Verification: Deterministic Accessibility Bridge & Fast UI Tooling
-
-`[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Vision/AccessibilityBridge.swift, Sources/Jarvis/Vision/FastUIMode.swift, Sources/Jarvis/Brain/Tools/AccessibilityTools.swift, Sources/Jarvis/Brain/Tools/ToolRegistry.swift:66-68, Sources/Jarvis/Core/SelfTest.swift:2030-2200]`
-
-### 1. Milestone 2 Implementation — Deterministic AX Interaction & Fast UI Mode
-- **Objective:** Enable Fast UI mode and deterministic AX interactions for the frontmost application without falling back to expensive vision models, while treating Accessibility as a strict authority boundary.
-- **Architectural Changes [VERIFIED]:**
-  - **`AccessibilityBridge.swift` Extensions:**
-    - Added `isEnabled: Bool = true` and `frame: CGRect?` attribute extraction to `AXElementInfo`.
-    - Added mock injection hooks (`mockTrusted`, `mockElementTree`, `mockActionHandler`, `mockValueHandler`, `resetMocks()`) for deterministic headless testing.
-    - Implemented `performAction(matchingLabel:action:)` supporting `kAXPressAction` on matched UI elements in frontmost app or mock tree.
-    - Implemented `setValue(matchingLabel:value:)` for setting text on editable elements (`kAXValueAttribute`) or focused elements (`kAXFocusedUIElementAttribute`).
-  - **`FastUIMode.swift` APIs:**
-    - Added `clickElement(matching:)` and `setText(_:onElement:)` routing directly to `AccessibilityBridge`.
-  - **New Deterministic Tools (`Sources/Jarvis/Brain/Tools/AccessibilityTools.swift`):**
-    - `InspectUITool` (`inspect_ui`): `.readOnly` impact (L0), inspects and formats actionable UI hierarchy with optional filtering.
-    - `ClickElementTool` (`click_element`): `.safeMutation` impact (L1), clicks elements by title/label.
-      - **Authority Boundary Protection:** Contains `isDestructiveLabel(_:)` check. If label contains destructive verbs (`delete`, `erase`, `format`, `empty trash`, `shut down`, `wipe`), impact is dynamically upgraded to `.destructive`. At L1 Supervised, `PermissionGate` blocks execution unless confirmed via `DestructiveActionManager`.
-    - `SetTextTool` (`set_text`): `.safeMutation` impact (L1), types text into editable or focused fields.
-  - **`ToolRegistry.swift` Integration:**
-    - Built-in tools registered: total tool count expanded to 9 (`open_app`, `set_volume`, `run_shell`, `web_search`, `fetch_url`, `open_browser`, `inspect_ui`, `click_element`, `set_text`).
-    - Tool definitions and parameter schemas generated automatically for LLM and local MLX planning.
-    - `PlanValidator` grounds accessibility tools automatically against the live `ToolRegistry`.
-
-### 2. Multi-AI Delegation Ledger (Milestone 2)
-
-```
-================================================================================
-DELEGATION RECORD #4
-DATE: 2026-09-28
-MODEL: qwen/qwen3.8-27b (via Groq Continue Worker)
-TASK: Audit existing AccessibilityBridge and FastUIMode to list AX primitives vs missing mutations
-SCOPE: Read-only architectural audit with source code context
-RESULT: Identified zero existing mutations (parseElement had frame: nil, no performAction,
-        no setValue). Recommended adding frame, isEnabled, and mock test hooks.
-VERIFIED BY: Gemini (cross-checked against AccessibilityBridge.swift)
-STATUS: ACCEPTED & INTEGRATED.
-================================================================================
-DELEGATION RECORD #5
-DATE: 2026-09-28
-MODEL: openai/gpt-oss-120b (via Groq Continue Worker)
-TASK: Audit macOS AXUIElement lifetimes, kAXPressAction failure modes, and text setting APIs
-SCOPE: Native macOS Accessibility / ApplicationServices framework constraints
-RESULT: Advised against storing raw AXUIElement in Sendable structs; recommended searching
-        on MainActor on demand; verified kAXValueAttribute on AXTextField.
-VERIFIED BY: Gemini (applied to AccessibilityBridge.swift on MainActor)
-STATUS: ACCEPTED & INTEGRATED.
-================================================================================
-DELEGATION RECORD #6
-DATE: 2026-09-28
-MODEL: openai/gpt-oss-20b (via Groq Continue Worker)
-TASK: Review proposed tool schemas (inspect_ui, click_element, set_text) for naming consistency
-SCOPE: Parameter schema review against existing tool conventions
-RESULT: Confirmed snake_case naming aligned with existing tools (open_app, set_volume, run_shell).
-VERIFIED BY: Gemini (integrated into AccessibilityTools.swift)
-STATUS: ACCEPTED & INTEGRATED.
-================================================================================
-```
-
-### 3. Test Evidence — Phase 17 Suite
-- **Full Self-Test Suite Command:**
-  `/Users/jayanthpranaykonada/Zia/.build/out/Products/Debug/Jarvis --self-test`
-- **Exact Self-Test Output:**
-  ```
-  ══════════════════════════════════════════
-    Results: 516 passed, 0 failed
-  ══════════════════════════════════════════
-  ✅ ALL TESTS PASSED
-  ```
-- **New Tests Added & Verified in Phase 17 Milestone 2 (SelfTest.swift):**
-  1. `Tool 'inspect_ui' registered in ToolRegistry` [VERIFIED]
-  2. `Tool 'click_element' registered in ToolRegistry` [VERIFIED]
-  3. `Tool 'set_text' registered in ToolRegistry` [VERIFIED]
-  4. `'inspect_ui' declared with .readOnly impact` [VERIFIED]
-  5. `'click_element' declared with .safeMutation impact` [VERIFIED]
-  6. `'set_text' declared with .safeMutation impact` [VERIFIED]
-  7. `ToolRegistry contains at least 9 registered tools (9)` [VERIFIED]
-  8. `ToolDefinition for 'inspect_ui' generated` [VERIFIED]
-  9. `ToolDefinition for 'click_element' includes element_label` [VERIFIED]
-  10. `ToolDefinition for 'set_text' includes text` [VERIFIED]
-  11. `'Delete File' classified as destructive label` [VERIFIED]
-  12. `'Empty Trash' classified as destructive label` [VERIFIED]
-  13. `'Submit Form' not classified as destructive label` [VERIFIED]
-  14. `Destructive click target 'Delete Database' blocked by PermissionGate at L1` [VERIFIED]
-  15. `Untrusted accessibility throws error on inspect_ui execution` [VERIFIED]
-  16. `Untrusted accessibility throws error on click_element execution` [VERIFIED]
-  17. `inspect_ui executes successfully with mock tree` [VERIFIED]
-  18. `inspect_ui output includes 'Submit' button` [VERIFIED]
-  19. `Filtered inspect_ui includes matched element` [VERIFIED]
-  20. `Filtered inspect_ui excludes non-matched element` [VERIFIED]
-  21. `click_element executes successfully on enabled element` [VERIFIED]
-  22. `click_element confirms clicked element` [VERIFIED]
-  23. `click_element on disabled element throws deterministic error` [VERIFIED]
-  24. `click_element on nonexistent element throws element not found error` [VERIFIED]
-  25. `set_text executes successfully on editable field` [VERIFIED]
-  26. `set_text output confirms updated text` [VERIFIED]
-  27. `set_text on nonexistent field throws not found error` [VERIFIED]
-  28. `Multi-step plan with accessibility tools validates against ToolRegistry` [VERIFIED]
-  29. `PlanValidator rejects click_element missing required 'element_label'` [VERIFIED]
-
-### 4. Milestone Gates Assessment
-- **Functional Gate:** PASSED. Deterministic UI inspection, element clicking, and text setting operating at sub-50ms latency.
-- **Regression Gate:** PASSED. Baseline advanced from 487 to 516 passed, 0 failed, 0 regressions.
-- **Safety Gate:** PASSED. Accessibility treated as strict authority boundary. Dynamic destructive verb scanning gates destructive click actions through `PermissionGate`.
-- **Performance Gate:** PASSED. Fast UI inspection executes in <50ms without invoking vision models or network providers.
-- **Architecture Gate:** PASSED. Conforms strictly to 9 Frozen Principles (Principle 1: Intelligence Never Equals Authority, Principle 4: Cheapest Sufficient Intelligence, Principle 8: Zero-Model-Call Coverage).
-- **Test Gate:** PASSED. 516/516 tests passing deterministically.
-- **Documentation Gate:** PASSED. `PROJECT_CONTEXT.md` updated with full evidence and delegation records.
-
----
-
-## 31. MILESTONE 3: LOSSLESS ESCALATION PIPELINE (TIER A → TIER B)
-
-### 1. Architectural Summary & Mission
-Milestone 3 operationalizes **Principle 5: Lossless Escalation** and **Principle 3: State Over Transcript**:
-Moving from Tier A (0.5B local planner) → deterministic recovery → Tier B (stronger local or cloud planner) WITHOUT losing authoritative structured task state, user intent, validation evidence, privacy classification, or execution safety.
-
-Tier B never restarts from an unstructured or conversational transcript. It receives authoritative structured context (`EscalationContext`), continues execution from the point of failure, and is bound by the exact same safety constraints (`PlanValidator`, `CommandSandbox`, `PermissionGate`, `EmergencyStop`).
-
-### 2. Escalation Context Schema (`Sources/Jarvis/Agent/EscalationPipeline.swift`)
-```swift
-struct EscalationContext: Sendable {
-    enum TriggerReason: String, Sendable {
-        case tierAPlanningExhausted = "tier_a_planning_exhausted"
-        case tierARecoveryExhausted = "tier_a_recovery_exhausted"
-        case executionFailureReplanning = "execution_failure_replanning"
-    }
-
-    let taskId: UUID
-    let originalGoal: String
-    let currentStepNumber: Int
-    let completedSteps: [TaskStep]
-    let verifiedOutputs: [Int: String]
-    let failedStep: TaskStep?
-    let failureReason: String?
-    let priorObservations: [String]
-    let environmentContext: TaskEnvironmentContext?
-    let sensitivity: DataClassifier.SensitivityLevel
-    let triggerReason: TriggerReason
-    let escalationTimestamp: Date
-    let attemptCount: Int
-}
-```
-
-### 3. Core Architectural Gates & Semantics
-1. **Deterministic Privacy Gate First:**
-   Before any cloud provider is contacted or initialized, `DataClassifier.shared.isCloudAllowed(for: context.sensitivity)` is evaluated synchronously. If the task is classified as `.sensitive` or `.highlySensitive`, cloud escalation is blocked with `JarvisError.privacyPolicyViolation(level:reason:)`. Zero data leaves the machine.
-2. **Authority Boundaries Preserved (Principle 1):**
-   Tier B is strictly a planning model. Every plan returned by Tier B is grounded and validated by `PlanValidator.validate(plan)`. If Tier B hallucinates an unregistered tool, omits required arguments, or supplies illegal arguments, the plan is rejected with `JarvisError.actionFailed(action: "TierBPlanValidation", reason: ...)`.
-3. **Execution Safety & Emergency Stop:**
-   `EscalationPipeline.escalate` refuses the handoff while `AgentLoop.shared.isEmergencyCancelled` is latched (before any provider call) and discards a returned Tier B plan if stop latches during generation. `EmergencyInterrupt` still retains full preemption over workers and in-flight tasks.
-4. **State & Reference Continuity:**
-   Step resolution records and verified outputs (`verifiedOutputs`) from completed steps are preserved in `TaskStateMachine`. Downstream steps in Tier B plans referencing `$step.<N>.output` or `$step.<N>.<field>` resolve seamlessly via `ReferenceResolver`.
-5. **No Duplicate Execution:**
-   Completed steps in `TaskStateMachine` are never re-executed.
-
-### 4. Integration Points in `AgentLoop.swift`
-- **Planning Recovery Hook (`planWithRecovery`):**
-  When Tier A fails initial planning and retry recovery is exhausted (`PLANNING -> FAILED -> RECOVERING -> REPLANNING -> failure`), `AgentLoop` constructs `EscalationContext` with `.tierAPlanningExhausted` and invokes `EscalationPipeline.shared.escalate(context:)`.
-- **Execution Replan Hook (`runInternal`):**
-  When repeated step execution failures occur (`replanCount >= 2`), `AgentLoop` constructs `EscalationContext` with `.executionFailureReplanning`, completed steps, and verified outputs, and escalates to Tier B to generate a replacement continuation plan.
-
-### 5. Multi-AI Continuous Engineering Delegations
-- **GPT-OSS 120B:** Audit of AgentLoop state preservation and TaskStateMachine concurrency. Identified exact recovery points where TaskStep and StepResolutionRecords must be harvested for lossless handoff.
-- **Qwen 27B:** Audit of planner and provider interfaces. Determined insertion point in `planWithRecovery` and `runInternal` replan loop to cleanly replace plans without breaking state machine transitions.
-- **GPT-OSS 20B:** Audit of `DataClassifier` call sites and privacy boundary. Confirmed sensitivity levels (`.sensitive`, `.highlySensitive`) and verified strict prohibition against early cloud dispatch.
-
-### 6. Canonical Test Suite Evidence (`SelfTest.swift` Phase 18)
-- **Self-Test Baseline Advanced:** **531 passed, 0 failed** (from 516 passed, +15 verified tests).
-- **Exact Test Matrix (Phase 18):**
-  1. `No escalation occurs when Tier A succeeds` [VERIFIED]
-  2. `Escalation pipeline succeeds when Tier A planning/recovery exhausted` [VERIFIED]
-  3. `User intent (originalGoal) byte-for-byte preserved across escalation` [VERIFIED]
-  4. `Structured Task IR (completedSteps, stepNumber) preserved across escalation` [VERIFIED]
-  5. `Verified step outputs preserved across escalation` [VERIFIED]
-  6. `Structured PlanValidator failure reason preserved across escalation` [VERIFIED]
-  7. `Repair history and attempt counts preserved across escalation` [VERIFIED]
-  8. `DataClassifier blocks cloud escalation for SENSITIVE tasks` [VERIFIED]
-  9. `DataClassifier blocks cloud escalation for HIGHLY_SENSITIVE tasks` [VERIFIED]
-  10. `Tier B provider failure propagates deterministically without false success` [VERIFIED]
-  11. `Emergency stop safety preserved during/after escalation` [VERIFIED — pipeline now refuses escalate() while the latch is set; provider call count must stay unchanged]
-  12. `Completed steps not re-executed post-escalation` [VERIFIED]
-  13. `Reference continuity ($step.1.token) preserved post-escalation` [VERIFIED]
-  14. `Tier B plans strictly validated against PlanValidator (Intelligence != Authority)` [VERIFIED]
-  15. `Cloud escalation permitted for PUBLIC data level` [VERIFIED]
-
----
-
-## 32. VOICE-TO-AGENT INTEGRATION & DECOMPOSED PLAN AUTHORITY
-
-- Non-deterministic voice requests now enter `AgentLoop.run(goal:)`, the same authoritative path used by the overlay. The existing deterministic voice fast path remains in place. This removes the prior provider-only `BrainRouter` bypass for spoken questions and action requests.
-- `PlannerExtraction.compile` now applies canonical `PlanValidator.validate` to its compiled one-tool plan before returning it. The bounded extraction route therefore cannot skip shell sandbox, reference, tool-schema, or future plan invariants.
-- Explicit single-line `write/print the word(s)/phrase/line … using run_shell` requests take a narrow deterministic extraction path. The literal is quoted as one shell argument, surrounding straight/curly double quotes are treated as delimiters, and apostrophes/multiline or oversized content fail closed to normal planning. The compiled plan still passes through `PlanValidator`.
-- Emergency stop avoids redundant speech-recognizer cancellation when no recognition session is active. Its latency metric measures the actual TTS/earcon/recognition halt boundary; state and confirmation cleanup remain synchronous before background cancellation is published.
-- Verification: `swift build` succeeded; canonical `.build/out/Products/Debug/Jarvis --self-test` reported **624 passed, 0 failed**. Live production routing benchmarks passed `arg-spaces` (3/3 exact) and `arg-punct` (3/3 exact); the latter regressed before quote-delimiter handling and is now green. Adversarial coverage confirms an unsafe shell command from the decomposed compiler is rejected by `PlanValidator`.
-- Physical voice input was not exercised in this run; microphone/recognition permission remains an environment-dependent check.
-
-## 33. VERIFIED SILENT ACTIONS IN BOTH AGENT EXECUTION MODES
-
-- Whole-plan and sequential execution now share `AgentStepOutcomePolicy`: a successful action with non-empty output is accepted; empty/whitespace-only output is accepted only when the tool returned deterministic `.passed` verification; failed execution or failed verification remains rejected.
-- This handles valid silent mutations such as redirecting output to a file without stdout, avoiding false retries while preserving fail-closed behavior when output and verification evidence are both absent.
-- Regression matrix covers meaningful output, empty verified output, empty failed/unverified output, and contradictory `success == false` with a passed verification.
-- Verification: `swift build` succeeded; canonical self-test suite reports **624 passed, 0 failed**. The emergency-stop timing assertion passed at 43.58 ms in this run (50 ms bound unchanged).
+## Section 23 — Historical Milestones Archive
+
+### Milestone 1: Live Desktop Ambient Context Binding (Historical Milestone)
+- Implemented and verified in `a591fe6`.
+- Connected `NSWorkspace` frontmost application to `JarvisTask.environmentContext` with 300s freshness guard.
+- SelfTest suite advanced from 454 to 487 passed, 0 failed.
+
+### Milestone 2: Deterministic Accessibility Bridge & Fast UI Tooling (Historical Milestone)
+- Implemented and verified in `a591fe6`.
+- Added `inspect_ui`, `click_element`, `set_text` to `ToolRegistry` (total 9 registered tools).
+- Destructive keyword scanner dynamically upgrades click actions to `.destructive` for `PermissionGate` confirmation.
+- SelfTest suite advanced from 487 to 516 passed, 0 failed.
+
+### Milestone 3: Lossless Escalation Pipeline (Historical Milestone)
+- Implemented and verified in `a591fe6`.
+- Added `EscalationPipeline`, `EscalationContext`, `OpenRouterTierBProvider`, and pre-cloud privacy evaluation via `DataClassifier`.
+- SelfTest suite advanced from 516 to 531 passed, 0 failed.
+
+### Milestone 4A: Deterministic Post-Action Verification (Historical Milestone)
+- Implemented and verified in `12f1000`, `6723286`, `7bb8ce8`, `c6af1b4`, `b9e55f8`, `9727a4b`.
+- Introduced 5-state `VerificationOutcome`, `ToolVerificationResult`, `OpenAppTool` active check, `SetTextTool` AX read-back, `RunShellTool` filesystem observer, bounded browser DOM tools (`inspect_browser_page`, `extract_browser_text`, `click_browser_link`, `fill_browser_text`), and canonical parent path resolution in `FileManagerJarvis`.
+- SelfTest suite advanced from 531 to 560 passed, 0 failed.
+
+### Voice-to-Agent Integration & Decomposed Plan Authority (Historical Milestone)
+- Implemented and verified in `ae8b0ca`.
+- Unified non-deterministic voice requests into `AgentLoop.run(goal:)`.
+- Added `PlannerExtraction` bounded IR, compiler with mandatory `PlanValidator` check, deterministic `explicitShellEchoExtraction`, and `ArgumentPreservationRecorder`.
+- SelfTest suite advanced to 624 passed, 0 failed.
+
+### Verified Silent Action Fix (Historical Milestone)
+- Implemented and verified in `fd4bf87`.
+- Introduced `AgentStepOutcomePolicy`: accepts empty tool output when mechanical verification passed.
+- Fixed false-failure replanning on redirecting shell commands.
+- SelfTest confirmed at 624 passed, 0 failed.

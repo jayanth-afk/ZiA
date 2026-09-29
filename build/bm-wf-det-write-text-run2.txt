@@ -1,0 +1,19 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [wf-det-write-text #1] route=planner struct=✓ sem=✓ arg=preserved 1773ms — planner route + tool family 'file' executed
+  [wf-det-write-text #2] route=planner struct=✓ sem=✓ arg=preserved 1774ms — planner route + tool family 'file' executed
+  [wf-det-write-text #3] route=planner struct=✓ sem=✓ arg=preserved 1764ms — planner route + tool family 'file' executed
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 1772ms  min 1763ms  max 1774ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    wf-det-write-text (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

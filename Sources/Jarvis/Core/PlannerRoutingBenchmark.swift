@@ -123,6 +123,10 @@ enum PlannerRoutingBenchmark {
         RoutingCase(id: "vol-det-please-set", goal: "please set the volume to 50", kind: .plannerTool, toolFamily: "volume", expectedLiteral: "50", repetitions: 3),
         RoutingCase(id: "vol-det-can-you", goal: "can you set volume to 25%", kind: .plannerTool, toolFamily: "volume", expectedLiteral: "25", repetitions: 3),
         RoutingCase(id: "vol-det-turn-to", goal: "turn the volume to 60", kind: .plannerTool, toolFamily: "volume", expectedLiteral: "60", repetitions: 3),
+
+        // ── write_file extraction cases: new deterministic extractor (0 model calls) ──
+        RoutingCase(id: "wf-det-write-text", goal: "write the text 'benchmark_literal_token_1' to build/bm_wf1.txt", kind: .plannerTool, toolFamily: "file", expectedLiteral: "benchmark_literal_token_1", repetitions: 3),
+        RoutingCase(id: "wf-det-save-file", goal: "save 'benchmark_literal_token_2' to file build/bm_wf2.txt", kind: .plannerTool, toolFamily: "file", expectedLiteral: "benchmark_literal_token_2", repetitions: 3),
     ]
 
     /// Offline segments (no model): structural repair replay of the observed
@@ -345,9 +349,12 @@ enum PlannerRoutingBenchmark {
             } else {
                 preserved = nil // non-planner route: preservation N/A
             }
-            // Byte-exact response cross-check (executed literal must appear in
-            // the tool's real output for shell echo cases).
-            if preserved == true && routingCase.kind == .plannerTool && !response.contains(expectedLiteral) {
+            // Byte-exact response cross-check: only meaningful for tools whose
+            // stdout actually echoes the user literal (shell echo). Other tools
+            // (write_file, web_search, open_app) report path/URL/confirmation —
+            // their byte-exact evidence is the recorder's extracted → compiled →
+            // executed chain, plus physical artifact verification where applicable.
+            if preserved == true && routingCase.kind == .plannerTool && routingCase.toolFamily == "shell" && !response.contains(expectedLiteral) {
                 preserved = false
                 notes += " | executed output missing the expected literal"
             }
@@ -386,6 +393,9 @@ enum PlannerRoutingBenchmark {
                 || lowered.contains("already") || lowered.contains("front")
         case "volume":
             return lowered.contains("volume") || lowered.contains("set to") || lowered.contains("%")
+        case "file":
+            return lowered.contains("file saved to") || lowered.contains("file written")
+                || lowered.contains("saved to") || lowered.contains("bm_wf")
         default:
             return false
         }

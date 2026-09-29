@@ -336,6 +336,142 @@ enum PlannerExtraction {
         return nil
     }
 
+    /// Deterministically capture an explicit, bounded file-writing request
+    /// where the content is explicitly quoted and the target path is non-ambiguous.
+    ///
+    /// Grammar requirements:
+    ///   - Must begin with an explicit write or save verb (with optional polite prefix "please" / "can you")
+    ///   - Content MUST be explicitly delimited by single quotes '...', double quotes "...", or smart quotes “...”
+    ///   - Target path must follow an explicit connector ("to", "to file", "to the file")
+    ///   - Path must be safe (no directory traversal `..`, no quotes, no bare directory, no blocked system directories, no sensitive home paths)
+    ///
+    /// Any ambiguous, unquoted, multi-command, negation, or question input returns nil (soft fall-through).
+    static func explicitWriteFileExtraction(goal: String) -> ExtractedAction? {
+        let trimmedGoal = goal.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedGoal.isEmpty else { return nil }
+        let lower = trimmedGoal.lowercased()
+
+        // Compound guard: multi-action utterances must go to the planner.
+        let compoundMarkers = [" and then", ", then", " then ", " & ", " also ", " or "]
+        if compoundMarkers.contains(where: { lower.contains($0) }) { return nil }
+
+        // Multiple write/save verbs in one sentence indicate a compound or multi-file request.
+        if lower.components(separatedBy: "write").count > 2 || lower.components(separatedBy: "save").count > 2 {
+            return nil
+        }
+
+        // Negation guard: "don't write ...", "do not save ...", etc.
+        let negations = ["don't", "do not", "never ", "not write", "not save",
+                         "without writing", "without saving"]
+        if negations.contains(where: { lower.contains($0) }) { return nil }
+
+        // Question guard at the START of the utterance — except "can you …"
+        let questionStarters = ["what ", "why ", "how ", "when ", "is ", "are ",
+                                "does ", "which ", "who ", "where ", "can i "]
+        if questionStarters.contains(where: { lower.hasPrefix($0) }) { return nil }
+
+        // Instructions merely discussing write_file or meta queries
+        if lower.contains("how to") || lower.contains("write_file") || lower.contains("explain") {
+            return nil
+        }
+
+        // Pattern matching explicit quoted content and explicit path.
+        // Captures:
+        // Group 1: single-quoted content
+        // Group 2: double-quoted content
+        // Group 3: smart-quoted content
+        // Group 4: target path
+        let pattern = #"^\s*(?:please\s+|can\s+you\s+)?(?:write|save)(?:\s+the\s+(?:text|line|string|words|phrase|content))?\s+(?:'([^']*)'|"([^"]*)"|“([^”]*)”)\s+(?:to\s+file|to\s+the\s+file|to)\s+([^\s'"]+)\s*[.!]?\s*$"#
+
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return nil
+        }
+        let nsGoal = trimmedGoal as NSString
+        let fullRange = NSRange(location: 0, length: nsGoal.length)
+        guard let match = regex.firstMatch(in: trimmedGoal, range: fullRange), match.numberOfRanges == 5 else {
+            return nil
+        }
+
+        // Extract content from whichever quote group matched
+        let content: String
+        let r1 = match.range(at: 1)
+        let r2 = match.range(at: 2)
+        let r3 = match.range(at: 3)
+        if r1.location != NSNotFound {
+            content = nsGoal.substring(with: r1)
+        } else if r2.location != NSNotFound {
+            content = nsGoal.substring(with: r2)
+        } else if r3.location != NSNotFound {
+            content = nsGoal.substring(with: r3)
+        } else {
+            return nil
+        }
+
+        // Extract path
+        let r4 = match.range(at: 4)
+        guard r4.location != NSNotFound else { return nil }
+        var path = nsGoal.substring(with: r4).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        while let last = path.last, ".?!,".contains(last) {
+            path = String(path.dropLast()).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        // Content validation: non-empty, bounded length, no null bytes
+        guard !content.isEmpty,
+              content.utf8.count <= 100_000,
+              !content.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            return nil
+        }
+
+        // Path validation: non-empty, not a directory, no traversal, no quotes, no newlines/nulls
+        guard !path.isEmpty,
+              !path.hasSuffix("/"),
+              !path.contains(".."),
+              !path.contains("//"),
+              !path.contains("'"),
+              !path.contains("\""),
+              !path.contains("“"),
+              !path.contains("”"),
+              !path.contains("\n"),
+              !path.contains("\r"),
+              !path.unicodeScalars.contains(where: { $0.value == 0 }) else {
+            return nil
+        }
+
+        // Path sandbox / containment safety checks:
+        let lowerPath = path.lowercased()
+        let blockedSystemPrefixes = [
+            "/system", "/library", "/usr", "/bin", "/sbin",
+            "/private", "/etc", "/var", "/dev"
+        ]
+        for prefix in blockedSystemPrefixes {
+            if lowerPath == prefix || lowerPath.hasPrefix(prefix + "/") {
+                return nil
+            }
+        }
+        let expanded = (path as NSString).expandingTildeInPath.lowercased()
+        for prefix in blockedSystemPrefixes {
+            if expanded == prefix || expanded.hasPrefix(prefix + "/") {
+                return nil
+            }
+        }
+        let blockedSubpaths = [
+            ".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud",
+            ".env", ".netrc", ".zsh_history", ".bash_history"
+        ]
+        for subpath in blockedSubpaths {
+            if lowerPath.contains(subpath) || expanded.contains(subpath) {
+                return nil
+            }
+        }
+
+        return ExtractedAction(
+            toolName: "write_file",
+            arguments: ["path": path, "content": content],
+            literal: content
+        )
+    }
+
     // MARK: Parsing
 
     /// Parse the bounded extraction JSON the decomposition prompt requests:

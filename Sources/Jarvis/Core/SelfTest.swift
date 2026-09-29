@@ -3067,6 +3067,171 @@ enum SelfTest {
         check(sv39Compiled,
               "set_volume det extraction 20.39: compile gate passes, level preserved in compiled plan")
 
+        // 20.40–20.66 write_file deterministic extractor: positive, adversarial, preservation, compile, physical E2E.
+        // Verifies finite grammar, exact argument preservation, path sandbox boundaries, and physical execution.
+
+        // 20.40 Positive basic single quotes: "write the text 'hello world' to ~/Downloads/test.txt"
+        let wf40 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'hello world' to ~/Downloads/test.txt")
+        check(wf40?.toolName == "write_file" && wf40?.arguments["path"] == "~/Downloads/test.txt" && wf40?.arguments["content"] == "hello world" && wf40?.literal == "hello world",
+              "write_file det extraction 20.40: basic single quotes → path and content extracted")
+
+        // 20.41 Positive double quotes with spaces: "write the line \"Jarvis  TEST  123!\" to build/test.txt"
+        let wf41 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the line \"Jarvis  TEST  123!\" to build/test.txt")
+        check(wf41?.toolName == "write_file" && wf41?.arguments["path"] == "build/test.txt" && wf41?.arguments["content"] == "Jarvis  TEST  123!",
+              "write_file det extraction 20.41: double quotes with multiple spaces preserved")
+
+        // 20.42 Positive smart quotes: "save “special config” to file ~/Documents/config.json"
+        let wf42 = PlannerExtraction.explicitWriteFileExtraction(goal: "save “special config” to file ~/Documents/config.json")
+        check(wf42?.toolName == "write_file" && wf42?.arguments["path"] == "~/Documents/config.json" && wf42?.arguments["content"] == "special config",
+              "write_file det extraction 20.42: smart quotes parsed properly")
+
+        // 20.43 Positive capitalization preserved: "write the text 'MixedCase_CamelAndSNAKE' to build/caps.txt"
+        let wf43 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'MixedCase_CamelAndSNAKE' to build/caps.txt")
+        check(wf43?.arguments["content"] == "MixedCase_CamelAndSNAKE",
+              "write_file det extraction 20.43: exact mixed casing preserved")
+
+        // 20.44 Positive punctuation preserved: "write the phrase 'key = value; foo: bar, baz!' to build/punct.txt"
+        let wf44 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the phrase 'key = value; foo: bar, baz!' to build/punct.txt")
+        check(wf44?.arguments["content"] == "key = value; foo: bar, baz!",
+              "write_file det extraction 20.44: complex punctuation preserved")
+
+        // 20.45 Positive numbers preserved: "write the string 'port=8080 timeout=30' to build/numbers.txt"
+        let wf45 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the string 'port=8080 timeout=30' to build/numbers.txt")
+        check(wf45?.arguments["content"] == "port=8080 timeout=30",
+              "write_file det extraction 20.45: numbers preserved")
+
+        // 20.46 Positive spaces preserved: "write the words 'three   spaces   here' to build/spaces.txt"
+        let wf46 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the words 'three   spaces   here' to build/spaces.txt")
+        check(wf46?.arguments["content"] == "three   spaces   here",
+              "write_file det extraction 20.46: internal consecutive spaces preserved")
+
+        // 20.47 Positive unusual literal: "write the text 'jarvis_wf_e2e_token_99_XYZ' to build/token.txt"
+        let wf47 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'jarvis_wf_e2e_token_99_XYZ' to build/token.txt")
+        check(wf47?.arguments["content"] == "jarvis_wf_e2e_token_99_XYZ",
+              "write_file det extraction 20.47: unusual token literal preserved")
+
+        // 20.48 Positive relative workspace path: "save 'workspace note' to build/notes.txt"
+        let wf48 = PlannerExtraction.explicitWriteFileExtraction(goal: "save 'workspace note' to build/notes.txt")
+        check(wf48?.arguments["path"] == "build/notes.txt",
+              "write_file det extraction 20.48: relative workspace path accepted")
+
+        // 20.49 Positive Downloads path: "please write the text 'download item' to ~/Downloads/item.txt"
+        let wf49 = PlannerExtraction.explicitWriteFileExtraction(goal: "please write the text 'download item' to ~/Downloads/item.txt")
+        check(wf49?.arguments["path"] == "~/Downloads/item.txt",
+              "write_file det extraction 20.49: ~/Downloads path accepted")
+
+        // 20.50 Positive Documents path: "can you save 'document data' to file ~/Documents/doc.txt"
+        let wf50 = PlannerExtraction.explicitWriteFileExtraction(goal: "can you save 'document data' to file ~/Documents/doc.txt")
+        check(wf50?.arguments["path"] == "~/Documents/doc.txt",
+              "write_file det extraction 20.50: ~/Documents path accepted")
+
+        // 20.51 Positive content containing connector "to": "write the text 'send reply to user' to build/reply.txt"
+        let wf51 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'send reply to user' to build/reply.txt")
+        check(wf51?.arguments["content"] == "send reply to user" && wf51?.arguments["path"] == "build/reply.txt",
+              "write_file det extraction 20.51: quoted content containing 'to' does not split connector")
+
+        // 20.52 Positive Unicode content: "write the text '🚀 Launching JARVIS at 100% ⚡️' to build/unicode.txt"
+        let wf52 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text '🚀 Launching JARVIS at 100% ⚡️' to build/unicode.txt")
+        check(wf52?.arguments["content"] == "🚀 Launching JARVIS at 100% ⚡️",
+              "write_file det extraction 20.52: Unicode characters preserved")
+
+        // 20.53 Adversarial negation: "don't write 'hello' to build/test.txt"
+        let wf53 = PlannerExtraction.explicitWriteFileExtraction(goal: "don't write 'hello' to build/test.txt")
+        check(wf53 == nil, "write_file det extraction 20.53: negation guard rejects 'don't write'")
+
+        // 20.54 Adversarial question: "what should I write to build/test.txt?"
+        let wf54 = PlannerExtraction.explicitWriteFileExtraction(goal: "what should I write to build/test.txt?")
+        check(wf54 == nil, "write_file det extraction 20.54: question guard rejects 'what should I write'")
+
+        // 20.55 Adversarial compound command: "write 'hello' to test.txt and then open Safari"
+        let wf55 = PlannerExtraction.explicitWriteFileExtraction(goal: "write 'hello' to test.txt and then open Safari")
+        check(wf55 == nil, "write_file det extraction 20.55: compound guard rejects 'and then'")
+
+        // 20.56 Adversarial multiple writes: "write 'hello' to a.txt and write 'world' to b.txt"
+        let wf56 = PlannerExtraction.explicitWriteFileExtraction(goal: "write 'hello' to a.txt and write 'world' to b.txt")
+        check(wf56 == nil, "write_file det extraction 20.56: multiple write commands in one goal rejected")
+
+        // 20.57 Adversarial missing path: "write the text 'hello world' to"
+        let wf57 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'hello world' to")
+        check(wf57 == nil, "write_file det extraction 20.57: missing path rejected")
+
+        // 20.58 Adversarial missing content: "write to build/test.txt"
+        let wf58 = PlannerExtraction.explicitWriteFileExtraction(goal: "write to build/test.txt")
+        check(wf58 == nil, "write_file det extraction 20.58: missing content rejected")
+
+        // 20.59 Adversarial unquoted content: "write hello world to build/test.txt"
+        let wf59 = PlannerExtraction.explicitWriteFileExtraction(goal: "write hello world to build/test.txt")
+        check(wf59 == nil, "write_file det extraction 20.59: unquoted content rejected (requires delimiters)")
+
+        // 20.60 Adversarial malformed delimiter: "write the text 'hello world\" to build/test.txt"
+        let wf60 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'hello world\" to build/test.txt")
+        check(wf60 == nil, "write_file det extraction 20.60: mismatched delimiters (' vs \") rejected")
+
+        // 20.61 Adversarial directory traversal: "write the text 'hello' to ../../etc/passwd"
+        let wf61 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'hello' to ../../etc/passwd")
+        check(wf61 == nil, "write_file det extraction 20.61: directory traversal '..' rejected")
+
+        // 20.62 Adversarial protected system path: "write the text 'evil' to /System/Library/test.txt"
+        let wf62 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'evil' to /System/Library/test.txt")
+        check(wf62 == nil, "write_file det extraction 20.62: protected system path /System rejected")
+
+        // 20.63 Adversarial protected home subpath: "write the text 'key' to ~/.ssh/id_rsa"
+        let wf63 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'key' to ~/.ssh/id_rsa")
+        check(wf63 == nil, "write_file det extraction 20.63: sensitive subpath ~/.ssh rejected")
+
+        // 20.64 Adversarial bare directory target: "write the text 'hello' to ~/Downloads/"
+        let wf64 = PlannerExtraction.explicitWriteFileExtraction(goal: "write the text 'hello' to ~/Downloads/")
+        check(wf64 == nil, "write_file det extraction 20.64: trailing slash directory target rejected")
+
+        // 20.65 Compile gate: well-formed write_file ExtractedAction compiles, validates, preserves args
+        let wf65Extraction = ExtractedAction(
+            toolName: "write_file",
+            arguments: ["path": "build/compile_test.txt", "content": "Jarvis  Exact  123!"],
+            literal: "Jarvis  Exact  123!")
+        var wf65Compiled = false
+        if case .success(let plan) = PlannerExtraction.compile(wf65Extraction, goal: "write the text \"Jarvis  Exact  123!\" to build/compile_test.txt"),
+           plan.steps.count == 1,
+           plan.steps.first?.toolName == "write_file",
+           plan.steps.first?.arguments["path"] == "build/compile_test.txt",
+           plan.steps.first?.arguments["content"] == "Jarvis  Exact  123!" {
+            wf65Compiled = true
+        }
+        check(wf65Compiled, "write_file det extraction 20.65: compile gate passes, path & content preserved")
+
+        // 20.66 Physical E2E verification: extraction → compile → validate → execute → verify on disk
+        let e2eTestFileName = "build/jarvis_e2e_wf_\(UUID().uuidString.prefix(8)).txt"
+        let e2eExpectedContent = "JARVIS_PHYSICAL_E2E_VERIFIED_\(UUID().uuidString)"
+        let e2eGoal = "write the text '\(e2eExpectedContent)' to \(e2eTestFileName)"
+        var physicalE2ESuccess = false
+
+        let e2eSem = DispatchSemaphore(value: 0)
+        Task {
+            if let extracted = PlannerExtraction.explicitWriteFileExtraction(goal: e2eGoal),
+               case .success(let plan) = PlannerExtraction.compile(extracted, goal: e2eGoal),
+               case .success(let validatedPlan) = PlanValidator.validate(plan),
+               let step = validatedPlan.steps.first {
+                let tool = WriteFileTool()
+                if let result = try? await tool.execute(arguments: step.arguments), result.success {
+                    if let obs = try? await tool.observe(expected: result) {
+                        let verification = tool.verifyDetailed(expected: result, observed: obs)
+                        if verification.outcome == .passed {
+                            // Read back independently from disk
+                            if let diskContent = try? String(contentsOfFile: e2eTestFileName, encoding: .utf8),
+                               diskContent == e2eExpectedContent {
+                                physicalE2ESuccess = true
+                            }
+                        }
+                    }
+                }
+            }
+            try? FileManager.default.removeItem(atPath: e2eTestFileName)
+            e2eSem.signal()
+        }
+        while e2eSem.wait(timeout: .now() + 0.05) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        check(physicalE2ESuccess, "write_file physical E2E 20.66: extraction → compile → validate → execute → verify matches disk byte-for-byte")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

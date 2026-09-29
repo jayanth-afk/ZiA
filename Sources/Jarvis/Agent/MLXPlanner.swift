@@ -624,6 +624,26 @@ actor MLXPlanner {
             }
         }
 
+        // Deterministic write_file extraction for explicit quoted content and path
+        // ("write the text 'X' to Y", "save 'X' to file Y").
+        if let extractedWrite = PlannerExtraction.explicitWriteFileExtraction(goal: goal) {
+            let compileResultWrite = await MainActor.run { PlannerExtraction.compile(extractedWrite, goal: goal) }
+            switch compileResultWrite {
+            case .success(let plan):
+                await MainActor.run {
+                    ArgumentPreservationRecorder.shared.recordCompilation(
+                        originalGoal: goal,
+                        extractedLiteral: extractedWrite.literal,
+                        compiledLiteral: PlannerExtraction.compiledValue(carrying: extractedWrite.literal, in: plan))
+                }
+                JarvisLogger.brain.info("MLXPlanner used write_file deterministic extraction (0 model calls)")
+                return plan
+            case .failure(let error):
+                // Soft fall-through: the model gets a chance at an unusual request.
+                JarvisLogger.brain.warning("write_file det extraction compile failed (\(error.description)) — falling through to model")
+            }
+        }
+
         // Catalog: identical deterministic hint + forced-inclusion logic as
         // plan(), plus the recency web hint so freshness-sensitive goals see
         // the web tools.
@@ -826,6 +846,10 @@ actor MLXPlanner {
         let shellVerbs = ["run ", "execute ", "shell", "command ", "print ", "echo ", "list files", "directory", "working directory", "show me the current"]
         if shellVerbs.contains(where: { g.contains($0) }) { families.insert("shell") }
 
+        if g.contains("write ") || g.contains("save ") || g.contains("file") {
+            families.insert("file")
+        }
+
         return families
     }
 
@@ -838,6 +862,7 @@ actor MLXPlanner {
             switch family {
             case "app": return tools.filter { $0.name == "open_app" }
             case "volume": return tools.filter { $0.name == "set_volume" }
+            case "file": return tools.filter { $0.name == "write_file" }
             case "shell": return tools.filter { $0.name == "run_shell" }
             case "web": return tools.filter { ["web_search", "fetch_url", "open_browser"].contains($0.name) }
             default: return tools.filter { $0.name == family }

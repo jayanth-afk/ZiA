@@ -39,6 +39,12 @@ struct JarvisApp: App {
             exit(0)
         }
 
+        if let autoIdx = CommandLine.arguments.firstIndex(of: "--autonomy"),
+           CommandLine.arguments.count > autoIdx + 1,
+           let lvl = Int(CommandLine.arguments[autoIdx + 1]) {
+            Config.shared.autonomyLevel = lvl
+        }
+
         // Handle --goal <goal>: run ONE goal through the full production
         // pipeline (AgentLoop.run → router | direct answer | planner →
         // validation → execution → verification) and print route + response.

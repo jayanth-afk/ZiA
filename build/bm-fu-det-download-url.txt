@@ -1,0 +1,19 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [fu-det-download-url #1] route=planner struct=✓ sem=✓ arg=preserved 1697ms — web/tool path engaged (recency-safe)
+  [fu-det-download-url #2] route=planner struct=✓ sem=✓ arg=preserved 1660ms — web/tool path engaged (recency-safe)
+  [fu-det-download-url #3] route=planner struct=✓ sem=✓ arg=preserved 1659ms — web/tool path engaged (recency-safe)
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 1659ms  min 1658ms  max 1696ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    fu-det-download-url (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

@@ -1,0 +1,20 @@
+
+════════ OFFLINE REPLAY: structural repair + compilation gates ════════
+  ✓ replay: split command/args shape is structurally repairable
+  ✓ replay: repair re-joins model's own content byte-for-byte (got: echo offline_replay_token)
+  ✓ replay: repair never substitutes prompt-example values
+  ✓ replay: repaired plan passes PlanValidator with user literal intact
+  ✓ replay: array-wrapped scalar repaired to scalar
+  ✓ replay: fabricated literal (not a goal span) rejected by compilation gate
+  ✓ replay: substituted literal (anchor absent from compiled args) rejected
+  ✓ replay: unknown tool rejected by deterministic compiler
+  ✓ replay: undeclared argument rejected by deterministic compiler
+  ✓ replay: decomposed compiler applies PlanValidator shell safety
+  ✓ replay: recency signals detected (current/today's)
+  ✓ replay: no recency signal in static fact question
+  ✓ replay: 'now' inside 'know' does not false-positive
+  ✓ replay: 'right now' detected
+  ✓ replay: recency compiler replaces composition-only plan with web_search
+  ✓ replay: recency-forced plan contains no stale composition step
+
+  Offline replay: 16 passed, 0 failed

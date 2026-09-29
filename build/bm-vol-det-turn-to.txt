@@ -1,0 +1,19 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [vol-det-turn-to #1] route=planner struct=✓ sem=✓ arg=preserved 2436ms — planner route + tool family 'volume' executed
+  [vol-det-turn-to #2] route=planner struct=✓ sem=✓ arg=preserved 2267ms — planner route + tool family 'volume' executed
+  [vol-det-turn-to #3] route=planner struct=✓ sem=✓ arg=preserved 2263ms — planner route + tool family 'volume' executed
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 2267ms  min 2262ms  max 2436ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    vol-det-turn-to (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

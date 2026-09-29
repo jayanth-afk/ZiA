@@ -1,0 +1,19 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [ws-look-up #1] route=planner struct=✓ sem=✓ arg=preserved 5372ms — web/tool path engaged (recency-safe) [L#0: OK(goal="look up the boiling point of water" steps=[web_search{query="boiling point of water"}]), raw={"tool": "web_search", "arguments": {"query": "boiling point of water"]
+  [ws-look-up #2] route=planner struct=✓ sem=✓ arg=preserved 3269ms — web/tool path engaged (recency-safe) [L#0: OK(goal="look up the boiling point of water" steps=[web_search{query="boiling point of water"}]), raw={"tool": "web_search", "arguments": {"query": "boiling point of water"] [L#1: OK(goal="look up the boiling point of water" steps=[web_search{query="boiling point of water"}]), raw={"tool": "web_search", "arguments": {"query": "boiling point of water"]
+  [ws-look-up #3] route=planner struct=✓ sem=✓ arg=preserved 3259ms — web/tool path engaged (recency-safe) [L#0: OK(goal="look up the boiling point of water" steps=[web_search{query="boiling point of water"}]), raw={"tool": "web_search", "arguments": {"query": "boiling point of water"] [L#1: OK(goal="look up the boiling point of water" steps=[web_search{query="boiling point of water"}]), raw={"tool": "web_search", "arguments": {"query": "boiling point of water"]
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 3269ms  min 3259ms  max 5372ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    ws-look-up (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

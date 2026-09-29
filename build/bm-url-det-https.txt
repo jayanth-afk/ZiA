@@ -1,0 +1,11 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 0 (repeated trials, no n=1 percentages)
+
+  Per-case:
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

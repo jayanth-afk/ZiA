@@ -1,0 +1,92 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [case1-direct-fact #1] route=directAnswer struct=✓ sem=✓ arg=n/a 3327ms — direct-answer route, planner not called
+  [case1-direct-fact #2] route=directAnswer struct=✓ sem=✓ arg=n/a 2896ms — direct-answer route, planner not called
+  [case1-direct-fact #3] route=directAnswer struct=✓ sem=✓ arg=n/a 2982ms — direct-answer route, planner not called
+  [case2-explicit-search #1] route=planner struct=✓ sem=✓ arg=preserved 6052ms — web/tool path engaged (recency-safe)
+  [case2-explicit-search #2] route=planner struct=✓ sem=✓ arg=preserved 3299ms — web/tool path engaged (recency-safe)
+  [case2-explicit-search #3] route=planner struct=✓ sem=✓ arg=preserved 3352ms — web/tool path engaged (recency-safe)
+  [case3-recency-fact #1] route=planner struct=✓ sem=✓ arg=n/a 3458ms — web/tool path engaged (recency-safe)
+  [case3-recency-fact #2] route=planner struct=✓ sem=✓ arg=n/a 3317ms — web/tool path engaged (recency-safe)
+  [case3-recency-fact #3] route=planner struct=✓ sem=✓ arg=n/a 3495ms — web/tool path engaged (recency-safe)
+  [ctrl-det-time #1] route=deterministic struct=✓ sem=✓ arg=n/a 1143ms — deterministic route, no model calls
+  [ctrl-det-time #2] route=deterministic struct=✓ sem=✓ arg=n/a 1137ms — deterministic route, no model calls
+  [ctrl-det-time #3] route=deterministic struct=✓ sem=✓ arg=n/a 1134ms — deterministic route, no model calls
+  [ctrl-det-open #1] route=deterministic struct=✓ sem=✓ arg=n/a 1411ms — deterministic route, no model calls
+  [ctrl-det-open #2] route=deterministic struct=✓ sem=✓ arg=n/a 1226ms — deterministic route, no model calls
+  [ctrl-det-open #3] route=deterministic struct=✓ sem=✓ arg=n/a 1233ms — deterministic route, no model calls
+  [ctrl-planner-shell #1] route=planner struct=✓ sem=✓ arg=preserved 2021ms — planner route + tool family 'shell' executed
+  [ctrl-planner-shell #2] route=planner struct=✓ sem=✓ arg=preserved 2021ms — planner route + tool family 'shell' executed
+  [ctrl-planner-shell #3] route=planner struct=✓ sem=✓ arg=preserved 2020ms — planner route + tool family 'shell' executed
+  [arg-unusual #1] route=planner struct=✓ sem=✓ arg=preserved 2020ms — planner route + tool family 'shell' executed
+  [arg-unusual #2] route=planner struct=✓ sem=✓ arg=preserved 2022ms — planner route + tool family 'shell' executed
+  [arg-unusual #3] route=planner struct=✓ sem=✓ arg=preserved 2022ms — planner route + tool family 'shell' executed
+  [arg-unusual #4] route=planner struct=✓ sem=✓ arg=preserved 2021ms — planner route + tool family 'shell' executed
+  [arg-unusual #5] route=planner struct=✓ sem=✓ arg=preserved 2020ms — planner route + tool family 'shell' executed
+  [arg-spaces #1] route=planner struct=✓ sem=✓ arg=preserved 2022ms — planner route + tool family 'shell' executed
+  [arg-spaces #2] route=planner struct=✓ sem=✓ arg=preserved 2022ms — planner route + tool family 'shell' executed
+  [arg-spaces #3] route=planner struct=✓ sem=✓ arg=preserved 2020ms — planner route + tool family 'shell' executed
+  [arg-punct #1] route=planner struct=✓ sem=✓ arg=preserved 2018ms — planner route + tool family 'shell' executed
+  [arg-punct #2] route=planner struct=✓ sem=✓ arg=preserved 2018ms — planner route + tool family 'shell' executed
+  [arg-punct #3] route=planner struct=✓ sem=✓ arg=preserved 2022ms — planner route + tool family 'shell' executed
+  [arg-numbers #1] route=planner struct=✓ sem=✓ arg=preserved 2021ms — planner route + tool family 'shell' executed
+  [arg-numbers #2] route=planner struct=✓ sem=✓ arg=preserved 2020ms — planner route + tool family 'shell' executed
+  [arg-numbers #3] route=planner struct=✓ sem=✓ arg=preserved 2020ms — planner route + tool family 'shell' executed
+  [ctrl-det-open-launch #1] route=deterministic struct=✓ sem=✓ arg=n/a 1334ms — deterministic route, no model calls
+  [ctrl-det-open-launch #2] route=deterministic struct=✓ sem=✓ arg=n/a 1225ms — deterministic route, no model calls
+  [ctrl-det-open-launch #3] route=deterministic struct=✓ sem=✓ arg=n/a 1327ms — deterministic route, no model calls
+  [ctrl-det-open-switch #1] route=deterministic struct=✓ sem=✓ arg=n/a 1331ms — deterministic route, no model calls
+  [ctrl-det-open-switch #2] route=deterministic struct=✓ sem=✓ arg=n/a 1233ms — deterministic route, no model calls
+  [ctrl-det-open-switch #3] route=deterministic struct=✓ sem=✓ arg=n/a 1243ms — deterministic route, no model calls
+  [oa-det-please-open #1] route=planner struct=✓ sem=✓ arg=preserved 1927ms — planner route + tool family 'app' executed
+  [oa-det-please-open #2] route=planner struct=✓ sem=✓ arg=preserved 1927ms — planner route + tool family 'app' executed
+  [oa-det-please-open #3] route=planner struct=✓ sem=✓ arg=preserved 1826ms — planner route + tool family 'app' executed
+  [oa-det-can-you #1] route=planner struct=✓ sem=✓ arg=preserved 1934ms — planner route + tool family 'app' executed
+  [oa-det-can-you #2] route=planner struct=✓ sem=✓ arg=preserved 1935ms — planner route + tool family 'app' executed
+  [oa-det-can-you #3] route=planner struct=✓ sem=✓ arg=preserved 1935ms — planner route + tool family 'app' executed
+  [ws-history-rome #1] route=planner struct=✓ sem=✓ arg=preserved 3541ms — web/tool path engaged (recency-safe)
+  [ws-history-rome #2] route=planner struct=✓ sem=✓ arg=preserved 3537ms — web/tool path engaged (recency-safe)
+  [ws-history-rome #3] route=planner struct=✓ sem=✓ arg=preserved 3208ms — web/tool path engaged (recency-safe)
+  [ws-look-up #1] route=planner struct=✓ sem=✓ arg=preserved 3361ms — web/tool path engaged (recency-safe)
+  [ws-look-up #2] route=planner struct=✓ sem=✓ arg=preserved 3188ms — web/tool path engaged (recency-safe)
+  [ws-look-up #3] route=planner struct=✓ sem=✓ arg=preserved 3392ms — web/tool path engaged (recency-safe)
+  [ws-google #1] route=planner struct=✓ sem=✓ arg=preserved 3417ms — web/tool path engaged (recency-safe)
+  [ws-google #2] route=planner struct=✓ sem=✓ arg=preserved 3336ms — web/tool path engaged (recency-safe)
+  [ws-google #3] route=planner struct=✓ sem=✓ arg=preserved 3164ms — web/tool path engaged (recency-safe)
+  [ws-lit-numbers #1] route=planner struct=✓ sem=✓ arg=preserved 3421ms — web/tool path engaged (recency-safe)
+  [ws-lit-numbers #2] route=planner struct=✓ sem=✓ arg=preserved 3091ms — web/tool path engaged (recency-safe)
+  [ws-lit-numbers #3] route=planner struct=✓ sem=✓ arg=preserved 3187ms — web/tool path engaged (recency-safe)
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 56 (repeated trials, no n=1 percentages)
+  DETERMINISTIC ROUTE (route=deterministic, n=12): semantic 12/12
+  DIRECT-ANSWER ROUTE (route=directAnswer, n=3): semantic 3/3
+  TIER-A PLANNER ROUTE (route=planner, n=41): semantic 41/41, argument preservation 38/38 byte-exact
+  planner latency (n=41): median 2021ms  min 1826ms  max 6052ms
+  planner repair (structural) usage: 0/41 runs
+  deterministic latency (n=12): median 1232ms  max 1411ms
+  ARGUMENT PRESERVATION (explicit metric): 38/38 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    case1-direct-fact (n=3, routes=directAnswer): semantic 3/3
+    case2-explicit-search (n=3, routes=planner): semantic 3/3, preserved 3/3
+    case3-recency-fact (n=3, routes=planner): semantic 3/3
+    ctrl-det-time (n=3, routes=deterministic): semantic 3/3
+    ctrl-det-open (n=3, routes=deterministic): semantic 3/3
+    ctrl-planner-shell (n=3, routes=planner): semantic 3/3, preserved 3/3
+    arg-unusual (n=5, routes=planner): semantic 5/5, preserved 5/5
+    arg-spaces (n=3, routes=planner): semantic 3/3, preserved 3/3
+    arg-punct (n=3, routes=planner): semantic 3/3, preserved 3/3
+    arg-numbers (n=3, routes=planner): semantic 3/3, preserved 3/3
+    ctrl-det-open-launch (n=3, routes=deterministic): semantic 3/3
+    ctrl-det-open-switch (n=3, routes=deterministic): semantic 3/3
+    oa-det-please-open (n=3, routes=planner): semantic 3/3, preserved 3/3
+    oa-det-can-you (n=3, routes=planner): semantic 3/3, preserved 3/3
+    ws-history-rome (n=3, routes=planner): semantic 3/3, preserved 3/3
+    ws-look-up (n=3, routes=planner): semantic 3/3, preserved 3/3
+    ws-google (n=3, routes=planner): semantic 3/3, preserved 3/3
+    ws-lit-numbers (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

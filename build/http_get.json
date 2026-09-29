@@ -1,0 +1,20 @@
+Title: get
+URL: https://httpbin.org/get
+Status: 200
+Content Length: 557 bytes
+
+--- Content ---
+{
+  "args": {}, 
+  "headers": {
+    "Accept": "text/html,application/xhtml+xml,application/json,text/plain;q=0.9,*/*;q=0.8", 
+    "Accept-Encoding": "gzip, deflate, br", 
+    "Accept-Language": "en-IN,en;q=0.9", 
+    "Host": "httpbin.org", 
+    "Priority": "u=3", 
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15 JARVIS/1.0", 
+    "X-Amzn-Trace-Id": "Root=1-6abc0e86-558a21003acd285203f45545"
+  }, 
+  "origin": "115.244.141.202", 
+  "url": "https://httpbin.org/get"
+}

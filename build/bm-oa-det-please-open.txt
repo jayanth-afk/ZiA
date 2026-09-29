@@ -1,0 +1,19 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [oa-det-please-open #1] route=planner struct=✓ sem=✓ arg=preserved 2217ms — planner route + tool family 'app' executed
+  [oa-det-please-open #2] route=planner struct=✓ sem=✓ arg=preserved 1932ms — planner route + tool family 'app' executed
+  [oa-det-please-open #3] route=planner struct=✓ sem=✓ arg=preserved 1830ms — planner route + tool family 'app' executed
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 1931ms  min 1830ms  max 2217ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    oa-det-please-open (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

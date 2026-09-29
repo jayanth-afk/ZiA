@@ -1,0 +1,17 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [ctrl-det-vol-set #1] route=deterministic struct=✓ sem=✓ arg=n/a 1415ms — deterministic route, no model calls
+  [ctrl-det-vol-set #2] route=deterministic struct=✓ sem=✓ arg=n/a 1237ms — deterministic route, no model calls
+  [ctrl-det-vol-set #3] route=deterministic struct=✓ sem=✓ arg=n/a 1237ms — deterministic route, no model calls
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  DETERMINISTIC ROUTE (route=deterministic, n=3): semantic 3/3
+  deterministic latency (n=3): median 1237ms  max 1414ms
+
+  Per-case:
+    ctrl-det-vol-set (n=3, routes=deterministic): semantic 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

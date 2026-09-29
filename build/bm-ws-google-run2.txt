@@ -1,0 +1,19 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [ws-google #1] route=planner struct=✓ sem=✓ arg=preserved 6027ms — web/tool path engaged (recency-safe)
+  [ws-google #2] route=planner struct=✓ sem=✓ arg=preserved 3312ms — web/tool path engaged (recency-safe)
+  [ws-google #3] route=planner struct=✓ sem=✓ arg=preserved 3432ms — web/tool path engaged (recency-safe)
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3, argument preservation 3/3 byte-exact
+  planner latency (n=3): median 3432ms  min 3311ms  max 6027ms
+  planner repair (structural) usage: 0/3 runs
+  ARGUMENT PRESERVATION (explicit metric): 3/3 byte-exact across preservation-instrumented runs
+
+  Per-case:
+    ws-google (n=3, routes=planner): semantic 3/3, preserved 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

@@ -1,0 +1,21 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [ws-history-rome #1] route=planner struct=✗ sem=✗ arg=n/a 89024ms — planner route but no web/tool behavior: ''
+  [ws-history-rome #2] route=planner struct=✗ sem=✗ arg=n/a 136253ms — planner route but no web/tool behavior: ''
+  [ws-history-rome #3] route=planner struct=✗ sem=✗ arg=n/a 68603ms — planner route but no web/tool behavior: ''
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 0/3
+  planner latency (n=3): median 89024ms  min 68603ms  max 136252ms
+  planner repair (structural) usage: 0/3 runs
+
+  Per-case:
+    ws-history-rome (n=3, routes=planner): semantic 0/3
+
+  ❌ 3 run(s) failed semantic expectation:
+    - ws-history-rome#1: planner route but no web/tool behavior: ''
+    - ws-history-rome#2: planner route but no web/tool behavior: ''
+    - ws-history-rome#3: planner route but no web/tool behavior: ''
+───────────────────────────────────────────────────────────────
+

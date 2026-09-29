@@ -1,0 +1,18 @@
+
+════════ LIVE MATRIX: production pipeline, repeated trials ════════
+  [ws-history-rome #1] route=planner struct=✓ sem=✓ arg=n/a 5481ms — web/tool path engaged (recency-safe)
+  [ws-history-rome #2] route=planner struct=✓ sem=✓ arg=n/a 3268ms — web/tool path engaged (recency-safe)
+  [ws-history-rome #3] route=planner struct=✓ sem=✓ arg=n/a 3231ms — web/tool path engaged (recency-safe)
+
+────────────── PLANNER ROUTING BENCHMARK RESULTS ──────────────
+  Runs: 3 (repeated trials, no n=1 percentages)
+  TIER-A PLANNER ROUTE (route=planner, n=3): semantic 3/3
+  planner latency (n=3): median 3267ms  min 3231ms  max 5481ms
+  planner repair (structural) usage: 0/3 runs
+
+  Per-case:
+    ws-history-rome (n=3, routes=planner): semantic 3/3
+
+  ✅ ALL ROUTING CASES SEMANTIC GREEN
+───────────────────────────────────────────────────────────────
+

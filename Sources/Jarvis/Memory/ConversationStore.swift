@@ -97,6 +97,13 @@ final class ConversationStore: @unchecked Sendable {
             timestamp REAL NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages(conversation_id);
+        CREATE TABLE IF NOT EXISTS user_facts (
+            id TEXT PRIMARY KEY,
+            content TEXT NOT NULL,
+            category TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            created_at REAL NOT NULL
+        );
         """
 
         lock.lock()
@@ -267,6 +274,66 @@ final class ConversationStore: @unchecked Sendable {
         sqlite3_bind_text(stmt, 1, conversationId, -1, SQLITE_TRANSIENT)
         sqlite3_step(stmt)
         JarvisLogger.memory.info("Cleared conversation history for '\(conversationId)'")
+    }
+
+    /// Persist a user-approved/profile fact separately from the transcript.
+    func saveUserFact(_ fact: UserFact) {
+        lock.lock()
+        defer { lock.unlock() }
+        let sql = "INSERT OR REPLACE INTO user_facts (id, content, category, confidence, created_at) VALUES (?, ?, ?, ?, ?);"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, fact.id.uuidString, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 2, fact.content, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_text(stmt, 3, fact.category.rawValue, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_double(stmt, 4, fact.confidence)
+        sqlite3_bind_double(stmt, 5, fact.createdAt.timeIntervalSince1970)
+        if sqlite3_step(stmt) != SQLITE_DONE {
+            JarvisLogger.memory.error("Failed to persist user profile fact")
+        }
+    }
+
+    /// Load persisted facts in stable oldest-first order.
+    func loadUserFacts() -> [UserFact] {
+        lock.lock()
+        defer { lock.unlock() }
+        let sql = "SELECT id, content, category, confidence, created_at FROM user_facts ORDER BY created_at ASC, id ASC;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+        var facts: [UserFact] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let idText = sqlite3_column_text(stmt, 0),
+                  let id = UUID(uuidString: String(cString: idText)),
+                  let contentText = sqlite3_column_text(stmt, 1),
+                  let categoryText = sqlite3_column_text(stmt, 2),
+                  let category = MemoryCategory(rawValue: String(cString: categoryText)) else { continue }
+            facts.append(UserFact(
+                id: id,
+                content: String(cString: contentText),
+                category: category,
+                confidence: sqlite3_column_double(stmt, 3),
+                createdAt: Date(timeIntervalSince1970: sqlite3_column_double(stmt, 4))))
+        }
+        return facts
+    }
+
+    func deleteUserFact(id: UUID) {
+        lock.lock()
+        defer { lock.unlock() }
+        let sql = "DELETE FROM user_facts WHERE id = ?;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, id.uuidString, -1, SQLITE_TRANSIENT)
+        _ = sqlite3_step(stmt)
+    }
+
+    func deleteAllUserFacts() {
+        lock.lock()
+        defer { lock.unlock() }
+        _ = sqlite3_exec(db, "DELETE FROM user_facts;", nil, nil, nil)
     }
 
     /// Count total stored messages.

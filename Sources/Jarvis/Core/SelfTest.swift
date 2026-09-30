@@ -1359,6 +1359,8 @@ enum SelfTest {
         profile.clearAll()
         let fact1 = profile.remember(content: "User prefers dark mode in all editors", category: .explicit)
         check(fact1 != nil, "Explicit user fact remembered")
+        check(ConversationStore.shared.loadUserFacts().contains(where: { $0.id == fact1?.id }),
+              "Explicit user fact is persisted separately from conversation history")
         check(profile.allFacts.count == 1, "Profile stores 1 fact")
         check(profile.summary().contains("dark mode"), "Profile summary includes remembered fact")
 
@@ -1369,6 +1371,10 @@ enum SelfTest {
         profile.purgeTemporaryFacts()
         check(profile.allFacts.count == 1, "purgeTemporaryFacts cleans session memories")
         check(profile.allFacts.first?.category == .explicit, "Explicit memories preserved across purge")
+
+        let emptyForget = profile.forget(matching: "  ")
+        check(emptyForget == 0 && profile.allFacts.count == 1,
+              "Empty forget query cannot erase the complete profile")
 
         let forgotten = profile.forget(matching: "dark mode")
         check(forgotten == 1, "Forgot 1 fact matching query")
@@ -1419,6 +1425,34 @@ enum SelfTest {
         check(mm.whatDoYouRemember().contains("Swift"), "MemoryManager stores and formats memories")
         let context = mm.retrieveContext(for: "Which programming language does the user like?")
         check(context.contains("Swift"), "MemoryManager semantic retrieval injects relevant context")
+        let persistedExplicitFact = ConversationStore.shared.loadUserFacts().first {
+            $0.content == "User's favorite programming language is Swift"
+        }
+        check(persistedExplicitFact?.category == .explicit,
+              "Explicit memory survives a profile reload boundary in SQLite")
+        let memoryPromptHash = MLXPlanner.promptSHA256Hex(
+            goal: "choose a coding example",
+            tools: ToolRegistry.shared.allTools,
+            conversationTurns: [],
+            userMemoryContext: context)
+        let noMemoryPromptHash = MLXPlanner.promptSHA256Hex(
+            goal: "choose a coding example",
+            tools: ToolRegistry.shared.allTools,
+            conversationTurns: [])
+        check(memoryPromptHash != noMemoryPromptHash,
+              "Retrieved profile memory changes planner context without a model call")
+        check(mm.forget(matching: "programming language") == 1,
+              "Forgetting a profile fact removes its indexed memory record")
+        check(!mm.retrieveContext(for: "Which programming language does the user like?").contains("Swift"),
+              "Forgotten user memory is absent from subsequent semantic retrieval")
+        let previousInferredMemorySetting = Config.shared.inferredMemoryEnabled
+        Config.shared.inferredMemoryEnabled = true
+        _ = mm.remember(fact: "I prefer the fictional Nimbus editor", category: .inferred)
+        Config.shared.inferredMemoryEnabled = false
+        let disabledInferredContext = mm.retrieveContext(for: "I prefer the fictional Nimbus editor")
+        Config.shared.inferredMemoryEnabled = previousInferredMemorySetting
+        check(!disabledInferredContext.contains("Nimbus"),
+              "Disabling inferred memory suppresses already-indexed inferred facts from context")
         mm.clearAll()
 
         // ── Phase 10: Browser / Research / Web Agent Tests ──

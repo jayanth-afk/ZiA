@@ -80,6 +80,19 @@ final class VectorSearch: @unchecked Sendable {
         return vectors.count < initialCount
     }
 
+    /// Remove matching indexed text (optionally restricted to one record type).
+    /// Used to keep a forgotten user fact out of future semantic recall.
+    @discardableResult
+    func remove(text: String, metadataType: String? = nil) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        let previousCount = vectors.count
+        vectors.removeAll {
+            $0.text == text && (metadataType == nil || $0.metadata["type"] == metadataType)
+        }
+        return previousCount - vectors.count
+    }
+
     /// Clear all stored vectors.
     func clear() {
         lock.lock()

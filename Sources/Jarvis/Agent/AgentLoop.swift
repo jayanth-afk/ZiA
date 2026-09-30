@@ -237,6 +237,9 @@ actor AgentLoop {
     private static func initialPlannerContext(goal: String) async -> PlannerContext {
         var context = PlannerContext.initial(goal: goal)
         context.conversationTurns = await conversationTurnsForPlanner(goal: goal)
+        context.userMemoryContext = await MainActor.run {
+            MemoryManager.shared.retrieveContext(for: goal)
+        }
         return context
     }
 

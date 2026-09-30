@@ -38,7 +38,10 @@ final class UserProfile {
 
     private var facts: [UUID: UserFact] = [:]
 
-    private init() {}
+    private init() {
+        facts = Dictionary(
+            uniqueKeysWithValues: ConversationStore.shared.loadUserFacts().map { ($0.id, $0) })
+    }
 
     // MARK: - Public API
 
@@ -53,6 +56,9 @@ final class UserProfile {
 
         let fact = UserFact(content: content, category: category, confidence: confidence)
         facts[fact.id] = fact
+        if category != .temporary {
+            ConversationStore.shared.saveUserFact(fact)
+        }
         JarvisLogger.memory.info("Remembered [\(category.rawValue)]: '\(content)'")
         return fact
     }
@@ -62,6 +68,7 @@ final class UserProfile {
     func forget(id: UUID) -> Bool {
         let removed = facts.removeValue(forKey: id) != nil
         if removed {
+            ConversationStore.shared.deleteUserFact(id: id)
             JarvisLogger.memory.info("Forgot fact with ID: \(id)")
         }
         return removed
@@ -70,6 +77,7 @@ final class UserProfile {
     /// Forget all facts containing a matching substring.
     @discardableResult
     func forget(matching query: String) -> Int {
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return 0 }
         let lower = query.lowercased()
         let matchingIds = facts.values
             .filter { $0.content.lowercased().contains(lower) }
@@ -77,6 +85,7 @@ final class UserProfile {
 
         for id in matchingIds {
             facts.removeValue(forKey: id)
+            ConversationStore.shared.deleteUserFact(id: id)
         }
 
         JarvisLogger.memory.info("Forgot \(matchingIds.count) facts matching '\(query)'")
@@ -85,7 +94,10 @@ final class UserProfile {
 
     /// Retrieve all stored facts.
     var allFacts: [UserFact] {
-        return Array(facts.values)
+        facts.values.sorted {
+            if $0.createdAt != $1.createdAt { return $0.createdAt < $1.createdAt }
+            return $0.id.uuidString < $1.id.uuidString
+        }
     }
 
     /// Retrieve facts filtered by category.
@@ -102,6 +114,7 @@ final class UserProfile {
     /// Reset all memories.
     func clearAll() {
         facts.removeAll()
+        ConversationStore.shared.deleteAllUserFacts()
         JarvisLogger.memory.info("Cleared all user profile memories")
     }
 

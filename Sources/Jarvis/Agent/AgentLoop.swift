@@ -124,6 +124,10 @@ actor AgentLoop {
 
     /// Execute an autonomous compound goal through the full pipeline.
     func run(goal: String) async throws -> String {
+        let telemetryTaskID = UUID()
+        let runStart = DispatchTime.now().uptimeNanoseconds
+        let telemetry = ExecutionTelemetry.shared
+        telemetry.record(ExecutionTelemetryEvent(taskID: telemetryTaskID, kind: .taskStarted, phase: "understanding", status: "started"))
         // Generational flag reset: a new run must not inherit (and must not
         // clear mid-flight) an emergency flag belonging to another run.
         Self.runGeneration.value += 1
@@ -136,13 +140,16 @@ actor AgentLoop {
         }
         await reportInteractionPhase(.understanding)
         do {
-            let response = try await runInternal(goal: goal)
+            let response = try await runInternal(goal: goal, telemetryTaskID: telemetryTaskID)
+            telemetry.record(ExecutionTelemetryEvent(taskID: telemetryTaskID, kind: .taskCompleted, phase: "success", status: "completed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - runStart) / 1_000_000)))
             await reportInteractionPhase(.success)
             return response
         } catch is CancellationError {
+            telemetry.record(ExecutionTelemetryEvent(taskID: telemetryTaskID, kind: .stopped, phase: "stopped", status: "cancelled", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - runStart) / 1_000_000), failureCategory: .cancellation))
             await reportInteractionPhase(.stopped)
             throw CancellationError()
         } catch {
+            telemetry.record(ExecutionTelemetryEvent(taskID: telemetryTaskID, kind: .taskFailed, phase: "error", status: "failed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - runStart) / 1_000_000), failureCategory: ExecutionFailureCategory.classify(error)))
             await reportInteractionPhase(.error)
             throw error
         }
@@ -152,6 +159,19 @@ actor AgentLoop {
         await MainActor.run {
             InteractionPhaseCenter.report(phase, taskID: taskID?.uuidString)
         }
+    }
+
+    private func telemetryTaskEvent(_ taskID: UUID, _ kind: ExecutionTelemetryKind,
+                                    phase: String, stepID: UUID? = nil, action: String? = nil,
+                                    status: String? = nil, durationMilliseconds: Int? = nil,
+                                    verification: VerificationOutcome? = nil,
+                                    failureCategory: ExecutionFailureCategory? = nil,
+                                    attemptCount: Int? = nil, modelTier: String? = nil) {
+        ExecutionTelemetry.shared.record(ExecutionTelemetryEvent(
+            taskID: taskID, stepID: stepID, kind: kind, phase: phase, action: action,
+            status: status, durationMilliseconds: durationMilliseconds,
+            verification: verification, failureCategory: failureCategory, attemptCount: attemptCount,
+            modelTier: modelTier))
     }
 
     /// CROSS-TURN MEMORY (production connection): record one interaction so
@@ -199,7 +219,7 @@ actor AgentLoop {
         return context
     }
 
-    private func runInternal(goal: String) async throws -> String {
+    private func runInternal(goal: String, telemetryTaskID: UUID) async throws -> String {
         let timer = PipelineTimer()
         timer.mark(.actionStart)
         // Route attribution: set as soon as the route is decided, so every run
@@ -224,11 +244,21 @@ actor AgentLoop {
             // The declared impact is enforced inside ActionEngine via the
             // PermissionGate — the fast path obeys the same authority policy
             // as planned tool execution.
-            let output = try await ActionEngine.shared.execute(
-                intent: match.intent,
-                isDeterministic: true,
-                impact: match.impact,
-                action: match.action)
+            let stepID = UUID()
+            let stepStart = DispatchTime.now().uptimeNanoseconds
+            telemetryTaskEvent(telemetryTaskID, .stepStarted, phase: "executing", stepID: stepID, action: match.intent, status: "started")
+            let output: String
+            do {
+                output = try await ActionEngine.shared.execute(
+                    intent: match.intent,
+                    isDeterministic: true,
+                    impact: match.impact,
+                    action: match.action)
+                telemetryTaskEvent(telemetryTaskID, .stepCompleted, phase: "success", stepID: stepID, action: match.intent, status: "completed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - stepStart) / 1_000_000))
+            } catch {
+                telemetryTaskEvent(telemetryTaskID, .stepFailed, phase: "error", stepID: stepID, action: match.intent, status: "failed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - stepStart) / 1_000_000), failureCategory: ExecutionFailureCategory.classify(error))
+                throw error
+            }
             lastReplanCount.value = 0
             lastPlannerMetrics.value = nil
             recordConversationTurn(goal: goal, response: output)
@@ -276,6 +306,7 @@ actor AgentLoop {
         // MLXPlanner.plan(goal:context:taskID:) attributes every attempt of THIS
         // run (initial + all replan cycles) to one runID + taskID.
         let task = stateMachine.createTask(
+            id: telemetryTaskID,
             title: "Autonomous Goal",
             goal: goal,
             environmentContext: TaskEnvironmentContext.captureLive()
@@ -375,6 +406,10 @@ actor AgentLoop {
             }
 
             let step = plan.steps[stepIndex]
+            let telemetryStepID = stateMachine.getTask(id: task.id)?.steps.indices.contains(stepIndex) == true
+                ? stateMachine.getTask(id: task.id)?.steps[stepIndex].id : nil
+            let telemetryStepStart = DispatchTime.now().uptimeNanoseconds
+            telemetryTaskEvent(task.id, .stepStarted, phase: "executing", stepID: telemetryStepID, action: step.toolName, status: "started")
             try? stateMachine.setCurrentStepIndex(taskId: task.id, index: stepIndex)
 
             do {
@@ -447,6 +482,10 @@ actor AgentLoop {
                         throw CancellationError()
                     }
 
+                    if let actualVerification = result.verification?.outcome {
+                        telemetryTaskEvent(task.id, .verificationCompleted, phase: "verifying", stepID: telemetryStepID, action: toolName, status: actualVerification.rawValue, verification: actualVerification)
+                    }
+
                     // OBSERVE: consume the actual tool output (real result text).
                     observations.append("[\(toolName)] \(result.output)")
 
@@ -485,6 +524,7 @@ actor AgentLoop {
                         stepIndex: stepIndex,
                         state: .completed,
                         output: result.output)
+                    telemetryTaskEvent(task.id, .stepCompleted, phase: "success", stepID: telemetryStepID, action: toolName, status: "completed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - telemetryStepStart) / 1_000_000), verification: stepOutcome)
                     completedOutputs.append(result.output)
                     stepIndex += 1
                 } else {
@@ -517,6 +557,7 @@ actor AgentLoop {
                         stepIndex: stepIndex,
                         state: .completed,
                         output: completedOutputs.last)
+                    telemetryTaskEvent(task.id, .stepCompleted, phase: "success", stepID: telemetryStepID, status: "completed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - telemetryStepStart) / 1_000_000), verification: .notApplicable)
                     _ = try? stateMachine.markStepVerification(
                         taskId: task.id, stepIndex: stepIndex, outcome: .notApplicable)
                     stepIndex += 1
@@ -528,6 +569,9 @@ actor AgentLoop {
             } catch {
                 // RECOVER: real failure -> existing recovery chain (unchanged).
                 replanCount += 1
+                let failureCategory = ExecutionFailureCategory.classify(error)
+                telemetryTaskEvent(task.id, .stepFailed, phase: "error", stepID: telemetryStepID, action: step.toolName, status: "failed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - telemetryStepStart) / 1_000_000), verification: failureCategory == .verification ? .failed : nil, failureCategory: failureCategory)
+                telemetryTaskEvent(task.id, .recoveryAttempted, phase: "thinking", stepID: telemetryStepID, action: step.toolName, status: "replanning", attemptCount: replanCount)
                 lastReplanCount.value = replanCount
                 JarvisLogger.actions.warning("Step '\(step.purpose)' failed (replan \(replanCount)): \(error.localizedDescription)")
 
@@ -717,6 +761,8 @@ actor AgentLoop {
                 // Bounded recovery: one retry of the next-step generation, then
                 // fail safely (same chain shape as planWithRecovery).
                 replanCount += 1
+                let failureCategory = ExecutionFailureCategory.classify(error)
+                telemetryTaskEvent(task.id, .recoveryAttempted, phase: "thinking", status: "planner_retry", failureCategory: failureCategory, attemptCount: replanCount, modelTier: "tier_a")
                 lastReplanCount.value = replanCount
                 if Self.cancellationObserved.value {
                     try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
@@ -818,6 +864,9 @@ actor AgentLoop {
                 arguments: step.arguments)
             allSteps.append(newStep)
             try? stateMachine.setSteps(taskId: task.id, steps: allSteps)
+            let telemetryStepID = newStep.id
+            let telemetryStepStart = DispatchTime.now().uptimeNanoseconds
+            telemetryTaskEvent(task.id, .stepStarted, phase: "executing", stepID: telemetryStepID, action: step.toolName, status: "started")
 
             do {
                 try stateMachine.updateStep(taskId: task.id, stepIndex: allSteps.count - 1, state: .running)
@@ -851,6 +900,10 @@ actor AgentLoop {
                 await reportInteractionPhase(.executing, taskID: task.id)
                 let result = try await ToolExecutor.shared.execute(toolName: toolName, arguments: args)
 
+                if let actualVerification = result.verification?.outcome {
+                    telemetryTaskEvent(task.id, .verificationCompleted, phase: "verifying", stepID: telemetryStepID, action: toolName, status: actualVerification.rawValue, verification: actualVerification)
+                }
+
                 if Self.cancellationObserved.value {
                     try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
                     throw CancellationError()
@@ -867,6 +920,7 @@ actor AgentLoop {
                 try stateMachine.updateStep(
                     taskId: task.id, stepIndex: allSteps.count - 1, state: .completed,
                     output: result.output)
+                telemetryTaskEvent(task.id, .stepCompleted, phase: "success", stepID: telemetryStepID, action: toolName, status: "completed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - telemetryStepStart) / 1_000_000), verification: stepOutcome)
                 let command = step.arguments["command"]
                 completedSteps.append((tool: toolName, command: command, purpose: step.purpose, output: result.output))
                 observations.append("[\(toolName)] \(result.output)")
@@ -880,6 +934,9 @@ actor AgentLoop {
                 // failed step is NOT appended, so the model does not see it as
                 // completed).
                 replanCount += 1
+                let failureCategory = ExecutionFailureCategory.classify(error)
+                telemetryTaskEvent(task.id, .stepFailed, phase: "error", stepID: telemetryStepID, action: step.toolName, status: "failed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - telemetryStepStart) / 1_000_000), verification: failureCategory == .verification ? .failed : nil, failureCategory: failureCategory)
+                telemetryTaskEvent(task.id, .recoveryAttempted, phase: "thinking", stepID: telemetryStepID, action: step.toolName, status: "replanning", attemptCount: replanCount)
                 lastReplanCount.value = replanCount
                 JarvisLogger.actions.warning("Sequential step '\(step.purpose)' failed (replan \(replanCount)): \(error.localizedDescription)")
                 try stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
@@ -934,6 +991,8 @@ actor AgentLoop {
             }
             // PLANNING -> FAILED -> RECOVERING -> REPLANNING -> retry, bounded.
             // A second consecutive planning failure propagates or escalates.
+            let attemptCount = (stateMachine.getTask(id: taskId)?.retryCount ?? 0) + 1
+            telemetryTaskEvent(taskId, .recoveryAttempted, phase: "thinking", status: "planner_retry", failureCategory: ExecutionFailureCategory.classify(error), attemptCount: attemptCount, modelTier: "tier_a")
             try stateMachine.transition(taskId: taskId, to: .failed, error: "Planner failed: \(error.localizedDescription)")
             try stateMachine.transition(taskId: taskId, to: .recovering)
             try stateMachine.transition(taskId: taskId, to: .replanning)

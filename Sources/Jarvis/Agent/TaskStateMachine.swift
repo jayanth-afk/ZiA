@@ -221,6 +221,7 @@ final class TaskStateMachine: @unchecked Sendable {
     /// Create and register a new task.
     @discardableResult
     func createTask(
+        id: UUID = UUID(),
         title: String,
         goal: String,
         steps: [TaskStep] = [],
@@ -229,7 +230,7 @@ final class TaskStateMachine: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        let task = JarvisTask(title: title, goal: goal, steps: steps, environmentContext: environmentContext)
+        let task = JarvisTask(id: id, title: title, goal: goal, steps: steps, environmentContext: environmentContext)
         tasks[task.id] = task
         stateHistory[task.id] = [(.created, Date())]
 

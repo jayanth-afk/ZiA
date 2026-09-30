@@ -27,6 +27,9 @@ enum SelfTest {
             }
         }
 
+        print("\n─── Structured Execution Telemetry ───")
+        ExecutionTelemetry.runSelfTests(check: check)
+
         let prevAutonomy = Config.shared.autonomyLevel
         Config.shared.autonomyLevel = 1
         defer { Config.shared.autonomyLevel = prevAutonomy }
@@ -4212,6 +4215,7 @@ enum SelfTest {
 
         // 20.163: Intermediate failure preserves partial state and fails safely
         var intermediateFailurePreserved = false
+        var multiStepTelemetryOrdered = false
         let semInter = DispatchSemaphore(value: 0)
         Task { @MainActor in
             let prevAutonomy = Config.shared.autonomyLevel
@@ -4219,6 +4223,7 @@ enum SelfTest {
             defer { Config.shared.autonomyLevel = prevAutonomy }
 
             let goalStr = "run command 'echo intermediate_success' and then run command 'cat build/does_not_exist_file.txt'"
+            ExecutionTelemetry.shared.removeAll()
             do {
                 _ = try await AgentLoop.shared.run(goal: goalStr)
             } catch {
@@ -4226,6 +4231,16 @@ enum SelfTest {
                 let errStr = error.localizedDescription
                 let tasks = TaskStateMachine.shared.tasks(matchingGoal: goalStr)
                 if let lastTask = tasks.last, lastTask.state == .failed {
+                    let kinds = ExecutionTelemetry.shared.snapshot()
+                        .filter { $0.taskID == lastTask.id }
+                        .map(\.kind)
+                    if let completed = kinds.firstIndex(of: .stepCompleted),
+                       let failed = kinds.firstIndex(of: .stepFailed),
+                       let recovery = kinds.firstIndex(of: .recoveryAttempted),
+                       let terminal = kinds.firstIndex(of: .taskFailed) {
+                        multiStepTelemetryOrdered = kinds.first == .taskStarted
+                            && completed < failed && failed < recovery && recovery < terminal
+                    }
                     let steps = lastTask.steps
                     let step1OK = steps.count >= 2 && steps[0].state == .completed && steps[0].verification == .passed
                     let step2Failed = steps.count >= 2 && steps[1].state == .failed && steps[1].verification == .failed
@@ -4241,6 +4256,7 @@ enum SelfTest {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
         }
         check(intermediateFailurePreserved, "agent loop 20.163: intermediate step failure preserves Step 1 completed state, marks Step 2 failed, and reports truthful partial state")
+        check(multiStepTelemetryOrdered, "telemetry E2E: production multi-step AgentLoop records completion, failure, recovery, and task failure in order")
 
         // 20.164: partialCompletionReport() states partial completion truthfully —
         // the completed-and-verified step count and the actual failed step, never
@@ -4311,6 +4327,7 @@ enum SelfTest {
         // assistant turn.
         var crossTurnMemoryRecorded = false
         var deterministicInteractionPhasesPublished = false
+        var deterministicTelemetryE2E = false
         let semMem21 = DispatchSemaphore(value: 0)
         Task { @MainActor in
             var interactionPhases: [InteractionPhase] = []
@@ -4325,8 +4342,13 @@ enum SelfTest {
             do {
             ConversationManager.shared.reset()
             ConversationStore.shared.clearHistory()
+            ExecutionTelemetry.shared.removeAll()
             let goalStr = "read clipboard"
             _ = try await AgentLoop.shared.run(goal: goalStr)
+            let observed = ExecutionTelemetry.shared.snapshot()
+            let telemetryKinds = observed.map(\.kind)
+            deterministicTelemetryE2E = telemetryKinds == [.taskStarted, .stepStarted, .stepCompleted, .taskCompleted]
+                && observed.allSatisfy { $0.taskID == observed.first?.taskID }
             deterministicInteractionPhasesPublished = interactionPhases.contains(.understanding)
                 && interactionPhases.contains(.executing)
                 && interactionPhases.contains(.success)
@@ -4348,11 +4370,14 @@ enum SelfTest {
         check(crossTurnMemoryRecorded, "agent loop 21.1: completed production run records user+assistant turns in ConversationManager for the next turn")
         check(deterministicInteractionPhasesPublished,
               "interaction E2E: production deterministic AgentLoop run emits understanding, executing, and success phases")
+        check(deterministicTelemetryE2E,
+              "telemetry E2E: production AgentLoop deterministic execution emits one ordered task/step lifecycle")
 
         // 21.2 CROSS-TURN MEMORY (planner route): a completed multi-step planner
         // run (Route=planner) must record its real response the same way — the
         // memory is path-independent across production routes.
         var plannerRouteMemoryRecorded = false
+        var plannerTelemetryVerificationRecorded = false
         let semMem22 = DispatchSemaphore(value: 0)
         Task { @MainActor in
             let prevAutonomy = Config.shared.autonomyLevel
@@ -4363,6 +4388,15 @@ enum SelfTest {
             ConversationStore.shared.clearHistory()
             let goalStr = "write the word mem_e2e_probe using run_shell"
             let response = try await AgentLoop.shared.run(goal: goalStr)
+            let plannerTasks = TaskStateMachine.shared.tasks(matchingGoal: goalStr)
+            if let realTask = plannerTasks.last {
+                let recorded = ExecutionTelemetry.shared.snapshot().filter {
+                    $0.taskID == realTask.id && $0.kind == .verificationCompleted
+                }
+                let actualOutcomes = realTask.steps.compactMap(\.verification).filter { $0 != .notApplicable }
+                plannerTelemetryVerificationRecorded = !actualOutcomes.isEmpty
+                    && recorded.map(\.verification) == actualOutcomes.map(Optional.some)
+            }
             let msgs = ConversationManager.shared.messages.filter { $0.role != .system }
             if msgs.count == 2,
                msgs[0].role == .user, msgs[0].content == goalStr,
@@ -4380,6 +4414,7 @@ enum SelfTest {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
         }
         check(plannerRouteMemoryRecorded, "agent loop 21.2: planner-route completed run records user+assistant turns with the exact final response")
+        check(plannerTelemetryVerificationRecorded, "telemetry E2E: planner telemetry matches the actual verifier outcome stored in TaskState")
 
         // 21.3 DIRECT-ANSWER CONTEXT: the composer's prompt embeds the recent
         // conversation history (users and assistant turns) plus the new request.

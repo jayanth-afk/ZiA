@@ -122,6 +122,48 @@ enum SelfTest {
         check(!ActivityHistory.latestVerifiedArtifactSummary(
             tasks: [unverifiedArtifactTask], events: artifactEvents, now: activityNow).contains(artifactPath),
               "artifact follow-up excludes inconclusive verification even when the path exists")
+        check(ReferenceResolver.resolveCrossTurnFileReference(
+            goal: "open that file", tasks: [artifactTask], now: activityNow,
+            fileExists: { $0 == artifactPath }) == .resolved(path: artifactPath),
+              "cross-turn file reference resolves only the latest completed, verified write")
+        check(ReferenceResolver.resolveCrossTurnFileReference(
+            goal: "open that file", tasks: [], now: activityNow) == .unavailable,
+              "conversation or memory without TaskState write evidence cannot resolve a file reference")
+        check(ReferenceResolver.resolveCrossTurnFileReference(
+            goal: "open that file", tasks: [unverifiedArtifactTask], now: activityNow,
+            fileExists: { _ in true }) == .unavailable,
+              "inconclusive writes cannot resolve a cross-turn file reference")
+        check(ReferenceResolver.resolveCrossTurnFileReference(
+            goal: "open that file", tasks: [artifactTask], now: activityNow,
+            fileExists: { _ in false }) == .unavailable,
+              "a deleted verified artifact cannot resolve a cross-turn file reference")
+        var multiArtifactTask = artifactTask
+        multiArtifactTask.steps.append(TaskStep(
+            stepNumber: 2, description: "write second file", toolName: "write_file",
+            arguments: ["path": artifactPath + ".second"], state: .completed, verification: .passed))
+        multiArtifactTask.resolutionRecords.append(StepResolutionRecord(
+            stepNumber: 2, toolName: "write_file", rawOutput: "created", completedAt: activityNow,
+            verification: .passed))
+        check(ReferenceResolver.resolveCrossTurnFileReference(
+            goal: "open that file", tasks: [multiArtifactTask], now: activityNow,
+            fileExists: { _ in true }) == .ambiguous,
+              "multiple verified file outputs from the latest task require clarification")
+        let concurrentArtifactTask = JarvisTask(
+            id: UUID(), title: artifactTask.title, goal: artifactTask.goal, state: .completed,
+            steps: artifactTask.steps, createdAt: activityNow, updatedAt: activityNow,
+            completedAt: activityNow, resolutionRecords: artifactTask.resolutionRecords)
+        check(ReferenceResolver.resolveCrossTurnFileReference(
+            goal: "open that file", tasks: [artifactTask, concurrentArtifactTask], now: activityNow,
+            fileExists: { _ in true }) == .unavailable,
+              "same-time independent writes have no deterministic latest reference")
+        var failedLatestWrite = artifactTask
+        failedLatestWrite.state = .failed
+        failedLatestWrite.updatedAt = activityNow.addingTimeInterval(1)
+        failedLatestWrite.completedAt = nil
+        check(ReferenceResolver.resolveCrossTurnFileReference(
+            goal: "open that file", tasks: [artifactTask, failedLatestWrite], now: activityNow,
+            fileExists: { _ in true }) == .unavailable,
+              "a newer failed write prevents fallback to an older verified artifact")
         check(DirectAnswerRouter.decide(goal: "What file did you create?") == .verifiedArtifactSummary
               && DirectAnswerRouter.decide(goal: "What happened?") == .activitySummary,
               "state-grounded artifact and recent-failure questions route without planner generation")
@@ -213,6 +255,47 @@ enum SelfTest {
         let prevAutonomy = Config.shared.autonomyLevel
         Config.shared.autonomyLevel = 1
         defer { Config.shared.autonomyLevel = prevAutonomy }
+
+        let crossTurnPayload = "verified_ref_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+        let crossTurnPath = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("build/zia-cross-turn-\(UUID().uuidString).txt").path
+        defer { try? FileManager.default.removeItem(atPath: crossTurnPath) }
+        let crossTurnWriteGoal = "write the exact text \(crossTurnPayload) to \(crossTurnPath)"
+        let crossTurnPlan = AgentPlan(goal: crossTurnWriteGoal, steps: [PlanStep(
+            id: "write-cross-turn-reference", toolName: "write_file",
+            arguments: ["path": crossTurnPath, "content": crossTurnPayload],
+            purpose: "write the requested test artifact")])
+        var crossTurnReferenceE2E = false
+        let crossTurnReferenceSemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            do {
+                _ = try await AgentLoop.shared.runUsingFixedPlanForTesting(
+                    goal: crossTurnWriteGoal, plan: crossTurnPlan)
+                let readResponse = try await AgentLoop.shared.run(goal: "open that file")
+                Config.shared.autonomyLevel = 0
+                var deniedByPermissionGate = false
+                do {
+                    _ = try await AgentLoop.shared.run(goal: "open that file")
+                } catch {
+                    deniedByPermissionGate = true
+                }
+                Config.shared.autonomyLevel = 1
+                crossTurnReferenceE2E = readResponse.contains(crossTurnPayload)
+                    && deniedByPermissionGate
+                    && ReferenceResolver.resolveCrossTurnFileReference(
+                        goal: "open that file", tasks: TaskStateMachine.shared.allTasks)
+                        == .resolved(path: crossTurnPath)
+            } catch {
+                print("  ✗ Cross-turn file reference E2E failed: \(error.localizedDescription)")
+                crossTurnReferenceE2E = false
+            }
+            crossTurnReferenceSemaphore.signal()
+        }
+        while crossTurnReferenceSemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(crossTurnReferenceE2E,
+              "AgentLoop E2E: verified write → bare file follow-up → normal validated read execution")
 
         // ── AppState Tests ──
         print("\n─── AppState ───")

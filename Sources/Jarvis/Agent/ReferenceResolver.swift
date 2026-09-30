@@ -148,6 +148,87 @@ enum ReferenceResolutionError: Error, Sendable, Equatable, LocalizedError {
 /// Deterministic parser and resolver for task references.
 enum ReferenceResolver {
 
+    enum CrossTurnFileReference: Sendable, Equatable {
+        case notApplicable
+        case unavailable
+        case ambiguous
+        case resolved(path: String)
+    }
+
+    /// Resolve a small set of file anaphora using only completed TaskState
+    /// writes with matching passed resolution evidence. Conversation and user
+    /// memory are never read here. The resulting path is passed back through
+    /// the existing `$ambient.last_artifact` resolver before it is returned.
+    static func resolveCrossTurnFileReference(
+        goal: String,
+        tasks: [JarvisTask],
+        now: Date = .now,
+        maxAge: TimeInterval = 15 * 60,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> CrossTurnFileReference {
+        var normalized = goal.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while let last = normalized.last, ".?!".contains(last) { normalized.removeLast() }
+        normalized = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fileFollowUps: Set<String> = [
+            "open that file", "read that file", "show that file",
+            "open the file you created", "read the file you created",
+            "open the file you just created", "read the file you just created",
+            "open the file from earlier", "read the file from earlier"
+        ]
+        guard fileFollowUps.contains(normalized) else { return .notApplicable }
+
+        let cutoff = now.addingTimeInterval(-maxAge)
+        // A bare anaphor such as "that file" is grounded in the latest task
+        // that actually attempted a file write, not an arbitrary set of old
+        // outputs. A newer failed/unverified write is a barrier: never fall
+        // back to an older file and pretend it was the one just created.
+        let recentWriteTasks = tasks
+            .filter({ task in
+                (task.completedAt ?? task.updatedAt) >= cutoff
+                    && task.steps.contains(where: { $0.toolName == "write_file" })
+            })
+        guard let latestWriteTimestamp = recentWriteTasks
+            .map({ $0.completedAt ?? $0.updatedAt }).max() else { return .unavailable }
+        let latestWriteTasks = recentWriteTasks.filter {
+            ($0.completedAt ?? $0.updatedAt) == latestWriteTimestamp
+        }
+        // Concurrent/same-timestamp writes have no deterministic recency order.
+        // Do not let collection iteration order decide which task "that file" means.
+        guard latestWriteTasks.count == 1,
+              let latestWriteTask = latestWriteTasks.first,
+              latestWriteTask.state == .completed else { return .unavailable }
+
+        var paths = Set<String>()
+        for step in latestWriteTask.steps where step.state == .completed
+            && step.verification == .passed
+            && step.toolName == "write_file" {
+            guard let path = step.arguments["path"], !path.isEmpty,
+                  !path.contains("\n"), !path.contains("\r"),
+                  !path.contains("\""), !path.contains("'"),
+                  latestWriteTask.resolutionRecords.contains(where: {
+                      $0.stepNumber == step.stepNumber
+                          && $0.toolName == "write_file"
+                          && $0.verification == .passed
+                  }),
+                  fileExists(path) else { continue }
+            paths.insert(path)
+        }
+
+        guard !paths.isEmpty else { return .unavailable }
+        guard paths.count == 1, let path = paths.first else { return .ambiguous }
+
+        do {
+            let resolved = try resolveTarget(
+                target: .ambient(.lastArtifact),
+                currentStepNumber: 1,
+                resolutionRecords: [:],
+                environmentContext: TaskEnvironmentContext(lastArtifactPath: path, snapshotTimestamp: now))
+            return .resolved(path: resolved)
+        } catch {
+            return .unavailable
+        }
+    }
+
     // MARK: - Parsing
 
     /// Parse an argument string into a TaskArgument.

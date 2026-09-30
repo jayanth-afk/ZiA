@@ -307,6 +307,14 @@ actor AgentLoop {
         // unsafe requests are EXPLICITLY refused (typed, auditable) instead of
         // accidentally becoming a valid unrelated tool call. Genuine tool tasks
         // and ambiguous goals fall forward to the planner unchanged.
+        let crossTurnFileReference = ReferenceResolver.resolveCrossTurnFileReference(
+            goal: goal,
+            tasks: TaskStateMachine.shared.allTasks)
+        let resolvedReferencePath: String?
+        if case .resolved(let path) = crossTurnFileReference { resolvedReferencePath = path }
+        else { resolvedReferencePath = nil }
+
+        if resolvedReferencePath == nil {
         switch DirectAnswerRouter.decide(goal: goal) {
         case .refusal(let reason):
             JarvisLogger.brain.info("AgentLoop: explicit refusal (\(reason.rawValue)) for goal '\(goal, privacy: .public)'")
@@ -372,6 +380,7 @@ actor AgentLoop {
         case .planner:
             break
         }
+        }
 
         // 4. PLAN via the real local MLX model (structured, validated, bounded).
         let stateMachine = TaskStateMachine.shared
@@ -387,6 +396,33 @@ actor AgentLoop {
         try stateMachine.transition(taskId: task.id, to: .planning)
         await reportInteractionPhase(.thinking, taskID: task.id)
 
+        // Cross-turn file anaphora is compiled only from verified TaskState
+        // evidence. The original user goal remains the task/conversation goal;
+        // the path then traverses the ordinary deterministic compiler,
+        // PlanValidator, ToolExecutor, PermissionGate, and verifier.
+        let planningGoal: String
+        let verifiedReferencePlan: AgentPlan?
+        if let resolvedReferencePath {
+            planningGoal = "read the file \"\(resolvedReferencePath)\""
+            guard let extraction = PlannerExtraction.explicitReadFileExtraction(goal: planningGoal) else {
+                _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: "Verified file reference could not be compiled")
+                attribute(.refusal)
+                recordConversationTurn(goal: goal, response: nil)
+                return "I couldn’t safely resolve that file reference. Please name the file you want me to read."
+            }
+            switch await PlannerExtraction.compile(extraction, goal: planningGoal) {
+            case .success(let compiledPlan): verifiedReferencePlan = compiledPlan
+            case .failure:
+                _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: "Verified file reference failed plan validation")
+                attribute(.refusal)
+                recordConversationTurn(goal: goal, response: nil)
+                return "I couldn’t safely open that verified file. Please provide its path or choose another file."
+            }
+        } else {
+            planningGoal = goal
+            verifiedReferencePlan = nil
+        }
+
         // Experiment A: sequential next-step planning. When enabled, each
         // planning generation produces the NEXT SINGLE action; validate →
         // compile → execute → observe → verify → update Task State → repeat.
@@ -394,13 +430,13 @@ actor AgentLoop {
         // and the recovery chain are all unchanged. A partial completion can
         // never report success: the loop continues until the model signals
         // DONE or the bounded attempt budget is exhausted.
-        if SequentialExperiment.mode == .sequential {
+        if verifiedReferencePlan == nil && SequentialExperiment.mode == .sequential {
             return try await runSequential(
-                goal: goal, task: task, stateMachine: stateMachine)
+                goal: planningGoal, task: task, stateMachine: stateMachine)
         }
 
         attribute(.planner)
-        var plannerContext = await Self.initialPlannerContext(goal: goal)
+        var plannerContext = await Self.initialPlannerContext(goal: planningGoal)
         // Decomposed planning first for SINGLE-ACTION goals (planner
         // reliability milestone): the model selects ONE tool and extracts the
         // user's literal; the deterministic compiler builds the plan.
@@ -410,7 +446,7 @@ actor AgentLoop {
         // the EXISTING whole-plan prompt runs through the unchanged recovery
         // chain (lossless escalation context preserved): the fallback is
         // structural, never a semantic rewrite of the user's request.
-        let loweredGoal = goal.lowercased()
+        let loweredGoal = planningGoal.lowercased()
         let compoundMarkers = [" and ", " then ", ";", "&&", ", then", " also "]
         // Quoted spans are literal CONTENT, not clause structure: a goal like
         // print the line "ready, set; go!" is ONE request even though the
@@ -426,9 +462,11 @@ actor AgentLoop {
         }
         let isCompoundGoal = compoundMarkers.contains { compoundScan.contains($0) }
         var plan: AgentPlan
-        if let fixedPlanForTesting {
+        if let verifiedReferencePlan {
+            plan = verifiedReferencePlan
+        } else if let fixedPlanForTesting {
             let validation = await MainActor.run {
-                PlanValidator.validate(fixedPlanForTesting, originalGoal: goal)
+                PlanValidator.validate(fixedPlanForTesting, originalGoal: planningGoal)
             }
             switch validation {
             case .success(let validatedPlan): plan = validatedPlan
@@ -436,10 +474,10 @@ actor AgentLoop {
             }
         } else if isCompoundGoal {
             plan = try await planWithRecovery(
-                goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+                goal: planningGoal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
         } else {
             do {
-                plan = try await MLXPlanner.shared.planDecomposed(goal: goal, taskID: task.id)
+                plan = try await MLXPlanner.shared.planDecomposed(goal: planningGoal, taskID: task.id)
                 if let metrics = await MLXPlanner.shared.latestMetrics() {
                     lastPlannerMetrics.value = metrics
                 }
@@ -451,13 +489,13 @@ actor AgentLoop {
                     failure: error.localizedDescription,
                     observations: [])
                 plan = try await planWithRecovery(
-                    goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+                    goal: planningGoal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
             }
         }
         // Recency safety net (deterministic, post-validation): a
         // freshness-sensitive goal can never be answered by a composition-only
         // plan — the compiler replaces it with a real web_search step.
-        plan = PlannerExtraction.enforceRecency(plan: plan, goal: goal)
+        plan = PlannerExtraction.enforceRecency(plan: plan, goal: planningGoal)
         try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
 
         // 4. EXECUTE -> OBSERVE -> VERIFY -> RECOVER loop

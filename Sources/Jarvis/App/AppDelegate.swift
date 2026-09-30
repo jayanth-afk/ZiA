@@ -19,6 +19,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // gates and validators).
         ConversationManager.shared.loadPersistedHistory()
 
+        // Storage retention: one explicit startup maintenance pass (never in
+        // read paths, never on the interaction hot path). Bounds the SQLite
+        // archive by age with a newest-N floor; the model context window is
+        // independent and untouched.
+        HistoryRetentionPolicy.enforce()
+
         // Setup menu bar
         menuBarManager = MenuBarManager(appState: appState, eventBus: eventBus)
 

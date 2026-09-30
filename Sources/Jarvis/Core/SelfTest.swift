@@ -4604,6 +4604,92 @@ enum SelfTest {
         }
         check(historyBoundaryOK, "history service 21.9: bounded newest-first transcript window pages backward chronologically through the UI boundary — no store internals exposed")
 
+        // 21.10 RETENTION POLICY: deterministic storage retention with an age
+        // horizon AND a newest-N floor. Old-but-protected messages survive;
+        // only (total − floor) oldest messages beyond the horizon are removed;
+        // survivors keep chronological order; fresh messages are untouched.
+        var retentionOK = false
+        let semMem2110 = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let probeConv = "selftest_retention_\(UUID().uuidString)"
+            defer { ConversationStore.shared.clearHistory(conversationId: probeConv) }
+            let store = ConversationStore.shared
+            let now = Date.now
+            // Two old messages, oldest beyond any horizon.
+            store.saveMessage(Message(id: "rt-old-1", role: .user, content: "rt old 1", timestamp: now.addingTimeInterval(-90 * 86_400)), conversationId: probeConv)
+            store.saveMessage(Message(id: "rt-old-2", role: .assistant, content: "rt old 2", timestamp: now.addingTimeInterval(-89 * 86_400)), conversationId: probeConv)
+            // Two fresh messages.
+            store.saveMessage(Message(id: "rt-new-1", role: .user, content: "rt new 1", timestamp: now.addingTimeInterval(-60)), conversationId: probeConv)
+            store.saveMessage(Message(id: "rt-new-2", role: .assistant, content: "rt new 2", timestamp: now), conversationId: probeConv)
+            let total = store.messageCount(conversationId: probeConv)
+            guard total == 4 else {
+                semMem2110.signal()
+                return
+            }
+            // Direct store-level delete: at most (total − floor) oldest rows
+            // beyond the cutoff. floor=2 → at most 2 deletions, both old.
+            let deleted = store.deleteMessages(olderThan: now.addingTimeInterval(-30 * 86_400), limit: total - 2, conversationId: probeConv)
+            let remaining = store.loadMessages(conversationId: probeConv, limit: 10)
+            let remainingContents = remaining.map(\.content)
+            let survivorsOK = remainingContents == ["rt new 1", "rt new 2"]
+            let freshUntouched = !remainingContents.contains("rt old 1") && !remainingContents.contains("rt old 2")
+            // Policy-level enforcement on the same state: floor already
+            // satisfied (2 ≤ floor), so enforcement must delete NOTHING —
+            // storage retention can never shrink below the floor.
+            let prevFloor = HistoryRetentionPolicy.floorMessages
+            HistoryRetentionPolicy.floorMessages = 2
+            defer { HistoryRetentionPolicy.floorMessages = prevFloor }
+            let secondPassDeleted = HistoryRetentionPolicy.enforce(now: now)
+            if deleted == 2 && survivorsOK && freshUntouched && secondPassDeleted == 0 {
+                retentionOK = true
+            }
+            semMem2110.signal()
+        }
+        while semMem2110.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(retentionOK, "history retention 21.10: bounded oldest-first deletion with newest-N floor — protected messages survive, fresh messages untouched, floor never violated")
+
+        // 21.11 RETENTION ≠ CONTEXT: enforcement and restored memory are
+        // orthogonal. The planner/DirectComposer context window derives from
+        // the in-memory ConversationManager window, NOT from the full store —
+        // so storage retention can never change what the planner sees or any
+        // authority outcome.
+        var retentionContextOK = false
+        let semMem2111 = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            ConversationManager.shared.reset()
+            ConversationStore.shared.clearHistory()
+            for i in 1...4 {
+                ConversationManager.shared.recordInteraction(goal: "rtx goal \(i)", response: "rtx resp \(i)")
+            }
+            let restoredBefore = ConversationManager.shared.messages.filter { $0.role != .system }.count
+            let prevFloor = HistoryRetentionPolicy.floorMessages
+            HistoryRetentionPolicy.floorMessages = 0
+            defer {
+                HistoryRetentionPolicy.floorMessages = prevFloor
+                ConversationManager.shared.reset()
+                ConversationStore.shared.clearHistory()
+            }
+            HistoryRetentionPolicy.enforce()
+            // Enforcement must not disturb the working window...
+            let windowAfter = ConversationManager.shared.messages.filter { $0.role != .system }.count
+            // ...and a fresh lifecycle restore reads the SAME persisted turns.
+            ConversationManager.shared.reset()
+            ConversationManager.shared.loadPersistedHistory(limit: 12)
+            let restoredAfter = ConversationManager.shared.messages.filter { $0.role != .system }.count
+            let contentsAfter = ConversationManager.shared.messages.filter { $0.role != .system }.map(\.content)
+            if restoredBefore == 8 && windowAfter == 8 && restoredAfter == 8
+                && contentsAfter.first == "rtx goal 1" && contentsAfter.last == "rtx resp 4" {
+                retentionContextOK = true
+            }
+            semMem2111.signal()
+        }
+        while semMem2111.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(retentionContextOK, "history retention 21.11: storage retention is orthogonal to the model context window — enforcement and restore leave planner-visible memory unchanged")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

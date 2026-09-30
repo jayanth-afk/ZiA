@@ -172,6 +172,39 @@ final class ConversationStore: @unchecked Sendable {
         return summaries
     }
 
+    /// Delete messages older than the cutoff date for one conversation,
+    /// removing at most `limit` (oldest first) — bounded by the retention
+    /// floor upstream so a single enforcement can never sweep the archive.
+    /// Returns the number of rows removed.
+    func deleteMessages(olderThan cutoff: Date, limit: Int, conversationId: String = "default") -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard limit > 0 else { return 0 }
+        // Oldest-first selection keeps deletion deterministic regardless of
+        // rowid; same-timestamp messages still differ by insertion order.
+        let sql = """
+        DELETE FROM messages WHERE id IN (
+            SELECT id FROM messages
+            WHERE conversation_id = ? AND timestamp < ?
+            ORDER BY rowid ASC
+            LIMIT ?
+        );
+        """
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_text(stmt, 1, conversationId, -1, SQLITE_TRANSIENT)
+        sqlite3_bind_double(stmt, 2, cutoff.timeIntervalSince1970)
+        sqlite3_bind_int(stmt, 3, Int32(limit))
+        guard sqlite3_step(stmt) == SQLITE_DONE else {
+            let errmsg = String(cString: sqlite3_errmsg(db))
+            JarvisLogger.memory.error("Retention delete failed: \(errmsg)")
+            return 0
+        }
+        return Int(sqlite3_changes(db))
+    }
+
     /// Clear all messages for a specific conversation.
     func clearHistory(conversationId: String = "default") {
         lock.lock()

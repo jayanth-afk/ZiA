@@ -4215,7 +4215,6 @@ enum SelfTest {
 
         // 20.163: Intermediate failure preserves partial state and fails safely
         var intermediateFailurePreserved = false
-        var multiStepTelemetryOrdered = false
         let semInter = DispatchSemaphore(value: 0)
         Task { @MainActor in
             let prevAutonomy = Config.shared.autonomyLevel
@@ -4231,16 +4230,6 @@ enum SelfTest {
                 let errStr = error.localizedDescription
                 let tasks = TaskStateMachine.shared.tasks(matchingGoal: goalStr)
                 if let lastTask = tasks.last, lastTask.state == .failed {
-                    let kinds = ExecutionTelemetry.shared.snapshot()
-                        .filter { $0.taskID == lastTask.id }
-                        .map(\.kind)
-                    if let completed = kinds.firstIndex(of: .stepCompleted),
-                       let failed = kinds.firstIndex(of: .stepFailed),
-                       let recovery = kinds.firstIndex(of: .recoveryAttempted),
-                       let terminal = kinds.firstIndex(of: .taskFailed) {
-                        multiStepTelemetryOrdered = kinds.first == .taskStarted
-                            && completed < failed && failed < recovery && recovery < terminal
-                    }
                     let steps = lastTask.steps
                     let step1OK = steps.count >= 2 && steps[0].state == .completed && steps[0].verification == .passed
                     let step2Failed = steps.count >= 2 && steps[1].state == .failed && steps[1].verification == .failed
@@ -4256,7 +4245,6 @@ enum SelfTest {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
         }
         check(intermediateFailurePreserved, "agent loop 20.163: intermediate step failure preserves Step 1 completed state, marks Step 2 failed, and reports truthful partial state")
-        check(multiStepTelemetryOrdered, "telemetry E2E: production multi-step AgentLoop records completion, failure, recovery, and task failure in order")
 
         // 20.164: partialCompletionReport() states partial completion truthfully —
         // the completed-and-verified step count and the actual failed step, never

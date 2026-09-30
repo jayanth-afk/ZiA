@@ -125,6 +125,45 @@ enum SelfTest {
         check(DirectAnswerRouter.decide(goal: "What file did you create?") == .verifiedArtifactSummary
               && DirectAnswerRouter.decide(goal: "What happened?") == .activitySummary,
               "state-grounded artifact and recent-failure questions route without planner generation")
+        var artifactFollowUpE2E = false
+        let e2eTaskID = UUID()
+        do {
+            let machine = TaskStateMachine.shared
+            _ = machine.createTask(id: e2eTaskID, title: "Artifact follow-up E2E",
+                                   goal: "write a verified artifact")
+            try machine.setSteps(taskId: e2eTaskID, steps: [TaskStep(
+                stepNumber: 1, description: "write verified artifact", toolName: "write_file",
+                arguments: ["path": artifactPath])])
+            try machine.transition(taskId: e2eTaskID, to: .running)
+            try machine.markStepVerification(taskId: e2eTaskID, stepIndex: 0, outcome: .passed)
+            try machine.updateStep(taskId: e2eTaskID, stepIndex: 0, state: .completed,
+                                   output: "created and verified")
+            try machine.appendResolutionRecord(StepResolutionRecord(
+                stepNumber: 1, toolName: "write_file", rawOutput: "created and verified",
+                completedAt: activityNow, verification: .passed), for: e2eTaskID)
+            try machine.transition(taskId: e2eTaskID, to: .verifying)
+            try machine.transition(taskId: e2eTaskID, to: .completed)
+            ExecutionTelemetry.shared.record(ExecutionTelemetryEvent(
+                timestamp: activityNow, taskID: e2eTaskID, kind: .taskCompleted, phase: .success))
+        } catch {
+            print("  ✗ Artifact follow-up E2E fixture failed: \(error)")
+        }
+        let artifactE2ESemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            do {
+                let response = try await AgentLoop.shared.run(goal: "What file did you create?")
+                let route = await AgentLoop.shared.latestRoute()
+                artifactFollowUpE2E = response.contains(artifactPath) && route == .directAnswer
+            } catch {
+                artifactFollowUpE2E = false
+            }
+            artifactE2ESemaphore.signal()
+        }
+        while artifactE2ESemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(artifactFollowUpE2E,
+              "AgentLoop E2E: verified artifact follow-up answers from TaskState without planner execution")
 
         let prevAutonomy = Config.shared.autonomyLevel
         Config.shared.autonomyLevel = 1

@@ -4,12 +4,57 @@ import SQLite3
 /// Persistent SQLite conversation store for chat history and turns.
 /// Uses native libsqlite3 with thread-safe locking.
 final class ConversationStore: @unchecked Sendable {
-    static let shared = ConversationStore()
+    private final class StoreSelection: @unchecked Sendable {
+        let lock = NSLock()
+        var testOverride: ConversationStore?
+    }
+    private static let selection = StoreSelection()
+    private static let productionStore = ConversationStore(databaseURL: productionDatabaseURL)
+
+    /// Production services resolve through this accessor. SelfTest installs an
+    /// isolated store before any tests run, so even a broad `clearHistory()`
+    /// cannot reach the user's persistent archive.
+    static var shared: ConversationStore {
+        selection.lock.lock()
+        defer { selection.lock.unlock() }
+        return selection.testOverride ?? productionStore
+    }
+
+    /// Install an in-memory SQLite database for a test scope and return the
+    /// previous override for restoration. This never opens or mutates the
+    /// production database. The store itself has the same locking/schema code
+    /// as production, so tests still exercise SQLite behavior.
+    @discardableResult
+    static func beginIsolatedTesting() -> ConversationStore? {
+        let isolated = ConversationStore(databaseURL: nil)
+        selection.lock.lock()
+        defer { selection.lock.unlock() }
+        let previous = selection.testOverride
+        selection.testOverride = isolated
+        return previous
+    }
+
+    static func endIsolatedTesting(restoring previous: ConversationStore?) {
+        selection.lock.lock()
+        defer { selection.lock.unlock() }
+        selection.testOverride = previous
+    }
+
+    private static var productionDatabaseURL: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Jarvis", isDirectory: true)
+            .appendingPathComponent("conversations.sqlite")
+    }
 
     private let lock = NSLock()
     private var db: OpaquePointer?
+    private let databaseURL: URL?
+    private(set) var isPersistentStorage = false
 
-    private init() {
+    /// `databaseURL == nil` explicitly selects isolated in-memory SQLite.
+    /// Production callers use `shared`; tests can inject a separate location.
+    init(databaseURL: URL?) {
+        self.databaseURL = databaseURL
         openDatabase()
         createTables()
     }
@@ -23,21 +68,22 @@ final class ConversationStore: @unchecked Sendable {
     // MARK: - Setup
 
     private func openDatabase() {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        let jarvisDir = appSupport?.appendingPathComponent("Jarvis")
-
-        if let jarvisDir = jarvisDir {
-            try? FileManager.default.createDirectory(at: jarvisDir, withIntermediateDirectories: true)
-            let dbPath = jarvisDir.appendingPathComponent("conversations.sqlite").path
+        if let databaseURL {
+            try? FileManager.default.createDirectory(
+                at: databaseURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let dbPath = databaseURL.path
             if sqlite3_open(dbPath, &db) == SQLITE_OK {
+                isPersistentStorage = true
                 JarvisLogger.memory.info("Opened SQLite database at \(dbPath)")
                 return
             }
+            JarvisLogger.memory.error("Failed to open SQLite database at \(dbPath); falling back to memory")
         }
 
-        // Fallback to in-memory SQLite if filesystem is unavailable
+        // Explicit test configuration, or fallback if production storage fails.
         if sqlite3_open(":memory:", &db) == SQLITE_OK {
-            JarvisLogger.memory.warning("Using in-memory SQLite database fallback")
+            isPersistentStorage = false
+            JarvisLogger.memory.info("Using isolated in-memory SQLite database")
         }
     }
 

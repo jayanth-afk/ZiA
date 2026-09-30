@@ -124,6 +124,23 @@ actor AgentLoop {
 
     /// Execute an autonomous compound goal through the full pipeline.
     func run(goal: String) async throws -> String {
+        try await run(goal: goal, fixedPlanForTesting: nil, stopRecoveryAfterAttemptForTesting: false)
+    }
+
+    /// Deterministic SelfTest seam: injects a fixed Task IR plan while retaining
+    /// the production classification, authority gates, PlanValidator,
+    /// ToolExecutor, verification, TaskState, telemetry, and recovery handling.
+    /// The recovery planner is stopped only after the real recovery-attempt
+    /// event/state transition, so this test never depends on model sampling.
+    func runUsingFixedPlanForTesting(goal: String, plan: AgentPlan) async throws -> String {
+        try await run(goal: goal, fixedPlanForTesting: plan, stopRecoveryAfterAttemptForTesting: true)
+    }
+
+    private func run(
+        goal: String,
+        fixedPlanForTesting: AgentPlan?,
+        stopRecoveryAfterAttemptForTesting: Bool
+    ) async throws -> String {
         let telemetryTaskID = UUID()
         let runStart = DispatchTime.now().uptimeNanoseconds
         let telemetry = ExecutionTelemetry.shared
@@ -140,7 +157,11 @@ actor AgentLoop {
         }
         await reportInteractionPhase(.understanding)
         do {
-            let response = try await runInternal(goal: goal, telemetryTaskID: telemetryTaskID)
+            let response = try await runInternal(
+                goal: goal,
+                telemetryTaskID: telemetryTaskID,
+                fixedPlanForTesting: fixedPlanForTesting,
+                stopRecoveryAfterAttemptForTesting: stopRecoveryAfterAttemptForTesting)
             telemetry.record(ExecutionTelemetryEvent(taskID: telemetryTaskID, kind: .taskCompleted, phase: "success", status: "completed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - runStart) / 1_000_000)))
             await reportInteractionPhase(.success)
             return response
@@ -219,7 +240,12 @@ actor AgentLoop {
         return context
     }
 
-    private func runInternal(goal: String, telemetryTaskID: UUID) async throws -> String {
+    private func runInternal(
+        goal: String,
+        telemetryTaskID: UUID,
+        fixedPlanForTesting: AgentPlan? = nil,
+        stopRecoveryAfterAttemptForTesting: Bool = false
+    ) async throws -> String {
         let timer = PipelineTimer()
         timer.mark(.actionStart)
         // Route attribution: set as soon as the route is decided, so every run
@@ -353,7 +379,15 @@ actor AgentLoop {
         }
         let isCompoundGoal = compoundMarkers.contains { compoundScan.contains($0) }
         var plan: AgentPlan
-        if isCompoundGoal {
+        if let fixedPlanForTesting {
+            let validation = await MainActor.run {
+                PlanValidator.validate(fixedPlanForTesting, originalGoal: goal)
+            }
+            switch validation {
+            case .success(let validatedPlan): plan = validatedPlan
+            case .failure(let error): throw error
+            }
+        } else if isCompoundGoal {
             plan = try await planWithRecovery(
                 goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
         } else {
@@ -638,6 +672,9 @@ actor AgentLoop {
                 }
 
                 do {
+                    if stopRecoveryAfterAttemptForTesting {
+                        throw PlanValidationError.noJSONFound
+                    }
                     plan = try await planWithRecovery(
                         goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
                 } catch is CancellationError {

@@ -9,6 +9,9 @@ import SwiftUI
 enum SelfTest {
 
     static func runAll() {
+        let previousConversationStore = ConversationStore.beginIsolatedTesting()
+        defer { ConversationStore.endIsolatedTesting(restoring: previousConversationStore) }
+
         setbuf(stdout, nil)
         print("╔══════════════════════════════════════════╗")
         print("║      JARVIS — Self-Test Suite           ║")
@@ -1373,6 +1376,8 @@ enum SelfTest {
 
         print("\n─── Phase 9: Conversation Store (SQLite) ───")
         let store = ConversationStore.shared
+        check(!store.isPersistentStorage,
+              "SelfTest uses isolated in-memory SQLite and cannot clear the production conversation archive")
         store.clearHistory(conversationId: "test_conv")
         let testMsg = Message(role: .user, content: "Test persistent message")
         store.saveMessage(testMsg, conversationId: "test_conv")
@@ -4221,10 +4226,14 @@ enum SelfTest {
             Config.shared.autonomyLevel = 2
             defer { Config.shared.autonomyLevel = prevAutonomy }
 
-            let goalStr = "run command 'echo intermediate_success' and then run command 'cat build/does_not_exist_file.txt'"
+            let goalStr = "run an initial command and then run a command that fails"
             ExecutionTelemetry.shared.removeAll()
+            let plan = AgentPlan(goal: goalStr, steps: [
+                PlanStep(id: "fixed_step_1", toolName: "run_shell", arguments: ["command": "echo intermediate_success"], purpose: "print intermediate success"),
+                PlanStep(id: "fixed_step_2", toolName: "run_shell", arguments: ["command": "false"], purpose: "run the expected failing command")
+            ])
             do {
-                _ = try await AgentLoop.shared.run(goal: goalStr)
+                _ = try await AgentLoop.shared.runUsingFixedPlanForTesting(goal: goalStr, plan: plan)
             } catch {
                 // Must fail and accurately report Step 2 failure
                 let errStr = error.localizedDescription
@@ -4234,7 +4243,10 @@ enum SelfTest {
                     let step1OK = steps.count >= 2 && steps[0].state == .completed && steps[0].verification == .passed
                     let step2Failed = steps.count >= 2 && steps[1].state == .failed && steps[1].verification == .failed
                     let errReported = errStr.contains("Step 2") || errStr.contains("Verification failed for run_shell")
-                    if step1OK && step2Failed && errReported {
+                    let recoveryRecorded = ExecutionTelemetry.shared.snapshot().contains {
+                        $0.taskID == lastTask.id && $0.kind == .recoveryAttempted && $0.attemptCount == 1
+                    }
+                    if step1OK && step2Failed && errReported && recoveryRecorded {
                         intermediateFailurePreserved = true
                     }
                 }

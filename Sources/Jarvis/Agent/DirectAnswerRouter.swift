@@ -80,6 +80,8 @@ enum DirectAnswerRouter {
         case verifiedArtifactSummary
         /// Checks a previously verified artifact against current filesystem state.
         case verifiedArtifactStatus
+        /// Answers task-continuity questions from recent TaskState only.
+        case taskContinuity(TaskContinuity.Query)
         /// Informational answer owned by a specific existing evidence source.
         case informationAnswer(InformationSource)
         /// Explicit refusal with a typed, auditable reason.
@@ -134,6 +136,10 @@ enum DirectAnswerRouter {
         // even though it is phrased as a plain knowledge question.
         if requiresFreshData(goal) {
             return .planner
+        }
+
+        if let query = TaskContinuity.query(for: normalizedGoal) {
+            return .taskContinuity(query)
         }
 
         // 1. Unsafe/destructive: explicit refusal BEFORE any planning. These

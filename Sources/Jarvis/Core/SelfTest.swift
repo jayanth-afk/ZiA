@@ -99,6 +99,142 @@ enum SelfTest {
         check(failureReport.contains("unavailable") && failureReport.contains("file was unavailable"),
               "activity history explains failure from the recorded category and failed TaskState step")
 
+        let continuityTask = JarvisTask(
+            id: UUID(), title: "ContinuityProbe", goal: "download the report and inspect it",
+            state: .running, steps: [
+                TaskStep(stepNumber: 1, description: "download the report", toolName: "fetch_url",
+                         arguments: ["url": "https://example.com/report"], state: .completed,
+                         output: "report", verification: .passed),
+                TaskStep(stepNumber: 2, description: "inspect the report", toolName: "read_file",
+                         arguments: ["path": "report.txt"], state: .running)
+            ], currentStepIndex: 1,
+            createdAt: activityNow.addingTimeInterval(-60), updatedAt: activityNow,
+            resolutionRecords: [StepResolutionRecord(
+                stepNumber: 1, toolName: "fetch_url", rawOutput: "report", completedAt: activityNow,
+                verification: .passed)])
+        let successfulContinuation = TaskContinuity.summary(
+            query: .continueTask, tasks: [continuityTask], now: activityNow)
+        check(successfulContinuation.contains("Current task")
+              && successfulContinuation.contains("1/2 steps passed independent verification")
+              && successfulContinuation.contains("Step 2")
+              && successfulContinuation.contains("read-only handoff"),
+              "task continuity handoff reports the uniquely active task, verified progress, and next unverified step without resuming it")
+
+        let failedContinuityTask = JarvisTask(
+            id: UUID(), title: "FailedContinuityProbe", goal: "write and verify the report",
+            state: .failed, steps: [
+                TaskStep(stepNumber: 1, description: "write the report", toolName: "write_file",
+                         arguments: ["path": "report.txt"], state: .completed,
+                         output: "written", verification: .passed),
+                TaskStep(stepNumber: 2, description: "verify the report", toolName: "read_file",
+                         arguments: ["path": "report.txt"], state: .failed,
+                         error: "readback mismatch", verification: .failed)
+            ], currentStepIndex: 1, createdAt: activityNow.addingTimeInterval(-60),
+            updatedAt: activityNow, error: "verification failed",
+            resolutionRecords: [
+                StepResolutionRecord(stepNumber: 1, toolName: "write_file", rawOutput: "written",
+                                     completedAt: activityNow, verification: .passed),
+                StepResolutionRecord(stepNumber: 2, toolName: "read_file", rawOutput: "mismatch",
+                                     completedAt: activityNow, verification: .failed)
+            ])
+        let failedContinuation = TaskContinuity.summary(
+            query: .continueTask, tasks: [failedContinuityTask], now: activityNow)
+        check(failedContinuation.contains("failed") && failedContinuation.contains("readback mismatch")
+              && failedContinuation.contains("won't replay"),
+              "failed continuation reports actual TaskState failure and refuses unsafe automatic replay")
+        let interruptedContinuityTask = JarvisTask(
+            id: UUID(), title: "InterruptedContinuityProbe", goal: continuityTask.goal,
+            state: .cancelled, steps: [
+                continuityTask.steps[0],
+                TaskStep(stepNumber: 2, description: "inspect the report", toolName: "read_file",
+                         arguments: ["path": "report.txt"], state: .cancelled,
+                         error: "Emergency Stop", verification: .unavailable)
+            ], currentStepIndex: 1, createdAt: continuityTask.createdAt,
+            updatedAt: activityNow, completedAt: activityNow, error: "Emergency Stop",
+            resolutionRecords: continuityTask.resolutionRecords)
+        let interruptedContinuation = TaskContinuity.summary(
+            query: .continueTask, tasks: [interruptedContinuityTask], now: activityNow)
+          check(interruptedContinuation.contains("interrupted or stopped")
+              && interruptedContinuation.contains("Emergency Stop")
+              && interruptedContinuation.contains("haven't resumed"),
+              "emergency-interrupted continuation reports recorded stop and never resumes")
+
+        var staleContinuityTask = continuityTask
+        staleContinuityTask.updatedAt = activityNow.addingTimeInterval(-60 * 60)
+        let staleContinuity = TaskContinuity.summary(
+            query: .continueTask, tasks: [staleContinuityTask], now: activityNow)
+        check(staleContinuity.contains("stale") && staleContinuity.contains("won't continue"),
+              "stale task state cannot be continued")
+        let noTaskContinuity = TaskContinuity.summary(query: .continueTask, tasks: [], now: activityNow)
+        check(noTaskContinuity.contains("don't have a current task recorded"),
+              "no TaskState means there is no task to continue")
+
+        let completedContinuityTask = JarvisTask(
+            id: UUID(), title: "CompletedContinuityProbe", goal: "verify the report",
+            state: .completed,
+            steps: [TaskStep(stepNumber: 1, description: "verify the report", toolName: "read_file",
+                             arguments: ["path": "report.txt"], state: .completed,
+                             verification: .passed)],
+            createdAt: activityNow.addingTimeInterval(-30), updatedAt: activityNow,
+            completedAt: activityNow,
+            resolutionRecords: [StepResolutionRecord(
+                stepNumber: 1, toolName: "read_file", rawOutput: "verified", completedAt: activityNow,
+                verification: .passed)])
+        let completedContinuity = TaskContinuity.summary(
+            query: .remaining, tasks: [completedContinuityTask], now: activityNow)
+        let verifiedContinuity = TaskContinuity.summary(
+            query: .verification, tasks: [completedContinuityTask], now: activityNow)
+        var completedWithoutEvidence = completedContinuityTask
+        completedWithoutEvidence.resolutionRecords = []
+        let unverifiedCompletionAnswer = TaskContinuity.summary(
+            query: .verification, tasks: [completedWithoutEvidence], now: activityNow)
+        check(completedContinuity.contains("is complete") && completedContinuity.contains("Nothing remains")
+              && verifiedContinuity.hasPrefix("Yes.")
+              && unverifiedCompletionAnswer.contains("can't confirm"),
+              "completed task has no remaining work, while did-that-work requires nonempty independent verification evidence")
+
+        let secondActiveContinuityTask = JarvisTask(
+            id: UUID(), title: "SecondContinuityProbe", goal: "prepare a second report",
+            state: .running, steps: [TaskStep(stepNumber: 1, description: "prepare report", toolName: "write_file",
+                                             state: .running)],
+            createdAt: activityNow, updatedAt: activityNow)
+        let multipleActiveContinuity = TaskContinuity.summary(
+            query: .continueTask, tasks: [continuityTask, secondActiveContinuityTask], now: activityNow)
+        let tiedCompletedContinuityTask = completedContinuityTask
+        let ambiguousTerminalContinuity = TaskContinuity.summary(
+            query: .continueTask,
+            tasks: [failedContinuityTask, tiedCompletedContinuityTask],
+            now: activityNow)
+        check(multipleActiveContinuity.contains("multiple possible TaskState tasks")
+              && ambiguousTerminalContinuity.contains("multiple possible TaskState tasks"),
+              "multiple active or equally recent task candidates require clarification")
+
+        var conversationOnlyContinuity = PlannerContext.initial(goal: "continue")
+        conversationOnlyContinuity.conversationTurns = ["User: We were editing a report."]
+        var memoryOnlyContinuity = PlannerContext.initial(goal: "continue")
+        memoryOnlyContinuity.userMemoryContext = "The current task is preparing a report."
+        let modelOnlyContinuity = PlannerContext(
+            goal: "continue", previousFailure: nil,
+            priorObservations: ["Assistant guessed that the report is complete."])
+        let contextOnlyReports = [conversationOnlyContinuity, memoryOnlyContinuity, modelOnlyContinuity].map { _ in
+            TaskContinuity.summary(query: .continueTask, tasks: [], now: activityNow)
+        }
+        check(contextOnlyReports.allSatisfy { $0.contains("don't have a current task recorded") },
+              "conversation, user memory, and model text cannot create task continuity authority")
+
+        let continuityRoutes: [(String, TaskContinuity.Query)] = [
+            ("what are we doing?", .status),
+            ("what's left?", .remaining),
+            ("continue", .continueTask),
+            ("finish what you were doing", .continueTask),
+            ("continue from where you stopped", .continueTask),
+            ("did that work?", .verification),
+            ("what were you doing?", .status)
+        ]
+        check(continuityRoutes.allSatisfy {
+            DirectAnswerRouter.decide(goal: $0.0) == .taskContinuity($0.1)
+        }, "task continuity phrases route deterministically to TaskState without the planner")
+
         let artifactPath = FileManager.default.temporaryDirectory
             .appendingPathComponent("zia-verified-artifact-\(UUID().uuidString).txt").path
         defer { try? FileManager.default.removeItem(atPath: artifactPath) }
@@ -450,6 +586,67 @@ enum SelfTest {
         }
         check(crossTurnReferenceE2E,
               "AgentLoop E2E: verified write → bare file follow-up → normal validated read execution")
+
+        var taskContinuityAgentLoopE2E = false
+        let taskContinuitySemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let previousLevel = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 0
+            let machine = TaskStateMachine.shared
+            var continuityTaskID: UUID?
+            defer {
+                if let continuityTaskID,
+                   machine.getTask(id: continuityTaskID)?.state == .running {
+                    _ = try? machine.transition(taskId: continuityTaskID, to: .cancelled, error: "SelfTest fixture cleanup")
+                }
+                Config.shared.autonomyLevel = previousLevel
+            }
+            do {
+                let task = machine.createTask(
+                    title: "Current task continuity E2E",
+                    goal: "write and inspect a report")
+                continuityTaskID = task.id
+                try machine.setSteps(taskId: task.id, steps: [
+                    TaskStep(stepNumber: 1, description: "write the report", toolName: "write_file",
+                             arguments: ["path": "report.txt"]),
+                    TaskStep(stepNumber: 2, description: "inspect the report", toolName: "read_file",
+                             arguments: ["path": "report.txt"])
+                ])
+                try machine.markStepVerification(taskId: task.id, stepIndex: 0, outcome: .passed)
+                try machine.updateStep(taskId: task.id, stepIndex: 0, state: .completed, output: "written")
+                try machine.appendResolutionRecord(StepResolutionRecord(
+                    stepNumber: 1, toolName: "write_file", rawOutput: "written",
+                    completedAt: Date(), verification: .passed), for: task.id)
+                try machine.updateStep(taskId: task.id, stepIndex: 1, state: .running)
+                try machine.setCurrentStepIndex(taskId: task.id, index: 1)
+                try machine.transition(taskId: task.id, to: .running)
+                guard let before = machine.getTask(id: task.id) else {
+                    throw JarvisError.actionFailed(action: "SelfTest", reason: "Continuity task disappeared")
+                }
+                let countBefore = machine.allTasks.count
+
+                let response = try await AgentLoop.shared.run(goal: "continue")
+                let route = await AgentLoop.shared.latestRoute()
+                let after = machine.getTask(id: task.id)
+                taskContinuityAgentLoopE2E = response.contains("Current task")
+                    && response.contains("1/2 steps passed independent verification")
+                    && response.contains("read-only handoff")
+                    && route == .directAnswer
+                    && after?.state == before.state
+                    && after?.updatedAt == before.updatedAt
+                    && after?.currentStepIndex == before.currentStepIndex
+                    && machine.allTasks.count == countBefore
+            } catch {
+                print("  ✗ Task continuity AgentLoop E2E failed: \(error.localizedDescription)")
+                taskContinuityAgentLoopE2E = false
+            }
+            taskContinuitySemaphore.signal()
+        }
+        while taskContinuitySemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(taskContinuityAgentLoopE2E,
+              "AgentLoop E2E: continue at L0 reads verified TaskState and does not mutate, resume, plan, or execute")
 
         var transcriptOnlyCommandBlocked = false
         let transcriptCommandTaskIDs = Set(TaskStateMachine.shared.allTasks.map(\.id))

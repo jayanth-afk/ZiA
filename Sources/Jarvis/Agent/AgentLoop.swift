@@ -74,6 +74,7 @@ actor AgentLoop {
         case .activitySummary: return .directAnswer
         case .verifiedArtifactSummary: return .directAnswer
         case .verifiedArtifactStatus: return .directAnswer
+        case .taskContinuity: return .directAnswer
         case .informationAnswer: return .directAnswer
         case .refusal: return .refusal
         case .planner: return .planner
@@ -90,6 +91,7 @@ actor AgentLoop {
         case .activitySummary: return .directAnswer
         case .verifiedArtifactSummary: return .directAnswer
         case .verifiedArtifactStatus: return .directAnswer
+        case .taskContinuity: return .directAnswer
         case .informationAnswer: return .directAnswer
         case .refusal: return .refusal
         case .planner: return .planner
@@ -280,7 +282,12 @@ actor AgentLoop {
         let sensitivity = await DataClassifier.shared.classify(goal)
         JarvisLogger.brain.info("AgentLoop: Goal classified as \(sensitivity.rawValue)")
 
-        let impact: PermissionGate.ActionImpact = sensitivity == .highlySensitive ? .destructive : .safeMutation
+        let impact: PermissionGate.ActionImpact
+        if TaskContinuity.query(for: goal) != nil {
+            impact = .readOnly
+        } else {
+            impact = sensitivity == .highlySensitive ? .destructive : .safeMutation
+        }
         _ = try await PermissionGate.shared.isAuthorized(actionName: "AgentLoop.run", impact: impact)
 
         // 2. FAST PATH: deterministic commands never touch the LLM (0ms router).
@@ -384,6 +391,13 @@ actor AgentLoop {
             lastReplanCount.value = 0
             lastPlannerMetrics.value = nil
             let summary = ActivityHistory.latestVerifiedArtifactStatus()
+            recordConversationTurn(goal: goal, response: summary)
+            return summary
+        case .taskContinuity(let query):
+            attribute(.directAnswer)
+            lastReplanCount.value = 0
+            lastPlannerMetrics.value = nil
+            let summary = TaskContinuity.summary(query: query, tasks: TaskStateMachine.shared.allTasks)
             recordConversationTurn(goal: goal, response: summary)
             return summary
         case .informationAnswer(let source):

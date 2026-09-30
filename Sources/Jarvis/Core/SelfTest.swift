@@ -1712,6 +1712,28 @@ enum SelfTest {
         }
         check(rejectedUnresolvedURL, "Fabricated URL placeholder 'https://example.com' rejected by PlanValidator ('fetch that URL' regression)")
 
+        // Memory is context, never an executable reference. Pin the exact
+        // two-turn path scenario plus equivalent URL/command/app/folder cases.
+        let memoryForReferenceGuard = MemoryManager.shared
+        memoryForReferenceGuard.clearAll()
+        let rememberedPath = "Remember that /Users/foo/project.txt is important."
+        _ = memoryForReferenceGuard.remember(fact: rememberedPath)
+        let retainedReferenceFact = memoryForReferenceGuard.retrieveContext(for: rememberedPath)
+            .contains("/Users/foo/project.txt")
+        let unresolvedFollowUps: [(String, DirectAnswerRouter.RefusalReason)] = [
+            ("read that file", .unresolvedFileReference),
+            ("fetch that URL", .unresolvedURLReference),
+            ("run that command", .unresolvedCommandReference),
+            ("open that app", .unresolvedReference),
+            ("list that folder", .unresolvedReference)
+        ]
+        let everyHistoricalReferenceRefused = unresolvedFollowUps.allSatisfy { goal, expected in
+            DirectAnswerRouter.refusalReason(for: goal) == expected
+        }
+        check(retainedReferenceFact && everyHistoricalReferenceRefused,
+              "Memory reference contract: remembered path stays context-only; file/URL/command/app/folder follow-ups remain unresolved")
+        memoryForReferenceGuard.clearAll()
+
         // 13.7h Unresolved search query rejected for web_search at plan time ('search for that' regression)
         let unresolvedSearchPlan = AgentPlan(goal: "search for that", steps: [PlanStep(id: "s1", toolName: "web_search", arguments: ["query": "that"], purpose: "search web")])
         var rejectedUnresolvedSearch = false

@@ -180,6 +180,14 @@ enum DirectAnswerRouter {
             return .refusal(.unresolvedCommandReference)
         }
 
+        let unresolvedFolderPatterns = [
+            "open that folder", "list that folder", "show that folder",
+            "open that directory", "list that directory", "show that directory"
+        ]
+        if unresolvedFolderPatterns.contains(normalized) {
+            return .refusal(.unresolvedReference)
+        }
+
         let unresolvedSearchPatterns = [
             "search for that", "search for it", "look that up", "search that",
             "search for this", "look it up", "search it", "google that", "google it"

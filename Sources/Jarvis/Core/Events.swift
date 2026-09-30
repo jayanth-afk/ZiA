@@ -61,7 +61,7 @@ struct UserInterruptedEvent: JarvisEvent {}
 /// Semantic interaction state emitted by the production voice/agent pipeline.
 /// UI surfaces consume this contract instead of inferring backend work from
 /// AppState (which describes enablement, not the current interaction).
-enum InteractionPhase: String, Sendable, CaseIterable {
+enum InteractionPhase: String, Sendable, CaseIterable, Codable {
     case idle
     case listening
     case understanding

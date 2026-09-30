@@ -42,7 +42,10 @@ struct ExecutionTelemetryEvent: Sendable, Codable, Equatable {
     let taskID: UUID
     let stepID: UUID?
     let kind: ExecutionTelemetryKind
-    let phase: String
+    /// Canonical semantic interaction phase. Verification is represented by
+    /// `kind == .verificationCompleted` while the interaction remains in the
+    /// existing `.executing` phase; this avoids a parallel phase vocabulary.
+    let phase: InteractionPhase
     let action: String?
     let status: String?
     let durationMilliseconds: Int?
@@ -53,7 +56,7 @@ struct ExecutionTelemetryEvent: Sendable, Codable, Equatable {
     let provider: String?
 
     init(id: UUID = UUID(), timestamp: Date = Date(), taskID: UUID, stepID: UUID? = nil,
-         kind: ExecutionTelemetryKind, phase: String, action: String? = nil,
+         kind: ExecutionTelemetryKind, phase: InteractionPhase, action: String? = nil,
          status: String? = nil, durationMilliseconds: Int? = nil,
          verification: VerificationOutcome? = nil, failureCategory: ExecutionFailureCategory? = nil,
          attemptCount: Int? = nil, modelTier: String? = nil, provider: String? = nil) {
@@ -121,29 +124,29 @@ extension ExecutionTelemetry {
     static func runSelfTests(check: (Bool, String) -> Void) {
         let journal = ExecutionTelemetry(capacity: 16)
         let task = UUID(), stepA = UUID(), stepB = UUID()
-        let started = ExecutionTelemetryEvent(taskID: task, kind: .taskStarted, phase: "understanding")
-        let stepStarted = ExecutionTelemetryEvent(taskID: task, stepID: stepA, kind: .stepStarted, phase: "executing")
-        let stepDone = ExecutionTelemetryEvent(taskID: task, stepID: stepA, kind: .stepCompleted, phase: "success")
-        let done = ExecutionTelemetryEvent(taskID: task, kind: .taskCompleted, phase: "success")
+        let started = ExecutionTelemetryEvent(taskID: task, kind: .taskStarted, phase: .understanding)
+        let stepStarted = ExecutionTelemetryEvent(taskID: task, stepID: stepA, kind: .stepStarted, phase: .executing)
+        let stepDone = ExecutionTelemetryEvent(taskID: task, stepID: stepA, kind: .stepCompleted, phase: .executing)
+        let done = ExecutionTelemetryEvent(taskID: task, kind: .taskCompleted, phase: .success)
         [started, stepStarted, stepDone, done].forEach { journal.record($0) }
         check(journal.snapshot().map(\.kind) == [.taskStarted, .stepStarted, .stepCompleted, .taskCompleted],
               "telemetry: deterministic lifecycle sequence preserves event order")
 
         journal.removeAll()
         [started,
-         ExecutionTelemetryEvent(taskID: task, stepID: stepA, kind: .stepStarted, phase: "executing"),
-         ExecutionTelemetryEvent(taskID: task, stepID: stepA, kind: .stepCompleted, phase: "success"),
-         ExecutionTelemetryEvent(taskID: task, stepID: stepB, kind: .stepStarted, phase: "executing"),
-         ExecutionTelemetryEvent(taskID: task, stepID: stepB, kind: .stepCompleted, phase: "success"), done]
+         ExecutionTelemetryEvent(taskID: task, stepID: stepA, kind: .stepStarted, phase: .executing),
+         ExecutionTelemetryEvent(taskID: task, stepID: stepA, kind: .stepCompleted, phase: .executing),
+         ExecutionTelemetryEvent(taskID: task, stepID: stepB, kind: .stepStarted, phase: .executing),
+         ExecutionTelemetryEvent(taskID: task, stepID: stepB, kind: .stepCompleted, phase: .executing), done]
             .forEach { journal.record($0) }
         check(journal.snapshot().map(\.kind) == [.taskStarted, .stepStarted, .stepCompleted, .stepStarted, .stepCompleted, .taskCompleted],
               "telemetry: multi-step task maintains task and step ordering")
 
         let verification = ToolVerificationResult.failed("observed mismatch")
         let verifyEvent = ExecutionTelemetryEvent(taskID: task, stepID: stepA, kind: .verificationCompleted,
-                                                  phase: "verifying", verification: verification.outcome)
+                                                  phase: .executing, verification: verification.outcome)
         check(verifyEvent.verification == .failed, "telemetry: event retains the verifier's explicit outcome")
-        let recovery = ExecutionTelemetryEvent(taskID: task, kind: .recoveryAttempted, phase: "thinking", attemptCount: 2)
+        let recovery = ExecutionTelemetryEvent(taskID: task, kind: .recoveryAttempted, phase: .thinking, attemptCount: 2)
         check(recovery.attemptCount == 2, "telemetry: recovery records the actual attempt count")
 
         let categories: [(any Error, ExecutionFailureCategory)] = [
@@ -160,21 +163,21 @@ extension ExecutionTelemetry {
         ]
         check(categories.allSatisfy { ExecutionFailureCategory.classify($0.0) == $0.1 },
               "telemetry: failure categories map deterministically to the closed vocabulary")
-        let stopped = ExecutionTelemetryEvent(taskID: task, kind: .stopped, phase: "stopped", failureCategory: .cancellation)
+        let stopped = ExecutionTelemetryEvent(taskID: task, kind: .stopped, phase: .stopped, failureCategory: .cancellation)
         check(stopped.kind == .stopped && stopped.failureCategory == .cancellation,
               "telemetry: cancellation is represented as stopped")
 
         let permissionLevel = PermissionGate.shared.currentLevel
-        _ = journal.record(ExecutionTelemetryEvent(taskID: task, kind: .taskStarted, phase: "understanding"))
+        _ = journal.record(ExecutionTelemetryEvent(taskID: task, kind: .taskStarted, phase: .understanding))
         check(PermissionGate.shared.currentLevel == permissionLevel,
               "telemetry: recording does not grant or mutate permission")
         let original = "unchanged action result"
-        let recorded = journal.record(ExecutionTelemetryEvent(taskID: task, kind: .taskCompleted, phase: "success"))
+        let recorded = journal.record(ExecutionTelemetryEvent(taskID: task, kind: .taskCompleted, phase: .success))
         check(recorded && original == "unchanged action result",
               "telemetry: recording is observational and leaves action results unchanged")
 
         let duplicateID = UUID()
-        let event = ExecutionTelemetryEvent(id: duplicateID, taskID: task, kind: .stepStarted, phase: "executing")
+        let event = ExecutionTelemetryEvent(id: duplicateID, taskID: task, kind: .stepStarted, phase: .executing)
         let before = journal.snapshot().count
         let first = journal.record(event), second = journal.record(event)
         check(first && !second && journal.snapshot().count == before + 1,
@@ -183,7 +186,7 @@ extension ExecutionTelemetry {
         let benchmark = ExecutionTelemetry(capacity: 10_000)
         let benchmarkStart = DispatchTime.now().uptimeNanoseconds
         for _ in 0..<10_000 {
-            benchmark.record(ExecutionTelemetryEvent(taskID: task, kind: .stepCompleted, phase: "success"))
+            benchmark.record(ExecutionTelemetryEvent(taskID: task, kind: .stepCompleted, phase: .executing))
         }
         let elapsed = DispatchTime.now().uptimeNanoseconds - benchmarkStart
         print(String(format: "  telemetry append benchmark: %.3f µs/event (10,000 in-memory records)", Double(elapsed) / 10_000.0 / 1_000.0))

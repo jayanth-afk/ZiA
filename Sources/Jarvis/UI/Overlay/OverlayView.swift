@@ -8,6 +8,16 @@ final class OverlayViewModel: ObservableObject {
     @Published var isStreaming: Bool = false
     @Published var latencyMs: Int = 140
     @Published var isSpeaking: Bool = false
+    @Published private(set) var interactionPhase: InteractionPhase = InteractionPhaseCenter.backendPhase
+
+    private var interactionSubscription: UUID?
+
+    init() {
+        interactionSubscription = EventBus.shared.subscribe(InteractionPhaseChangedEvent.self) { [weak self] event in
+            self?.interactionPhase = event.phase
+            self?.isSpeaking = event.phase == .speaking
+        }
+    }
 }
 
 /// Main floating HUD view displayed by FloatingPanel.
@@ -62,8 +72,8 @@ struct OverlayView: View {
 
             // Audio Waveform Visualizer
             WaveformView(
-                isActive: appState.state == .active || viewModel.isSpeaking,
-                amplitude: viewModel.isSpeaking ? 0.75 : (appState.state == .active ? 0.5 : 0.0)
+                isActive: waveformIsActive,
+                amplitude: waveformAmplitude
             )
             .padding(.horizontal, DesignTokens.Spacing.sm)
 
@@ -94,7 +104,7 @@ struct OverlayView: View {
                                 }
                                 appState.transition(to: .active)
                                 viewModel.isStreaming = true
-                                viewModel.lastResponse = "Processing: \(query)..."
+                                viewModel.lastResponse = ""
                             }
                             do {
                                 let output = try await AgentLoop.shared.run(goal: query)
@@ -106,7 +116,7 @@ struct OverlayView: View {
                             } catch {
                                 await MainActor.run {
                                     viewModel.isStreaming = false
-                                    viewModel.lastResponse = "Error: \(error.localizedDescription)"
+                                    viewModel.lastResponse = "I couldn't complete that request. Please try again."
                                     appState.transition(to: .sleep)
                                 }
                             }
@@ -148,6 +158,14 @@ struct OverlayView: View {
     }
 
     private var statusColor: Color {
+        switch viewModel.interactionPhase {
+        case .listening: return DesignTokens.Colors.warning
+        case .understanding, .thinking: return DesignTokens.Colors.primaryAccent
+        case .executing, .speaking: return DesignTokens.Colors.success
+        case .success: return DesignTokens.Colors.success
+        case .error, .stopped: return DesignTokens.Colors.error
+        case .idle: break
+        }
         switch appState.state {
         case .off: return DesignTokens.Colors.textTertiary
         case .sleep: return DesignTokens.Colors.warning
@@ -156,10 +174,37 @@ struct OverlayView: View {
     }
 
     private var statusText: String {
+        switch viewModel.interactionPhase {
+        case .listening: return "Listening"
+        case .understanding: return "Understanding"
+        case .thinking: return "Thinking"
+        case .executing: return "Working"
+        case .speaking: return "Speaking"
+        case .success: return "Done"
+        case .error: return "Couldn't complete"
+        case .stopped: return "Stopped"
+        case .idle: break
+        }
         switch appState.state {
         case .off: return "Disabled"
-        case .sleep: return "Listening..."
-        case .active: return "Processing"
+        case .sleep: return "Ready"
+        case .active: return "Working"
+        }
+    }
+
+    private var waveformIsActive: Bool {
+        switch viewModel.interactionPhase {
+        case .listening, .understanding, .thinking, .executing, .speaking: return true
+        case .idle, .success, .error, .stopped: return viewModel.isSpeaking
+        }
+    }
+
+    private var waveformAmplitude: CGFloat {
+        switch viewModel.interactionPhase {
+        case .speaking: return 0.75
+        case .listening: return 0.35
+        case .understanding, .thinking, .executing: return 0.5
+        case .idle, .success, .error, .stopped: return viewModel.isSpeaking ? 0.75 : 0
         }
     }
 }

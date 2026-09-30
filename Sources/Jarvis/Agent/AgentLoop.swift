@@ -134,7 +134,24 @@ actor AgentLoop {
                 Self.cancellationObserved.value = false
             }
         }
-        return try await runInternal(goal: goal)
+        await reportInteractionPhase(.understanding)
+        do {
+            let response = try await runInternal(goal: goal)
+            await reportInteractionPhase(.success)
+            return response
+        } catch is CancellationError {
+            await reportInteractionPhase(.stopped)
+            throw CancellationError()
+        } catch {
+            await reportInteractionPhase(.error)
+            throw error
+        }
+    }
+
+    private func reportInteractionPhase(_ phase: InteractionPhase, taskID: UUID? = nil) async {
+        await MainActor.run {
+            InteractionPhaseCenter.report(phase, taskID: taskID?.uuidString)
+        }
     }
 
     /// CROSS-TURN MEMORY (production connection): record one interaction so
@@ -203,6 +220,7 @@ actor AgentLoop {
         if let match = await MainActor.run(body: { DeterministicRouter.shared.match(goal) }) {
             JarvisLogger.brain.info("AgentLoop: deterministic fast path hit for '\(goal)'")
             attribute(.deterministic)
+            await reportInteractionPhase(.executing)
             // The declared impact is enforced inside ActionEngine via the
             // PermissionGate — the fast path obeys the same authority policy
             // as planned tool execution.
@@ -235,6 +253,7 @@ actor AgentLoop {
         case .directAnswer:
             JarvisLogger.brain.info("AgentLoop: direct-answer route for '\(goal, privacy: .public)'")
             do {
+                await reportInteractionPhase(.thinking)
                 let answer = try await DirectComposer().composeAnswer(goal: goal, observations: [])
                 attribute(.directAnswer)
                 lastReplanCount.value = 0
@@ -262,6 +281,7 @@ actor AgentLoop {
             environmentContext: TaskEnvironmentContext.captureLive()
         )
         try stateMachine.transition(taskId: task.id, to: .planning)
+        await reportInteractionPhase(.thinking, taskID: task.id)
 
         // Experiment A: sequential next-step planning. When enabled, each
         // planning generation produces the NEXT SINGLE action; validate →
@@ -406,6 +426,7 @@ actor AgentLoop {
                     }
 
                     // 5. EXECUTE (ToolExecutor does permission gate + execute + observe + verify)
+                    await reportInteractionPhase(.executing, taskID: task.id)
                     let result = try await ToolExecutor.shared.execute(toolName: toolName, arguments: args)
                     // Argument-preservation instrumentation: record the executed
                     // (post-reference-resolution) values for the most recent
@@ -517,6 +538,7 @@ actor AgentLoop {
                 try stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
                 try stateMachine.transition(taskId: task.id, to: .recovering)
                 try stateMachine.transition(taskId: task.id, to: .replanning)
+                await reportInteractionPhase(.thinking, taskID: task.id)
                 try? stateMachine.incrementRetryCount(taskId: task.id)
 
                 // REPLAN with real failure context (not a blind repeat): the
@@ -680,6 +702,7 @@ actor AgentLoop {
             // legal state that can reach .failed/.recovering/.replanning and
             // back). Planning-phase evidence lives in the ledger + snapshots.
             generationCount += 1
+            await reportInteractionPhase(.thinking, taskID: task.id)
             var plan: AgentPlan
             do {
                 plan = try await MLXPlanner.shared.planNextStep(
@@ -702,6 +725,7 @@ actor AgentLoop {
                 try stateMachine.transition(taskId: task.id, to: .failed, error: "Next-step planning failed: \(error.localizedDescription)")
                 try stateMachine.transition(taskId: task.id, to: .recovering)
                 try stateMachine.transition(taskId: task.id, to: .replanning)
+                await reportInteractionPhase(.thinking, taskID: task.id)
                 // Bug A regression guard: the retry generation must happen in
                 // RUNNING — the only state from which the loop's later
                 // failed/verifying transitions are legal. Leaving the task in
@@ -824,6 +848,7 @@ actor AgentLoop {
                         )
                     }
                 }
+                await reportInteractionPhase(.executing, taskID: task.id)
                 let result = try await ToolExecutor.shared.execute(toolName: toolName, arguments: args)
 
                 if Self.cancellationObserved.value {

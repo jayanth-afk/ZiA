@@ -116,6 +116,34 @@ enum SelfTest {
         bus.publish(TestEvent(value: 999))
         check(true, "No subscribers does not crash")
 
+        var interactionPhases: [InteractionPhase] = []
+        var interactionTaskID: String?
+        bus.subscribe(InteractionPhaseChangedEvent.self) { event in
+            interactionPhases.append(event.phase)
+            interactionTaskID = event.taskID
+        }
+        for phase in InteractionPhase.allCases {
+            bus.publish(InteractionPhaseChangedEvent(phase: phase, taskID: "interaction-test"))
+        }
+        check(interactionPhases == InteractionPhase.allCases,
+              "Semantic interaction events deliver every production phase in order")
+        check(interactionTaskID == "interaction-test",
+              "Semantic interaction event preserves task correlation without transcript content")
+        bus.removeAll()
+
+        var derivedPhases: [InteractionPhase] = []
+        bus.subscribe(InteractionPhaseChangedEvent.self) { event in derivedPhases.append(event.phase) }
+        InteractionPhaseCenter.resetForTesting()
+        InteractionPhaseCenter.report(.thinking, taskID: "task-42")
+        InteractionPhaseCenter.speechStarted()
+        InteractionPhaseCenter.report(.executing, taskID: "task-42")
+        InteractionPhaseCenter.speechFinished()
+        InteractionPhaseCenter.report(.success, taskID: "task-42")
+        check(derivedPhases == [.thinking, .speaking, .speaking, .executing, .success],
+              "Speech overlays and then restores live backend phase instead of implying a long task is idle")
+        bus.removeAll()
+        InteractionPhaseCenter.resetForTesting()
+
         // ── PipelineTimer Tests ──
         print("\n─── PipelineTimer ───")
 
@@ -4282,8 +4310,15 @@ enum SelfTest {
         // model), and the response returned to the user must become the stored
         // assistant turn.
         var crossTurnMemoryRecorded = false
+        var deterministicInteractionPhasesPublished = false
         let semMem21 = DispatchSemaphore(value: 0)
         Task { @MainActor in
+            var interactionPhases: [InteractionPhase] = []
+            InteractionPhaseCenter.resetForTesting()
+            let phaseSub = EventBus.shared.subscribe(InteractionPhaseChangedEvent.self) { event in
+                interactionPhases.append(event.phase)
+            }
+            defer { EventBus.shared.unsubscribe(phaseSub) }
             let prevAutonomy = Config.shared.autonomyLevel
             Config.shared.autonomyLevel = 2
             defer { Config.shared.autonomyLevel = prevAutonomy }
@@ -4292,6 +4327,9 @@ enum SelfTest {
             ConversationStore.shared.clearHistory()
             let goalStr = "read clipboard"
             _ = try await AgentLoop.shared.run(goal: goalStr)
+            deterministicInteractionPhasesPublished = interactionPhases.contains(.understanding)
+                && interactionPhases.contains(.executing)
+                && interactionPhases.contains(.success)
             let msgs = ConversationManager.shared.messages.filter { $0.role != .system }
             if msgs.count == 2,
                msgs[0].role == .user, msgs[0].content == goalStr,
@@ -4308,6 +4346,8 @@ enum SelfTest {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
         }
         check(crossTurnMemoryRecorded, "agent loop 21.1: completed production run records user+assistant turns in ConversationManager for the next turn")
+        check(deterministicInteractionPhasesPublished,
+              "interaction E2E: production deterministic AgentLoop run emits understanding, executing, and success phases")
 
         // 21.2 CROSS-TURN MEMORY (planner route): a completed multi-step planner
         // run (Route=planner) must record its real response the same way — the

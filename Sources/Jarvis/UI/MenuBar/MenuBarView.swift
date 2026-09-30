@@ -109,7 +109,7 @@ struct MenuBarView: View {
     private var statusText: String {
         switch appState.state {
         case .off: return "Disabled"
-        case .sleep: return "Listening for wake word…"
+        case .sleep: return "Standby"
         case .active: return "Processing…"
         }
     }
@@ -151,9 +151,14 @@ struct MenuBarView: View {
 /// Minimal transcript section (Phase 3 foundation): bounded recent history
 /// through the HistoryService boundary, with one older-page affordance. Not
 /// the final Zia conversation UI — this proves the data boundary end to end.
+@MainActor
+private final class MenuHistorySectionModel: ObservableObject {
+    @Published var showAll = false
+}
+
 struct MenuHistorySection: View {
     @ObservedObject private var history = HistoryService.shared
-    @State private var showAll = false
+    @StateObject private var model = MenuHistorySectionModel()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -161,16 +166,16 @@ struct MenuHistorySection: View {
                 Label("Recent conversation", systemImage: "bubble.left.and.bubble.right")
                     .font(.caption.weight(.semibold))
                 Spacer()
-                if showAll {
+                if model.showAll {
                     Button("Show less") {
-                        showAll = false
+                        model.showAll = false
                         history.loadRecent()
                     }
                     .buttonStyle(.plain)
                     .font(.caption2)
                 } else if history.turns.count > 4 {
                     Button("Older") {
-                        showAll = true
+                        model.showAll = true
                         history.loadOlder()
                     }
                     .buttonStyle(.plain)
@@ -183,7 +188,7 @@ struct MenuHistorySection: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else {
-                ForEach((showAll ? history.turns : Array(history.turns.suffix(4)))) { turn in
+                ForEach((model.showAll ? history.turns : Array(history.turns.suffix(4)))) { turn in
                     HStack(alignment: .top, spacing: 4) {
                         Image(systemName: turn.isFromUser ? "person.fill" : "brain.head.profile")
                             .font(.caption2)

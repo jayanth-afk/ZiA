@@ -138,6 +138,9 @@ final class VoicePipeline {
         // Partial hypotheses improve endpointing: complete commands can finish
         // quickly, while a clause ending in "and" / "to" gets a longer pause.
         EventBus.shared.subscribe(TranscriptPartialEvent.self) { event in
+            if !event.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                InteractionPhaseCenter.report(.listening)
+            }
             Task { @MainActor in
                 VoiceActivityDetector.shared.updatePartialTranscript(event.text)
             }
@@ -159,6 +162,7 @@ final class VoicePipeline {
         // VAD speech start -> barge-in check (halts audio output, never cancels background task)
         VoiceActivityDetector.shared.onSpeechStart = { [weak self] in
             guard self != nil else { return }
+            InteractionPhaseCenter.report(.listening)
             VoiceTraceState.shared.markSpeechStart()
             JarvisLogger.voice.info("[VOICE_TRACE] VAD speech onset → engage recognition")
             if TTSEngine.shared.isSpeaking || AudioPlayer.shared.isPlaying {
@@ -294,6 +298,7 @@ final class VoicePipeline {
             cleaned = String(cleaned.dropLast()).trimmingCharacters(in: .whitespaces)
         }
         guard !cleaned.isEmpty else {
+            InteractionPhaseCenter.report(.idle)
             if AppState.shared.state == .active {
                 AppState.shared.transition(to: .sleep)
             }
@@ -314,6 +319,7 @@ final class VoicePipeline {
         if AppState.shared.state == .sleep {
             guard let match = wakeMatch else {
                 JarvisLogger.voice.debug("Utterance in SLEEP state ignored (no wake alias detected): '\(text, privacy: .public)'")
+                InteractionPhaseCenter.report(.idle)
                 return
             }
             JarvisLogger.voice.info("Wake alias '\(match.matchedAlias, privacy: .public)' recognized in SLEEP state: '\(text, privacy: .public)'")
@@ -322,6 +328,7 @@ final class VoicePipeline {
             cleaned = match.strippedCommand
             guard !cleaned.isEmpty else {
                 // Utterance was just the wake phrase (e.g. "Hey Zia" or "Jarvis")
+                InteractionPhaseCenter.report(.idle)
                 return
             }
         } else {
@@ -331,6 +338,8 @@ final class VoicePipeline {
             }
         }
 
+        InteractionPhaseCenter.report(.understanding)
+
         // 2. Deterministic router check (instant system action, 0ms LLM)
         if let match = DeterministicRouter.shared.match(cleaned) {
             let timer = SpeechRecognizer.shared.currentTimer
@@ -339,6 +348,7 @@ final class VoicePipeline {
             JarvisLogger.voice.info("Voice command matched deterministic intent: \(match.intent, privacy: .public)")
             Task { @MainActor in
                 do {
+                    InteractionPhaseCenter.report(.executing)
                     let actionStart = CFAbsoluteTimeGetCurrent()
                     let result = try await ActionEngine.shared.execute(
                         intent: match.intent,
@@ -350,8 +360,13 @@ final class VoicePipeline {
                     timer?.mark(.actionExecuted)
                     timer?.mark(.ttsStart)
                     JarvisLogger.voice.info("ActionEngine completed '\(match.intent, privacy: .public)' in \(String(format: "%.2f", actionMs), privacy: .public)ms: '\(result, privacy: .public)'")
+                    TTSEngine.shared.onSpeechFinished = {
+                        InteractionPhaseCenter.report(.success)
+                        TTSEngine.shared.onSpeechFinished = nil
+                    }
                     TTSEngine.shared.speak(result, mode: .acknowledgement)
                 } catch {
+                    InteractionPhaseCenter.report(.error)
                     TTSEngine.shared.speak("Action failed: \(error.localizedDescription)", mode: .acknowledgement)
                 }
             }
@@ -380,11 +395,20 @@ final class VoicePipeline {
                 // verification, so it must not be the voice action path.
                 let response = try await AgentLoop.shared.run(goal: cleaned)
                 guard !Task.isCancelled else { return }
+                TTSEngine.shared.onSpeechFinished = {
+                    InteractionPhaseCenter.report(.success)
+                    TTSEngine.shared.onSpeechFinished = nil
+                }
                 TTSEngine.shared.speak(response, mode: .conversational)
             } catch is CancellationError {
                 JarvisLogger.voice.info("Voice background task \(taskID) cancelled")
             } catch {
                 guard !Task.isCancelled else { return }
+                InteractionPhaseCenter.report(.error)
+                TTSEngine.shared.onSpeechFinished = {
+                    InteractionPhaseCenter.report(.error)
+                    TTSEngine.shared.onSpeechFinished = nil
+                }
                 TTSEngine.shared.speak("Sorry, I encountered an issue: \(error.localizedDescription)", mode: .acknowledgement)
             }
         }
@@ -399,6 +423,7 @@ final class VoicePipeline {
 
     private func handleEmergencyStop(phrase: String) {
         JarvisLogger.security.warning("Emergency stop handled in pipeline: '\(phrase)'")
+        InteractionPhaseCenter.report(.stopped)
         // Cancel all active voice-initiated background tasks immediately
         for (id, task) in activeBackgroundTasks {
             JarvisLogger.voice.info("Cancelling background task \(id) due to emergency stop")

@@ -58,6 +58,70 @@ struct TranscriptFinalEvent: JarvisEvent {
 /// User interrupted JARVIS while it was speaking.
 struct UserInterruptedEvent: JarvisEvent {}
 
+/// Semantic interaction state emitted by the production voice/agent pipeline.
+/// UI surfaces consume this contract instead of inferring backend work from
+/// AppState (which describes enablement, not the current interaction).
+enum InteractionPhase: String, Sendable, CaseIterable {
+    case idle
+    case listening
+    case understanding
+    case thinking
+    case executing
+    case speaking
+    case success
+    case error
+    case stopped
+}
+
+struct InteractionPhaseChangedEvent: JarvisEvent {
+    let phase: InteractionPhase
+    let taskID: String?
+    let timestamp: Date
+
+    init(phase: InteractionPhase, taskID: String? = nil, timestamp: Date = .now) {
+        self.phase = phase
+        self.taskID = taskID
+        self.timestamp = timestamp
+    }
+}
+
+/// Serializes backend progress and actual speech state into one UI contract.
+/// Speech temporarily overlays backend progress; when utterance ends, the
+/// latest backend phase is restored so an acknowledgement cannot make a
+/// still-running task look idle or complete.
+@MainActor
+enum InteractionPhaseCenter {
+    private(set) static var backendPhase: InteractionPhase = .idle
+    private static var taskID: String?
+    private static var isSpeechActive = false
+
+    static func report(_ phase: InteractionPhase, taskID: String? = nil) {
+        backendPhase = phase
+        self.taskID = taskID
+        emit(isSpeechActive ? .speaking : phase)
+    }
+
+    static func speechStarted() {
+        isSpeechActive = true
+        emit(.speaking)
+    }
+
+    static func speechFinished() {
+        isSpeechActive = false
+        emit(backendPhase)
+    }
+
+    static func resetForTesting() {
+        backendPhase = .idle
+        taskID = nil
+        isSpeechActive = false
+    }
+
+    private static func emit(_ phase: InteractionPhase) {
+        EventBus.shared.publish(InteractionPhaseChangedEvent(phase: phase, taskID: taskID))
+    }
+}
+
 // MARK: - Routing Events (Phase 3-5 placeholders)
 
 /// Intent was classified (deterministic or LLM).

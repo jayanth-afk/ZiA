@@ -855,3 +855,10 @@ If you are an incoming AI coding agent (Claude Opus, Gemini, Codex, Antigravity)
 - Introduced `AgentStepOutcomePolicy`: accepts empty tool output when mechanical verification passed.
 - Fixed false-failure replanning on redirecting shell commands.
 - SelfTest confirmed at 624 passed, 0 failed.
+
+### Semantic Interaction UI Contract
+- Added `InteractionPhase` / `InteractionPhaseChangedEvent` and `InteractionPhaseCenter` as the stable backend-to-UI boundary. AgentLoop reports understanding, planning, execution, success, failure, and stop; the voice path reports real transcript, VAD, and deterministic action states; TTS overlays `.speaking` only while AVFoundation is actually speaking, then restores the latest backend phase.
+- The existing overlay now reflects those phases and uses neutral `Ready` / `Standby` wording rather than claiming the microphone is actively listening merely because the app is enabled. Errors in the typed overlay are user-facing rather than raw exception text.
+- The transcript’s older-page toggle uses an owned `@StateObject` model instead of the unavailable SwiftUI `@State` macro, allowing the supported Command Line Tools build on this host.
+- Verification: `swift build` succeeded. Full `.build/out/Products/Debug/Jarvis --self-test`: **838 passed, 0 failed**. Production deterministic AgentLoop E2E observed understanding, executing, success; center tests confirm acknowledgement speech overlays but does not hide continuing backend work.
+- Not physically verified: microphone capture/UI animation and actual TTS playback in the visible overlay. These remain permission/device-dependent.

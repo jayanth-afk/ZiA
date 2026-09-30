@@ -142,6 +142,10 @@ final class EmergencyInterrupt {
         EventBus.shared.publish(EmergencyStopEvent(phrase: phrase))
 
         // 5. Deterministic acknowledgement corresponding to real emergency halt
+        TTSEngine.shared.onSpeechFinished = {
+            InteractionPhaseCenter.report(.stopped)
+            TTSEngine.shared.onSpeechFinished = nil
+        }
         TTSEngine.shared.speak("Stopped.", mode: .acknowledgement)
     }
 }

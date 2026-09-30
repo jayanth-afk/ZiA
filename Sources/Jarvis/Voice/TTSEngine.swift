@@ -90,6 +90,10 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
         guard synthesizer.isSpeaking || synthesizer.isPaused else { return }
         let start = CFAbsoluteTimeGetCurrent()
         synthesizer.stopSpeaking(at: .immediate)
+        // AVSpeechSynthesizer's didCancel callback may be stale by the time it
+        // arrives (currentUtteranceText is cleared before stop), so release the
+        // semantic speaking overlay synchronously here.
+        InteractionPhaseCenter.speechFinished()
         let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000.0
         lastBargeInHaltLatencyMs = elapsed
         JarvisLogger.voice.info("TTS stopped immediately in \(String(format: "%.2f", elapsed))ms")
@@ -120,6 +124,7 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
         let text = utterance.speechString
         Task { @MainActor [weak self] in
             guard let self, text == self.currentUtteranceText else { return }
+            InteractionPhaseCenter.speechStarted()
             if let dispatch = self.speakDispatchTime {
                 self.lastAudioStartLatencyMs = (CFAbsoluteTimeGetCurrent() - dispatch) * 1000.0
                 JarvisLogger.voice.info("TTS audio started (audio-start latency: \(String(format: "%.1f", self.lastAudioStartLatencyMs ?? 0), privacy: .public)ms)")
@@ -133,7 +138,10 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
             guard let self, text == self.currentUtteranceText else { return }
             self.currentUtteranceText = nil
             JarvisLogger.voice.debug("TTS finished speaking utterance")
-            self.onSpeechFinished?()
+            let completion = self.onSpeechFinished
+            self.onSpeechFinished = nil
+            completion?()
+            InteractionPhaseCenter.speechFinished()
         }
     }
 
@@ -145,6 +153,8 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
             // of a newly enqueued one.
             guard let self, text == self.currentUtteranceText else { return }
             self.currentUtteranceText = nil
+            self.onSpeechFinished = nil
+            InteractionPhaseCenter.speechFinished()
             JarvisLogger.voice.debug("TTS utterance was cancelled")
         }
     }

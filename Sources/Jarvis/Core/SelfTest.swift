@@ -2408,6 +2408,12 @@ enum SelfTest {
         let axSem = DispatchSemaphore(value: 0)
         Task {
             do {
+                // Deterministic isolation: PermissionGate authorizes a
+                // destructive action at L1 when ANY pending destructive
+                // confirmation (60s TTL, fuzzy intent match) is alive. An
+                // earlier suite test that left a preview pending would
+                // otherwise make this denial timing-dependent. Clear it first.
+                await MainActor.run { _ = DestructiveActionManager.shared.cancel() }
                 _ = try await clickTool?.execute(arguments: ["element_label": "Delete Database"])
             } catch JarvisError.permissionDenied {
                 destructiveBlocked = true

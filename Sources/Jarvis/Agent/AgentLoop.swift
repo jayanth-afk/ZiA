@@ -72,6 +72,7 @@ actor AgentLoop {
         switch DirectAnswerRouter.decide(goal: goal) {
         case .directAnswer: return .directAnswer
         case .activitySummary: return .directAnswer
+        case .verifiedArtifactSummary: return .directAnswer
         case .refusal: return .refusal
         case .planner: return .planner
         }
@@ -85,6 +86,7 @@ actor AgentLoop {
         switch DirectAnswerRouter.decide(goal: goal) {
         case .directAnswer: return .directAnswer
         case .activitySummary: return .directAnswer
+        case .verifiedArtifactSummary: return .directAnswer
         case .refusal: return .refusal
         case .planner: return .planner
         }
@@ -332,6 +334,13 @@ actor AgentLoop {
             lastReplanCount.value = 0
             lastPlannerMetrics.value = nil
             let summary = ActivityHistory.recentSummary()
+            recordConversationTurn(goal: goal, response: summary)
+            return summary
+        case .verifiedArtifactSummary:
+            attribute(.directAnswer)
+            lastReplanCount.value = 0
+            lastPlannerMetrics.value = nil
+            let summary = ActivityHistory.latestVerifiedArtifactSummary()
             recordConversationTurn(goal: goal, response: summary)
             return summary
         case .planner:

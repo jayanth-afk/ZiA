@@ -83,6 +83,48 @@ enum SelfTest {
               "activity history ignores conversational task envelopes that contain no action")
         check(DirectAnswerRouter.decide(goal: "What did you do a few minutes ago?") == .activitySummary,
               "recent activity question routes deterministically without planner generation")
+        let failedActivityTask = JarvisTask(
+            id: UUID(), title: "FailureProbe", goal: "read a document", state: .failed,
+            steps: [TaskStep(stepNumber: 1, description: "read document", toolName: "read_file",
+                             state: .failed, error: "file was unavailable", verification: .failed)],
+            createdAt: activityNow, updatedAt: activityNow, error: "tool failed")
+        let failedActivityEvents = [
+            ExecutionTelemetryEvent(timestamp: activityNow, taskID: failedActivityTask.id,
+                                    kind: .stepFailed, phase: .error, action: "read_file",
+                                    failureCategory: .unavailable),
+            ExecutionTelemetryEvent(timestamp: activityNow, taskID: failedActivityTask.id,
+                                    kind: .taskFailed, phase: .error)
+        ]
+        let failureReport = ActivityHistory.summary(tasks: [failedActivityTask], events: failedActivityEvents, now: activityNow)
+        check(failureReport.contains("unavailable") && failureReport.contains("file was unavailable"),
+              "activity history explains failure from the recorded category and failed TaskState step")
+
+        let artifactPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("zia-verified-artifact-\(UUID().uuidString).txt").path
+        defer { try? FileManager.default.removeItem(atPath: artifactPath) }
+        try? Data("verified artifact".utf8).write(to: URL(fileURLWithPath: artifactPath))
+        let artifactTaskID = UUID()
+        let artifactTask = JarvisTask(
+            id: artifactTaskID, title: "ArtifactProbe", goal: "create test artifact", state: .completed,
+            steps: [TaskStep(stepNumber: 1, description: "write file", toolName: "write_file",
+                             arguments: ["path": artifactPath], state: .completed,
+                             verification: .passed)],
+            completedAt: activityNow, resolutionRecords: [StepResolutionRecord(
+                stepNumber: 1, toolName: "write_file", rawOutput: "created", completedAt: activityNow,
+                verification: .passed)])
+        let artifactEvents = [ExecutionTelemetryEvent(timestamp: activityNow, taskID: artifactTaskID,
+                                                       kind: .taskCompleted, phase: .success)]
+        check(ActivityHistory.latestVerifiedArtifactSummary(
+            tasks: [artifactTask], events: artifactEvents, now: activityNow).contains(artifactPath),
+              "artifact follow-up reports only a completed write with passed TaskState and verifier evidence")
+        var unverifiedArtifactTask = artifactTask
+        unverifiedArtifactTask.steps[0].verification = .inconclusive
+        check(!ActivityHistory.latestVerifiedArtifactSummary(
+            tasks: [unverifiedArtifactTask], events: artifactEvents, now: activityNow).contains(artifactPath),
+              "artifact follow-up excludes inconclusive verification even when the path exists")
+        check(DirectAnswerRouter.decide(goal: "What file did you create?") == .verifiedArtifactSummary
+              && DirectAnswerRouter.decide(goal: "What happened?") == .activitySummary,
+              "state-grounded artifact and recent-failure questions route without planner generation")
 
         let prevAutonomy = Config.shared.autonomyLevel
         Config.shared.autonomyLevel = 1
@@ -4584,7 +4626,7 @@ enum SelfTest {
         // task must take the direct-answer route (they are questions about
         // conversation context), never the planner — the 0.5B planner
         // hallucinates unrelated tool calls for context-only questions.
-        var bareFollowUpsRoutedToDirectAnswer = ["why", "why?", "how", "when?", "explain", "elaborate", "what happened?"]
+        var bareFollowUpsRoutedToDirectAnswer = ["why", "why?", "how", "when?", "explain", "elaborate"]
             .allSatisfy { goal in
                 if case .directAnswer = DirectAnswerRouter.decide(goal: goal) { return true }
                 return false

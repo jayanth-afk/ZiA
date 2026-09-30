@@ -76,6 +76,8 @@ enum DirectAnswerRouter {
         case directAnswer
         /// Recent-action question answered from TaskState and observed telemetry.
         case activitySummary
+        /// File-artifact question answered only from a completed, verified write.
+        case verifiedArtifactSummary
         /// Explicit refusal with a typed, auditable reason.
         case refusal(RefusalReason)
         /// Genuine tool task or ambiguous goal — route to the planner.
@@ -212,6 +214,22 @@ enum DirectAnswerRouter {
             "what happened a few minutes ago", "what did you do a moment ago"
         ]
         if recentActivityQuestions.contains(normalized) {
+            return .activitySummary
+        }
+
+        let verifiedArtifactQuestions = [
+            "what file did you create", "which file did you create",
+            "what file did you just create", "which file did you just create",
+            "what file did you save", "which file did you save"
+        ]
+        if verifiedArtifactQuestions.contains(normalized) {
+            return .verifiedArtifactSummary
+        }
+
+        // A bare "what happened?" is a question about the latest recorded
+        // interaction when one exists. Answer from TaskState/telemetry rather
+        // than asking a model to reconstruct operational facts from prose.
+        if normalized == "what happened" {
             return .activitySummary
         }
 

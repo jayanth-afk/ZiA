@@ -42,9 +42,9 @@ enum ActivityHistory {
         }
 
         let task = tasks.first { $0.id == taskID }
-        let terminalKind = taskEvents.last(where: {
+        let terminalKind = taskEvents.filter({
             $0.kind == .taskCompleted || $0.kind == .taskFailed || $0.kind == .stopped
-        })?.kind
+        }).max { $0.timestamp < $1.timestamp }?.kind
         let actions = Array(Set(taskEvents.compactMap(\.action))).sorted()
         let actionSummary = actions.isEmpty ? nil : actions.joined(separator: ", ")
         let recoveryCount = taskEvents.filter { $0.kind == .recoveryAttempted }.count
@@ -64,9 +64,21 @@ enum ActivityHistory {
             }
         case .failed:
             let goal = String((task?.goal ?? "").prefix(240))
+            let failureCategory = taskEvents
+                .filter { $0.kind == .stepFailed || $0.kind == .taskFailed }
+                .max { $0.timestamp < $1.timestamp }?.failureCategory?.rawValue
+            let stepFailure = task?.steps
+                .filter { $0.state == .failed }
+                .max { ($0.error ?? "").count < ($1.error ?? "").count }?.error
+            let detail = [failureCategory, stepFailure]
+                .compactMap { value -> String? in
+                    guard let value, !value.isEmpty else { return nil }
+                    return String(value.prefix(200))
+                }.joined(separator: ": ")
             response = goal.isEmpty
                 ? "I couldn't complete the recent action\(actionSummary.map { ": \($0)" } ?? "")."
                 : "I couldn't complete “\(goal)”."
+            if !detail.isEmpty { response += " Recorded failure: \(detail)." }
         case .cancelled:
             response = "I stopped the recent task before it completed."
         default:
@@ -85,5 +97,48 @@ enum ActivityHistory {
             response += " I attempted recovery \(recoveryCount) time\(recoveryCount == 1 ? "" : "s")."
         }
         return response
+    }
+
+    /// Reports only a recent file-writing step whose task state AND independent
+    /// verifier both say passed, and whose path still exists. This is an
+    /// explanatory answer only; the result is never injected into execution.
+    static func latestVerifiedArtifactSummary(
+        tasks: [JarvisTask],
+        events: [ExecutionTelemetryEvent],
+        now: Date = .now,
+        window: TimeInterval = 15 * 60,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> String {
+        let cutoff = now.addingTimeInterval(-window)
+        let recentTaskIDs = Set(events.filter { $0.timestamp >= cutoff && $0.kind == .taskCompleted }.map(\.taskID))
+        let artifacts = tasks
+            .filter { recentTaskIDs.contains($0.id) }
+            .flatMap { task in
+                task.steps.compactMap { step -> (Date, String)? in
+                    guard task.state == .completed,
+                          step.state == .completed,
+                          step.verification == .passed,
+                          step.toolName == "write_file",
+                          let path = step.arguments["path"], !path.isEmpty,
+                          task.resolutionRecords.contains(where: {
+                              $0.stepNumber == step.stepNumber && $0.verification == .passed
+                          }),
+                          fileExists(path) else { return nil }
+                    return (task.completedAt ?? task.updatedAt, path)
+                }
+            }
+            .sorted { $0.0 > $1.0 }
+
+        guard let path = artifacts.first?.1 else {
+            return "I don't have a recently verified file artifact to report."
+        }
+        return "The latest file I created and verified is at \(path)."
+    }
+
+    static func latestVerifiedArtifactSummary(now: Date = .now) -> String {
+        latestVerifiedArtifactSummary(
+            tasks: TaskStateMachine.shared.allTasks,
+            events: ExecutionTelemetry.shared.snapshot(),
+            now: now)
     }
 }

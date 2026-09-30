@@ -1,0 +1,40 @@
+[route] planner
+[error] openrouter-tier-b failed: Tier B output parse failed: noJSONFound
+[planner-attempt 1] parseFailed=false validatorError=Step for 'none' rejected as unsafe: compound action goal 'write the word sha_probe_beta using run_shell and then echo done_beta' requires multiple steps, but plan contains only 1 repair=false prompt=0b6d16d7
+[raw] {"goal":"write the word sha_probe_beta using run_shell and then echo done_beta","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo $step.1.output","content":"sha_probe_beta"}},"purpose":"print sha_probe_beta"}]
+[planner-attempt 2] parseFailed=false validatorError=Step for 'none' rejected as unsafe: compound action goal 'write the word sha_probe_beta using run_shell and then echo done_beta' requires multiple steps, but plan contains only 1 repair=true prompt=7c82912d
+[raw] ```json
+{
+  "goal": "write the word sha_probe_beta using run_shell and then echo done_beta",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.1.output",
+        "content": "sha_probe_beta"
+      },
+      "purpose": "print sha_probe_beta"
+    }
+  ]
+}
+```
+[planner-attempt 1] parseFailed=false validatorError=Step for 'none' rejected as unsafe: compound action goal 'write the word sha_probe_beta using run_shell and then echo done_beta' requires multiple steps, but plan contains only 1 repair=false prompt=0b6d16d7
+[raw] {"goal":"write the word sha_probe_beta using run_shell and then echo done_beta","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo $step.1.output","content":"sha_probe_beta"}},"purpose":"print sha_probe_beta"}]
+[planner-attempt 2] parseFailed=false validatorError=Step for 'none' rejected as unsafe: compound action goal 'write the word sha_probe_beta using run_shell and then echo done_beta' requires multiple steps, but plan contains only 1 repair=true prompt=7c82912d
+[raw] ```json
+{
+  "goal": "write the word sha_probe_beta using run_shell and then echo done_beta",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.1.output",
+        "content": "sha_probe_beta"
+      },
+      "purpose": "print sha_probe_beta"
+    }
+  ]
+}
+```

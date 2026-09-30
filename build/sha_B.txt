@@ -1,0 +1,7 @@
+── turn 1: echo history_seed_for_planner
+[route] deterministic
+[response] history_seed_for_planner
+
+── turn 2: write the word sha_probe_alpha using run_shell and then echo done_alpha
+[route] planner
+[error] openrouter-tier-b failed: Tier B output parse failed: noJSONFound

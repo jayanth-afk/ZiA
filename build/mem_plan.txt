@@ -1,0 +1,8 @@
+── turn 1: echo cobalt_marker_nine
+[route] deterministic
+[response] cobalt_marker_nine
+
+── turn 2: echo it
+[route] deterministic
+[response] it
+

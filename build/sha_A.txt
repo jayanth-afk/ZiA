@@ -1,0 +1,33 @@
+[route] planner
+[error] openrouter-tier-b failed: Tier B output parse failed: noJSONFound
+[planner-attempt 1] parseFailed=false validatorError=Step for 'none' rejected as unsafe: compound action goal 'write the word sha_probe_alpha using run_shell and then echo done_alpha' requires multiple steps, but plan contains only 1 repair=false prompt=b750a413
+[raw] {"goal":"write the word sha_probe_alpha using run_shell and then echo done_alpha","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo $step.1.output","content":"sha_probe_alpha"}},"purpose":"print sha_probe_alpha"}]
+[planner-attempt 2] parseFailed=false validatorError=Step for 'none' rejected as unsafe: compound action goal 'write the word sha_probe_alpha using run_shell and then echo done_alpha' requires multiple steps, but plan contains only 1 repair=true prompt=61edf204
+[raw] ```json
+{
+  "goal": "write the word sha_probe_alpha using run_shell and then echo done_alpha",
+  "steps": [
+    {
+      "id": "step_1",
+      "tool": "run_shell",
+      "arguments": {
+        "command": "echo $step.1.output",
+        "content": "sha_probe_alpha"
+      },
+      "purpose": "print sha_probe_alpha"
+    }
+  ]
+}
+```
+[planner-attempt 1] parseFailed=false validatorError=Step for 'run_shell' argument 'command' has invalid reference: Self-reference error: Step 1 cannot reference its own output repair=false prompt=b750a413
+[raw] {"goal":"write the word sha_probe_alpha using run_shell and then echo done_alpha","steps":[{"id":"step_1","tool":"run_shell","arguments":{"command":"echo $step.1.output","content":"sha_probe_alpha"}},"purpose":"write sha_probe_alpha"},{"id":"step_2","tool":"run_shell","arguments":{"command":"echo done_alpha","content":"sha_probe_alpha"}},"purpose":"write done_alpha"}
+[planner-attempt 2] parseFailed=true validatorError=Plan is missing required field 'goal' repair=true prompt=dbeb58ec
+[raw] ```json
+{
+  "tool": "run_shell",
+  "arguments": {
+    "command": "echo sha_probe_alpha",
+    "content": "done_alpha"
+  }
+}
+```

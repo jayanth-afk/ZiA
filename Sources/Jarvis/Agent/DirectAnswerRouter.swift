@@ -78,10 +78,20 @@ enum DirectAnswerRouter {
         case activitySummary
         /// File-artifact question answered only from a completed, verified write.
         case verifiedArtifactSummary
+        /// Checks a previously verified artifact against current filesystem state.
+        case verifiedArtifactStatus
+        /// Informational answer owned by a specific existing evidence source.
+        case informationAnswer(InformationSource)
         /// Explicit refusal with a typed, auditable reason.
         case refusal(RefusalReason)
         /// Genuine tool task or ambiguous goal — route to the planner.
         case planner
+    }
+
+    enum InformationSource: Sendable, Equatable {
+        case conversationHistory
+        case userMemory
+        case developmentHistory
     }
 
     // MARK: - Recency safety net (deterministic freshness forcing)
@@ -101,6 +111,20 @@ enum DirectAnswerRouter {
         let goal = rawGoal.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !goal.isEmpty else { return .refusal(.malformedRequest) }
         let g = goal.lowercased()
+
+        let normalizedGoal = normalize(goal)
+        if let source = informationSource(for: normalizedGoal) {
+            return .informationAnswer(source)
+        }
+        if ["is the file you created still there", "is the file you just created still there",
+            "does the file you created still exist", "is that file still there"].contains(normalizedGoal) {
+            return .verifiedArtifactStatus
+        }
+        if ["what happened when you tried writing that file",
+            "what happened when you tried to write that file",
+            "what happened when you tried creating that file"].contains(normalizedGoal) {
+            return .activitySummary
+        }
 
         // 0. RECENCY SAFETY NET (evaluated first, applies to every branch):
         // a current-information request can still be refused below if it is
@@ -127,17 +151,7 @@ enum DirectAnswerRouter {
 
         // 1b. Unresolved / underspecified references: clarify/reject before
         // planner invocation or retry so the model does not fabricate arguments.
-        var normalized = g
-        while let last = normalized.last, ".?!".contains(last) {
-            normalized.removeLast()
-        }
-        normalized = normalized.trimmingCharacters(in: .whitespaces)
-        for prefix in ["please ", "can you please ", "can you ", "could you please ", "could you "] {
-            if normalized.hasPrefix(prefix) {
-                normalized = String(normalized.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
-                break
-            }
-        }
+        let normalized = normalizedGoal
 
         let unresolvedAppPatterns = [
             "open that app", "launch that app", "switch to that app",
@@ -152,7 +166,9 @@ enum DirectAnswerRouter {
         let unresolvedFilePatterns = [
             "read that file", "read that", "read the file", "read the file i mentioned",
             "read this file", "read that document", "read the document", "view that file",
-            "show that file", "cat that file"
+            "show that file", "cat that file", "open that file", "open the file you created",
+            "open the file you just created", "open the file from earlier",
+            "read the file you created", "read the file you just created"
         ]
         if unresolvedFilePatterns.contains(normalized) {
             return .refusal(.unresolvedFileReference)
@@ -170,7 +186,8 @@ enum DirectAnswerRouter {
         let unresolvedURLPatterns = [
             "fetch that url", "fetch that", "fetch the url", "download that url",
             "download that", "fetch that website", "download the url", "fetch that page",
-            "fetch that link"
+            "fetch that link", "go back to that webpage", "go back to that page",
+            "return to that webpage", "open that webpage"
         ]
         if unresolvedURLPatterns.contains(normalized) {
             return .refusal(.unresolvedURLReference)
@@ -178,7 +195,8 @@ enum DirectAnswerRouter {
 
         let unresolvedCommandPatterns = [
             "run that command", "run that", "execute that command", "execute that",
-            "run the command", "execute the command", "run that script", "execute that script"
+            "run the command", "execute the command", "run that script", "execute that script",
+            "run that again", "execute that again"
         ]
         if unresolvedCommandPatterns.contains(normalized) {
             return .refusal(.unresolvedCommandReference)
@@ -309,5 +327,35 @@ enum DirectAnswerRouter {
     nonisolated static func refusalReason(for goal: String) -> RefusalReason? {
         if case .refusal(let reason) = decide(goal: goal) { return reason }
         return nil
+    }
+
+    private nonisolated static func informationSource(for normalized: String) -> InformationSource? {
+        if ["what did we talk about recently", "what have we talked about recently",
+            "what did we discuss recently", "summarize our recent conversation"].contains(normalized) {
+            return .conversationHistory
+        }
+        if ["what do you remember", "what do you remember about me",
+            "what do you remember about my project", "what do you remember about my preferences"].contains(normalized) {
+            return .userMemory
+        }
+        if ["what did you change in zia recently", "what did we change in zia recently",
+            "what changed in zia recently", "what did you change in jarvis recently",
+            "what did we change recently"].contains(normalized) {
+            return .developmentHistory
+        }
+        return nil
+    }
+
+    private nonisolated static func normalize(_ goal: String) -> String {
+        var result = goal.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while let last = result.last, ".?!".contains(last) { result.removeLast() }
+        result = result.trimmingCharacters(in: .whitespaces)
+        for prefix in ["please ", "can you please ", "can you ", "could you please ", "could you "] {
+            if result.hasPrefix(prefix) {
+                result = String(result.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+                break
+            }
+        }
+        return result
     }
 }

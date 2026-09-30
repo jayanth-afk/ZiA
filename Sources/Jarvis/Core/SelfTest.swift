@@ -125,6 +125,51 @@ enum SelfTest {
         check(DirectAnswerRouter.decide(goal: "What file did you create?") == .verifiedArtifactSummary
               && DirectAnswerRouter.decide(goal: "What happened?") == .activitySummary,
               "state-grounded artifact and recent-failure questions route without planner generation")
+        let informationRoutes: [(String, DirectAnswerRouter.Decision)] = [
+            ("What did we talk about recently?", .informationAnswer(.conversationHistory)),
+            ("What do you remember about my project?", .informationAnswer(.userMemory)),
+            ("What did you change in Zia recently?", .informationAnswer(.developmentHistory)),
+            ("What happened when you tried writing that file?", .activitySummary),
+            ("Is the file you created still there?", .verifiedArtifactStatus)
+        ]
+        check(informationRoutes.allSatisfy { DirectAnswerRouter.decide(goal: $0.0) == $0.1 },
+              "information router assigns conversation, memory, development, activity and artifact status to their evidence owners")
+        let conversationAnswer = ConversationHistoryAnswer.recentSummary(messages: [
+            Message(role: .system, content: "not a conversation turn"),
+            Message(role: .user, content: "We discussed the Zia project."),
+            Message(role: .assistant, content: "I recorded only the requested discussion.")
+        ])
+        check(conversationAnswer.contains("We discussed the Zia project")
+              && !conversationAnswer.contains("not a conversation turn"),
+              "conversation answer renders actual bounded user/assistant turns and omits system instructions")
+        let developmentAnswer = DevelopmentHistory.render(commits: [
+            DevelopmentHistory.Commit(hash: "abc1234", date: "2026-09-30", subject: "test(memory): protect verified references")
+        ])
+        check(developmentAnswer.contains("abc1234") && developmentAnswer.contains("protect verified references"),
+              "development answer renders Git commit evidence rather than conversational claims")
+        let liveDevelopmentAnswer = DevelopmentHistory.recentSummary(
+            repositoryRoot: URL(fileURLWithPath: FileManager.default.currentDirectoryPath, isDirectory: true))
+        check(liveDevelopmentAnswer.contains("Recent committed Zia changes:"),
+              "development history reads actual local Git commits from the Zia checkout")
+        let artifactPresentStatus = ActivityHistory.latestVerifiedArtifactStatus(
+            tasks: [artifactTask], events: artifactEvents, now: activityNow, fileExists: { _ in true })
+        let artifactMissingStatus = ActivityHistory.latestVerifiedArtifactStatus(
+            tasks: [artifactTask], events: artifactEvents, now: activityNow, fileExists: { _ in false })
+        check(artifactPresentStatus.contains("still present") && artifactMissingStatus.contains("no longer present"),
+              "artifact status is based on a live filesystem check and distinguishes missing from present")
+        let artifactInconclusiveStatus = ActivityHistory.latestVerifiedArtifactStatus(
+            tasks: [unverifiedArtifactTask], events: artifactEvents, now: activityNow, fileExists: { _ in true })
+        let staleArtifactStatus = ActivityHistory.latestVerifiedArtifactStatus(
+            tasks: [artifactTask],
+            events: [ExecutionTelemetryEvent(timestamp: activityNow.addingTimeInterval(-16 * 60),
+                                              taskID: artifactTaskID, kind: .taskCompleted, phase: .success)],
+            now: activityNow, fileExists: { _ in true })
+        check(!artifactInconclusiveStatus.contains(artifactPath) && !staleArtifactStatus.contains(artifactPath),
+              "failed/inconclusive or stale artifact evidence cannot be promoted to current file status")
+        check(DirectAnswerRouter.refusalReason(for: "open that file") == .unresolvedFileReference
+              && DirectAnswerRouter.refusalReason(for: "run that again") == .unresolvedCommandReference
+              && DirectAnswerRouter.refusalReason(for: "go back to that webpage") == .unresolvedURLReference,
+              "transcript-only file, command and webpage references remain fail-closed before planning")
         var artifactFollowUpE2E = false
         let e2eTaskID = UUID()
         do {
@@ -2242,6 +2287,19 @@ enum SelfTest {
             ambientUnavailable = (slot == .currentFile)
         } catch {}
         check(ambientUnavailable, "Unavailable ambient slot fails cleanly with ambientSlotUnavailable")
+
+        var lastArtifactUnavailable = false
+        do {
+            _ = try ReferenceResolver.resolveValue(
+                argument: .reference(.ambient(.lastArtifact)),
+                currentStepNumber: 1,
+                resolutionRecords: [:],
+                environmentContext: TaskEnvironmentContext())
+        } catch ReferenceResolutionError.ambientSlotUnavailable(let slot) {
+            lastArtifactUnavailable = slot == .lastArtifact
+        } catch {}
+        check(lastArtifactUnavailable,
+              "conversation, memory, and activity data cannot substitute for an unavailable verified artifact slot")
 
         // 15.18 Ambient current_app resolves from environmentContext
         let envWithApp = TaskEnvironmentContext(currentApp: "Finder")

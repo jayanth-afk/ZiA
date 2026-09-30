@@ -73,6 +73,8 @@ actor AgentLoop {
         case .directAnswer: return .directAnswer
         case .activitySummary: return .directAnswer
         case .verifiedArtifactSummary: return .directAnswer
+        case .verifiedArtifactStatus: return .directAnswer
+        case .informationAnswer: return .directAnswer
         case .refusal: return .refusal
         case .planner: return .planner
         }
@@ -87,6 +89,8 @@ actor AgentLoop {
         case .directAnswer: return .directAnswer
         case .activitySummary: return .directAnswer
         case .verifiedArtifactSummary: return .directAnswer
+        case .verifiedArtifactStatus: return .directAnswer
+        case .informationAnswer: return .directAnswer
         case .refusal: return .refusal
         case .planner: return .planner
         }
@@ -343,6 +347,28 @@ actor AgentLoop {
             let summary = ActivityHistory.latestVerifiedArtifactSummary()
             recordConversationTurn(goal: goal, response: summary)
             return summary
+        case .verifiedArtifactStatus:
+            attribute(.directAnswer)
+            lastReplanCount.value = 0
+            lastPlannerMetrics.value = nil
+            let summary = ActivityHistory.latestVerifiedArtifactStatus()
+            recordConversationTurn(goal: goal, response: summary)
+            return summary
+        case .informationAnswer(let source):
+            attribute(.directAnswer)
+            lastReplanCount.value = 0
+            lastPlannerMetrics.value = nil
+            let answer: String
+            switch source {
+            case .conversationHistory:
+                answer = await MainActor.run { ConversationHistoryAnswer.recentSummary() }
+            case .userMemory:
+                answer = await MainActor.run { MemoryManager.shared.whatDoYouRemember() }
+            case .developmentHistory:
+                answer = DevelopmentHistory.recentSummary()
+            }
+            recordConversationTurn(goal: goal, response: answer)
+            return answer
         case .planner:
             break
         }

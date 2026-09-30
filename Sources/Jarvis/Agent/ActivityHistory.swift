@@ -141,4 +141,49 @@ enum ActivityHistory {
             events: ExecutionTelemetry.shared.snapshot(),
             now: now)
     }
+
+    /// Answers a present-tense artifact status only from the latest completed
+    /// write that passed both TaskState and verifier evidence. A missing file
+    /// is reported as missing, never as a verified current reference.
+    static func latestVerifiedArtifactStatus(
+        tasks: [JarvisTask],
+        events: [ExecutionTelemetryEvent],
+        now: Date = .now,
+        window: TimeInterval = 15 * 60,
+        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
+    ) -> String {
+        let cutoff = now.addingTimeInterval(-window)
+        let completedIDs = Set(events
+            .filter { $0.timestamp >= cutoff && $0.kind == .taskCompleted }
+            .map(\.taskID))
+        let records = tasks
+            .filter { completedIDs.contains($0.id) && $0.state == .completed }
+            .flatMap { task in
+                task.steps.compactMap { step -> (Date, String)? in
+                    guard step.state == .completed,
+                          step.verification == .passed,
+                          step.toolName == "write_file",
+                          let path = step.arguments["path"], !path.isEmpty,
+                          task.resolutionRecords.contains(where: {
+                              $0.stepNumber == step.stepNumber && $0.verification == .passed
+                          }) else { return nil }
+                    return (task.completedAt ?? task.updatedAt, path)
+                }
+            }
+            .sorted { $0.0 > $1.0 }
+
+        guard let path = records.first?.1 else {
+            return "I don't have a recently verified file artifact to check."
+        }
+        return fileExists(path)
+            ? "Yes—the latest verified file artifact is still present at \(path)."
+            : "The latest verified file artifact at \(path) is no longer present. It may have been moved or deleted."
+    }
+
+    static func latestVerifiedArtifactStatus(now: Date = .now) -> String {
+        latestVerifiedArtifactStatus(
+            tasks: TaskStateMachine.shared.allTasks,
+            events: ExecutionTelemetry.shared.snapshot(),
+            now: now)
+    }
 }

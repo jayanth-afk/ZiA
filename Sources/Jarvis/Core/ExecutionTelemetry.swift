@@ -8,6 +8,7 @@ enum ExecutionFailureCategory: String, Sendable, Codable {
 
     static func classify(_ error: any Error) -> Self {
         if error is CancellationError { return .cancellation }
+        if error is ToolVerificationFailure { return .verification }
         if let validation = error as? PlanValidationError {
             switch validation {
             case .noJSONFound, .malformedJSON: return .syntax

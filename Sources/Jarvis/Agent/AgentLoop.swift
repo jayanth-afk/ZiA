@@ -134,7 +134,14 @@ actor AgentLoop {
 
     /// Execute an autonomous compound goal through the full pipeline.
     func run(goal: String) async throws -> String {
-        try await run(goal: goal, fixedPlanForTesting: nil, stopRecoveryAfterAttemptForTesting: false)
+        let continuationTaskID = TaskContinuity.query(for: goal) == .continueTask
+            ? TaskContinuity.resumableTaskID(tasks: TaskStateMachine.shared.allTasks)
+            : nil
+        return try await run(
+            goal: goal,
+            fixedPlanForTesting: nil,
+            stopRecoveryAfterAttemptForTesting: false,
+            continuationTaskID: continuationTaskID)
     }
 
     /// Deterministic SelfTest seam: injects a fixed Task IR plan while retaining
@@ -149,9 +156,10 @@ actor AgentLoop {
     private func run(
         goal: String,
         fixedPlanForTesting: AgentPlan?,
-        stopRecoveryAfterAttemptForTesting: Bool
+        stopRecoveryAfterAttemptForTesting: Bool,
+        continuationTaskID: UUID? = nil
     ) async throws -> String {
-        let telemetryTaskID = UUID()
+        let telemetryTaskID = continuationTaskID ?? UUID()
         let runStart = DispatchTime.now().uptimeNanoseconds
         let telemetry = ExecutionTelemetry.shared
         telemetry.record(ExecutionTelemetryEvent(taskID: telemetryTaskID, kind: .taskStarted, phase: .understanding, status: "started"))
@@ -171,7 +179,8 @@ actor AgentLoop {
                 goal: goal,
                 telemetryTaskID: telemetryTaskID,
                 fixedPlanForTesting: fixedPlanForTesting,
-                stopRecoveryAfterAttemptForTesting: stopRecoveryAfterAttemptForTesting)
+                stopRecoveryAfterAttemptForTesting: stopRecoveryAfterAttemptForTesting,
+                continuationTaskID: continuationTaskID)
             telemetry.record(ExecutionTelemetryEvent(taskID: telemetryTaskID, kind: .taskCompleted, phase: .success, status: "completed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - runStart) / 1_000_000)))
             await reportInteractionPhase(.success)
             return response
@@ -269,7 +278,8 @@ actor AgentLoop {
         goal: String,
         telemetryTaskID: UUID,
         fixedPlanForTesting: AgentPlan? = nil,
-        stopRecoveryAfterAttemptForTesting: Bool = false
+        stopRecoveryAfterAttemptForTesting: Bool = false,
+        continuationTaskID: UUID? = nil
     ) async throws -> String {
         let timer = PipelineTimer()
         timer.mark(.actionStart)
@@ -283,7 +293,7 @@ actor AgentLoop {
         JarvisLogger.brain.info("AgentLoop: Goal classified as \(sensitivity.rawValue)")
 
         let impact: PermissionGate.ActionImpact
-        if TaskContinuity.query(for: goal) != nil {
+        if continuationTaskID != nil || TaskContinuity.query(for: goal) != nil {
             impact = .readOnly
         } else {
             impact = sensitivity == .highlySensitive ? .destructive : .safeMutation
@@ -293,7 +303,8 @@ actor AgentLoop {
         // 2. FAST PATH: deterministic commands never touch the LLM (0ms router).
         // This preserves the Phase B/C fast path — only complex/ambiguous goals
         // reach the MLX planner.
-        if let match = await MainActor.run(body: { DeterministicRouter.shared.match(goal) }) {
+          if continuationTaskID == nil,
+              let match = await MainActor.run(body: { DeterministicRouter.shared.match(goal) }) {
             JarvisLogger.brain.info("AgentLoop: deterministic fast path hit for '\(goal)'")
             attribute(.deterministic)
             await reportInteractionPhase(.executing)
@@ -345,7 +356,8 @@ actor AgentLoop {
         if case .resolved(let url) = crossTurnURLReference { resolvedURL = url }
         else { resolvedURL = nil }
 
-        if resolvedReferencePath == nil && resolvedCommand == nil && resolvedURL == nil {
+        if continuationTaskID == nil
+            && resolvedReferencePath == nil && resolvedCommand == nil && resolvedURL == nil {
         switch DirectAnswerRouter.decide(goal: goal) {
         case .refusal(let reason):
             JarvisLogger.brain.info("AgentLoop: explicit refusal (\(reason.rawValue)) for goal '\(goal, privacy: .public)'")
@@ -425,13 +437,20 @@ actor AgentLoop {
         // Evidence ledger: the harness (or a self-contained run) owns the scope;
         // MLXPlanner.plan(goal:context:taskID:) attributes every attempt of THIS
         // run (initial + all replan cycles) to one runID + taskID.
-        let task = stateMachine.createTask(
-            id: telemetryTaskID,
-            title: "Autonomous Goal",
-            goal: goal,
-            environmentContext: TaskEnvironmentContext.captureLive()
-        )
-        try stateMachine.transition(taskId: task.id, to: .planning)
+        let task: JarvisTask
+        if let continuationTaskID {
+            task = try stateMachine.beginContinuation(taskId: continuationTaskID)
+            telemetryTaskEvent(
+                task.id, .recoveryAttempted, phase: .thinking, status: "task_continuation",
+                attemptCount: task.retryCount)
+        } else {
+            task = stateMachine.createTask(
+                id: telemetryTaskID,
+                title: "Autonomous Goal",
+                goal: goal,
+                environmentContext: TaskEnvironmentContext.captureLive())
+            try stateMachine.transition(taskId: task.id, to: .planning)
+        }
         await reportInteractionPhase(.thinking, taskID: task.id)
 
         // Cross-turn file anaphora is compiled only from verified TaskState
@@ -440,7 +459,26 @@ actor AgentLoop {
         // PlanValidator, ToolExecutor, PermissionGate, and verifier.
         let planningGoal: String
         let verifiedReferencePlan: AgentPlan?
-        if let resolvedReferencePath {
+        if continuationTaskID != nil {
+            planningGoal = task.goal
+            let savedPlan = AgentPlan(
+                goal: task.goal,
+                steps: task.steps.map {
+                    PlanStep(id: $0.id.uuidString, toolName: $0.toolName,
+                             arguments: $0.arguments, purpose: $0.description)
+                })
+            let validation = await MainActor.run {
+                PlanValidator.validate(savedPlan, originalGoal: task.goal)
+            }
+            switch validation {
+            case .success(let validatedPlan): verifiedReferencePlan = validatedPlan
+            case .failure(let error):
+                _ = try? stateMachine.transition(
+                    taskId: task.id, to: .failed,
+                    error: "Saved continuation plan failed validation: \(error.description)")
+                throw error
+            }
+        } else if let resolvedReferencePath {
             planningGoal = "read the file \"\(resolvedReferencePath)\""
             guard let extraction = PlannerExtraction.explicitReadFileExtraction(goal: planningGoal) else {
                 _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: "Verified file reference could not be compiled")
@@ -498,6 +536,7 @@ actor AgentLoop {
             planningGoal = goal
             verifiedReferencePlan = nil
         }
+        let recoveryGoal = continuationTaskID == nil ? goal : planningGoal
 
         // Experiment A: sequential next-step planning. When enabled, each
         // planning generation produces the NEXT SINGLE action; validate →
@@ -511,8 +550,13 @@ actor AgentLoop {
                 goal: planningGoal, task: task, stateMachine: stateMachine)
         }
 
-        attribute(.planner)
-        var plannerContext = await Self.initialPlannerContext(goal: planningGoal)
+        attribute(continuationTaskID == nil ? .planner : .deterministic)
+        var plannerContext: PlannerContext
+        if continuationTaskID == nil {
+            plannerContext = await Self.initialPlannerContext(goal: planningGoal)
+        } else {
+            plannerContext = PlannerContext.initial(goal: planningGoal)
+        }
         // Decomposed planning first for SINGLE-ACTION goals (planner
         // reliability milestone): the model selects ONE tool and extracts the
         // user's literal; the deterministic compiler builds the plan.
@@ -571,23 +615,45 @@ actor AgentLoop {
         // Recency safety net (deterministic, post-validation): a
         // freshness-sensitive goal can never be answered by a composition-only
         // plan — the compiler replaces it with a real web_search step.
-        plan = PlannerExtraction.enforceRecency(plan: plan, goal: planningGoal)
-        try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
+        if continuationTaskID == nil {
+            plan = PlannerExtraction.enforceRecency(plan: plan, goal: planningGoal)
+            try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
+        }
 
         // 4. EXECUTE -> OBSERVE -> VERIFY -> RECOVER loop
-        try stateMachine.transition(taskId: task.id, to: .running)
+        if continuationTaskID == nil {
+            try stateMachine.transition(taskId: task.id, to: .running)
+        }
 
         var completedOutputs: [String] = []
         var observations: [String] = []
+        var stepIndex = 0
+        if continuationTaskID != nil, let existingTask = stateMachine.getTask(id: task.id) {
+            stepIndex = TaskContinuity.firstIncompleteStepIndex(task: existingTask) ?? plan.steps.count
+            for step in existingTask.steps.prefix(stepIndex) {
+                let output = step.output ?? existingTask.resolutionRecords.last(where: {
+                    $0.stepNumber == step.stepNumber && $0.verification == .passed
+                })?.rawOutput
+                if let output {
+                    completedOutputs.append(output)
+                    if let toolName = step.toolName { observations.append("[\(toolName)] \(output)") }
+                }
+            }
+        }
         var replanCount = 0
         var lastFailure: (stepNumber: Int, purpose: String, tool: String?, error: String)?
         // Total attempts across the whole task (initial pass + replans), bounded.
         let maxTotalAttempts = 3 + plan.steps.count
 
         var attempt = 0
-        var stepIndex = 0
 
         while stepIndex < plan.steps.count {
+            if Self.cancellationObserved.value || Task.isCancelled {
+                if stateMachine.getTask(id: task.id)?.state != .cancelled {
+                    try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                }
+                throw CancellationError()
+            }
             attempt += 1
             guard attempt <= maxTotalAttempts else {
                 let failMsg = lastFailure.map { "Step \($0.stepNumber) ('\($0.purpose)') failed: \($0.error)" }
@@ -595,7 +661,6 @@ actor AgentLoop {
                 try stateMachine.transition(taskId: task.id, to: .failed, error: failMsg)
                 if let failure = lastFailure {
                     _ = try? stateMachine.updateStep(taskId: task.id, stepIndex: failure.stepNumber - 1, state: .failed, error: failure.error)
-                    _ = try? stateMachine.markStepVerification(taskId: task.id, stepIndex: failure.stepNumber - 1, outcome: .failed)
                 }
                 throw JarvisError.actionFailed(action: lastFailure?.tool ?? "AgentLoop.run", reason: failMsg)
             }
@@ -619,7 +684,7 @@ actor AgentLoop {
                     throw CancellationError()
                 }
 
-                try stateMachine.updateStep(taskId: task.id, stepIndex: stepIndex, state: .running)
+                try stateMachine.beginStepAttempt(taskId: task.id, stepIndex: stepIndex)
 
                 if let toolName = step.toolName {
                     // 1. Fetch current resolution records & ambient context
@@ -670,13 +735,6 @@ actor AgentLoop {
                             goal: goal, resolvedArguments: stringArgs)
                     }
 
-                    // Emergency Stop / cancel may have fired during execution:
-                    // do not record this step as completed if so.
-                    if Self.cancellationObserved.value {
-                        try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
-                        throw CancellationError()
-                    }
-
                     if let actualVerification = result.verification?.outcome {
                         telemetryTaskEvent(task.id, .verificationCompleted, phase: .executing, stepID: telemetryStepID, action: toolName, status: actualVerification.rawValue, verification: actualVerification)
                     }
@@ -722,6 +780,12 @@ actor AgentLoop {
                     telemetryTaskEvent(task.id, .stepCompleted, phase: .executing, stepID: telemetryStepID, action: toolName, status: "completed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - telemetryStepStart) / 1_000_000), verification: stepOutcome)
                     completedOutputs.append(result.output)
                     stepIndex += 1
+                    if Self.cancellationObserved.value || Task.isCancelled {
+                        if stateMachine.getTask(id: task.id)?.state != .cancelled {
+                            try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                        }
+                        throw CancellationError()
+                    }
                 } else {
                     // Composition step (tool:null): produce a REAL direct answer
                     // with one bounded local-model generation conditioned on the
@@ -738,7 +802,7 @@ actor AgentLoop {
                     let composed: String
                     do {
                         composed = try await DirectComposer().composeAnswer(
-                            goal: goal, observations: observations)
+                            goal: recoveryGoal, observations: observations)
                     } catch is CancellationError {
                         try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
                         throw CancellationError()
@@ -756,23 +820,95 @@ actor AgentLoop {
                     _ = try? stateMachine.markStepVerification(
                         taskId: task.id, stepIndex: stepIndex, outcome: .notApplicable)
                     stepIndex += 1
+                    if Self.cancellationObserved.value || Task.isCancelled {
+                        if stateMachine.getTask(id: task.id)?.state != .cancelled {
+                            try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                        }
+                        throw CancellationError()
+                    }
                 }
 
             } catch is CancellationError {
-                try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                if stateMachine.getTask(id: task.id)?.state != .cancelled {
+                    try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                }
                 throw CancellationError()
             } catch {
+                let currentTask = stateMachine.getTask(id: task.id)
+                if Self.cancellationObserved.value || Task.isCancelled || currentTask?.state == .cancelled {
+                    if let verificationFailure = error as? ToolVerificationFailure {
+                        _ = try? stateMachine.markStepVerification(
+                            taskId: task.id, stepIndex: stepIndex, outcome: verificationFailure.outcome)
+                        telemetryTaskEvent(task.id, .verificationCompleted, phase: .executing,
+                                           stepID: telemetryStepID, action: step.toolName,
+                                           status: verificationFailure.outcome.rawValue,
+                                           verification: verificationFailure.outcome)
+                    }
+                    if currentTask?.state != .cancelled {
+                        try stateMachine.transition(taskId: task.id, to: .cancelled, error: "Agent task cancelled")
+                    }
+                    throw CancellationError()
+                }
+
+                if let jarvisError = error as? JarvisError,
+                   case .permissionDenied = jarvisError {
+                    let reason = error.localizedDescription
+                    _ = try? stateMachine.updateStep(taskId: task.id, stepIndex: stepIndex,
+                                                     state: .failed, error: reason)
+                    _ = try? stateMachine.markStepVerification(taskId: task.id, stepIndex: stepIndex,
+                                                               outcome: .unavailable)
+                    telemetryTaskEvent(task.id, .stepFailed, phase: .error, stepID: telemetryStepID,
+                                       action: step.toolName, status: "permission_denied",
+                                       failureCategory: .permission)
+                    try stateMachine.transition(taskId: task.id, to: .failed, error: reason)
+                    throw error
+                }
+
                 // RECOVER: real failure -> existing recovery chain (unchanged).
-                replanCount += 1
                 let failureCategory = ExecutionFailureCategory.classify(error)
-                telemetryTaskEvent(task.id, .stepFailed, phase: .error, stepID: telemetryStepID, action: step.toolName, status: "failed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - telemetryStepStart) / 1_000_000), verification: failureCategory == .verification ? .failed : nil, failureCategory: failureCategory)
+                let verificationOutcome: VerificationOutcome
+                if let verificationFailure = error as? ToolVerificationFailure {
+                    verificationOutcome = verificationFailure.outcome
+                    telemetryTaskEvent(task.id, .verificationCompleted, phase: .executing,
+                                       stepID: telemetryStepID, action: step.toolName,
+                                       status: verificationOutcome.rawValue, verification: verificationOutcome)
+                    if let toolName = step.toolName {
+                        _ = try? stateMachine.appendResolutionRecord(StepResolutionRecord(
+                            stepNumber: stepIndex + 1, toolName: toolName,
+                            rawOutput: verificationFailure.observed, completedAt: Date(),
+                            verification: verificationOutcome), for: task.id)
+                    }
+                } else if let jarvisError = error as? JarvisError,
+                          case .verificationFailed = jarvisError {
+                    verificationOutcome = .failed
+                } else {
+                    verificationOutcome = .unavailable
+                }
+                _ = try? stateMachine.updateStep(taskId: task.id, stepIndex: stepIndex,
+                                                 state: .failed, error: error.localizedDescription)
+                _ = try? stateMachine.markStepVerification(taskId: task.id, stepIndex: stepIndex,
+                                                           outcome: verificationOutcome)
+                lastFailure = (stepNumber: stepIndex + 1, purpose: step.purpose,
+                               tool: step.toolName, error: error.localizedDescription)
+
+                if continuationTaskID != nil,
+                   let currentRetryTask = stateMachine.getTask(id: task.id),
+                   currentRetryTask.retryCount >= currentRetryTask.maxRetries {
+                    telemetryTaskEvent(task.id, .stepFailed, phase: .error, stepID: telemetryStepID,
+                                       action: step.toolName, status: "retry_limit_exhausted",
+                                       durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - telemetryStepStart) / 1_000_000),
+                                       verification: verificationOutcome, failureCategory: failureCategory)
+                    try stateMachine.transition(taskId: task.id, to: .failed,
+                                                error: "Continuation retry limit exhausted: \(error.localizedDescription)")
+                    throw JarvisError.actionFailed(action: step.toolName ?? "AgentLoop.continue",
+                                                   reason: "Task retry limit exhausted")
+                }
+
+                replanCount += 1
+                telemetryTaskEvent(task.id, .stepFailed, phase: .error, stepID: telemetryStepID, action: step.toolName, status: "failed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - telemetryStepStart) / 1_000_000), verification: verificationOutcome, failureCategory: failureCategory)
                 telemetryTaskEvent(task.id, .recoveryAttempted, phase: .thinking, stepID: telemetryStepID, action: step.toolName, status: "replanning", attemptCount: replanCount)
                 lastReplanCount.value = replanCount
                 JarvisLogger.actions.warning("Step '\(step.purpose)' failed (replan \(replanCount)): \(error.localizedDescription)")
-
-                lastFailure = (stepNumber: stepIndex + 1, purpose: step.purpose, tool: step.toolName, error: error.localizedDescription)
-                _ = try? stateMachine.updateStep(taskId: task.id, stepIndex: stepIndex, state: .failed, error: error.localizedDescription)
-                _ = try? stateMachine.markStepVerification(taskId: task.id, stepIndex: stepIndex, outcome: .failed)
 
                 try stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
                 try stateMachine.transition(taskId: task.id, to: .recovering)
@@ -800,12 +936,12 @@ actor AgentLoop {
                         verifiedOutputs[rec.stepNumber] = rec.rawOutput
                     }
                     let env = stateMachine.environmentContext(for: task.id)
-                    let sensitivity = await MainActor.run { DataClassifier.shared.classify(goal) }
+                    let sensitivity = await MainActor.run { DataClassifier.shared.classify(recoveryGoal) }
 
                     let currentTaskStep = currentTask?.steps.indices.contains(stepIndex) == true ? currentTask?.steps[stepIndex] : nil
                     let escalationContext = EscalationContext(
                         taskId: task.id,
-                        originalGoal: goal,
+                        originalGoal: recoveryGoal,
                         currentStepNumber: stepIndex + 1,
                         completedSteps: currentTask?.steps.filter { $0.state == .completed } ?? [],
                         verifiedOutputs: verifiedOutputs,
@@ -823,8 +959,9 @@ actor AgentLoop {
                         lastEscalationUsed.value = true
                         let existingSteps = stateMachine.getTask(id: task.id)?.steps ?? []
                         try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan, preservingCompletedFrom: existingSteps))
-                        let completedCount = existingSteps.filter { $0.state == .completed }.count
-                        if stepIndex >= plan.steps.count { stepIndex = max(stepIndex, completedCount) }
+                        if let updatedTask = stateMachine.getTask(id: task.id) {
+                            stepIndex = TaskContinuity.firstIncompleteStepIndex(task: updatedTask) ?? plan.steps.count
+                        }
                         try stateMachine.transition(taskId: task.id, to: .running)
                         continue
                     } catch {
@@ -837,7 +974,7 @@ actor AgentLoop {
                         throw PlanValidationError.noJSONFound
                     }
                     plan = try await planWithRecovery(
-                        goal: goal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
+                        goal: recoveryGoal, context: plannerContext, taskId: task.id, stateMachine: stateMachine)
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
@@ -863,11 +1000,8 @@ actor AgentLoop {
                 }
                 let existingSteps = stateMachine.getTask(id: task.id)?.steps ?? []
                 try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan, preservingCompletedFrom: existingSteps))
-                // A replan preserves completed steps and continues execution;
-                // do not reset stepIndex backwards into already-completed steps.
-                let completedCount = existingSteps.filter { $0.state == .completed }.count
-                if stepIndex >= plan.steps.count {
-                    stepIndex = max(stepIndex, completedCount)
+                if let updatedTask = stateMachine.getTask(id: task.id) {
+                    stepIndex = TaskContinuity.firstIncompleteStepIndex(task: updatedTask) ?? plan.steps.count
                 }
                 try stateMachine.transition(taskId: task.id, to: .running)
             }
@@ -876,9 +1010,9 @@ actor AgentLoop {
         // 5. VERIFY & RESPOND
         let finalTask = stateMachine.getTask(id: task.id)
         let finalSteps = finalTask?.steps ?? []
-        let allCompletedAndVerified = !finalSteps.isEmpty && finalSteps.allSatisfy {
-            $0.state == .completed && ($0.verification?.isVerified == true || $0.verification == .notApplicable)
-        }
+        let allCompletedAndVerified = !finalSteps.isEmpty && finalTask.map { completedTask in
+            completedTask.steps.allSatisfy { TaskContinuity.isResolved($0, task: completedTask) }
+        } == true
         guard allCompletedAndVerified else {
             let failMsg = lastFailure.map { "Step \($0.stepNumber) ('\($0.purpose)') failed: \($0.error)" }
                 ?? "Task incomplete: not all steps completed and verified"

@@ -27,11 +27,13 @@ actor TaskWorker: Identifiable {
         let stateMachine = TaskStateMachine.shared
         try stateMachine.transition(taskId: task.id, to: .running)
 
+        var currentStepIndex: Int?
         do {
             try Task.checkCancellation()
 
             // Execute each step sequentially
             for (index, step) in task.steps.enumerated() {
+            currentStepIndex = index
                 try Task.checkCancellation()
 
                 try stateMachine.updateStep(
@@ -65,6 +67,10 @@ actor TaskWorker: Identifiable {
                     )
                     try? stateMachine.markStepVerification(
                         taskId: task.id, stepIndex: index, outcome: .passed)
+                    _ = try? stateMachine.appendResolutionRecord(StepResolutionRecord(
+                        stepNumber: index + 1, toolName: toolName, rawOutput: result.output,
+                        completedAt: Date(), verification: .passed), for: task.id)
+                    currentStepIndex = nil
                 } else {
                     // Pure thinking / cognitive step
                     try stateMachine.updateStep(
@@ -73,6 +79,9 @@ actor TaskWorker: Identifiable {
                         state: .completed,
                         output: "Step completed"
                     )
+                    try? stateMachine.markStepVerification(
+                        taskId: task.id, stepIndex: index, outcome: .notApplicable)
+                    currentStepIndex = nil
                 }
             }
 
@@ -95,6 +104,19 @@ actor TaskWorker: Identifiable {
 
         } catch {
             JarvisLogger.actions.error("Worker [\(self.id.uuidString.prefix(6))] task error: \(error.localizedDescription)")
+            if let index = currentStepIndex, task.steps.indices.contains(index) {
+                let originalStep = task.steps[index]
+                let verificationOutcome = (error as? ToolVerificationFailure)?.outcome ?? .unavailable
+                _ = try? stateMachine.updateStep(
+                    taskId: task.id, stepIndex: index, state: .failed, error: error.localizedDescription)
+                _ = try? stateMachine.markStepVerification(
+                    taskId: task.id, stepIndex: index, outcome: verificationOutcome)
+                if let toolName = originalStep.toolName, let verificationFailure = error as? ToolVerificationFailure {
+                    _ = try? stateMachine.appendResolutionRecord(StepResolutionRecord(
+                        stepNumber: index + 1, toolName: toolName, rawOutput: verificationFailure.observed,
+                        completedAt: Date(), verification: verificationOutcome), for: task.id)
+                }
+            }
             _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
             self.isBusy = false
             self.currentTaskId = nil

@@ -1,5 +1,16 @@
 import Foundation
 
+struct ToolVerificationFailure: LocalizedError, Sendable {
+    let action: String
+    let outcome: VerificationOutcome
+    let expected: String
+    let observed: String
+
+    var errorDescription: String? {
+        "Verification failed for \(action): expected \(expected), got [\(outcome.rawValue)] \(observed)"
+    }
+}
+
 /// Executes tools with permission checks, observation, and verification.
 /// Adheres strictly to Rule 7: execute -> observe -> verify.
 @MainActor
@@ -38,11 +49,11 @@ final class ToolExecutor {
         guard verification.isSuccess else {
             let reasonStr = verification.reason ?? observed.observations.description
             JarvisLogger.actions.error("Verification failed for tool '\(toolName)': [\(verification.outcome.rawValue)] \(reasonStr)")
-            throw JarvisError.verificationFailed(
+            throw ToolVerificationFailure(
                 action: toolName,
+                outcome: verification.outcome,
                 expected: verification.expectedState ?? expected.output,
-                actual: verification.observedState ?? "[\(verification.outcome.rawValue)] \(reasonStr)"
-            )
+                observed: verification.observedState ?? reasonStr)
         }
 
         let elapsed = timer.elapsed(from: .actionStart, to: .actionVerified) ?? 0

@@ -4,6 +4,35 @@ import AVFoundation
 import SwiftUI
 import CryptoKit
 
+private struct SelfTestVerificationOutcomeTool: JarvisTool {
+    let outcome: VerificationOutcome
+    let name = "run_shell"
+    let description = "Self-test tool for preserving verification outcomes"
+    let impact: PermissionGate.ActionImpact = .destructive
+    let parameterSpec = [ToolParameterSpec(name: "command", kind: .string, required: true, description: "Probe command")]
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let command = arguments["command"] as? String else {
+            throw JarvisError.actionFailed(action: name, reason: "Missing probe command")
+        }
+        return ToolResult(success: true, output: "probe output: \(command)")
+    }
+
+    func observe() async throws -> ObservationResult {
+        ObservationResult(observations: ["probe": "observed"])
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        switch outcome {
+        case .passed: return .passed(reason: "probe verifier passed")
+        case .failed: return .failed("probe verifier failed")
+        case .inconclusive: return .inconclusive("probe verifier was inconclusive")
+        case .unavailable: return .unavailable("probe verifier was unavailable")
+        case .notApplicable: return .inconclusive("tool verification cannot be notApplicable")
+        }
+    }
+}
+
 /// Lightweight test runner that works without Xcode/XCTest.
 /// Run with: swift run Jarvis --self-test
 @MainActor
@@ -119,6 +148,31 @@ enum SelfTest {
               && successfulContinuation.contains("Step 2")
               && successfulContinuation.contains("read-only handoff"),
               "task continuity handoff reports the uniquely active task, verified progress, and next unverified step without resuming it")
+        let fourStepContinuityTask = JarvisTask(
+            id: UUID(), title: "FourStepContinuityProbe", goal: "process four report steps",
+            state: .running, steps: [
+                TaskStep(stepNumber: 1, description: "read source", toolName: "read_file",
+                         arguments: ["path": "source.txt"], state: .completed, verification: .passed),
+                TaskStep(stepNumber: 2, description: "write report", toolName: "write_file",
+                         arguments: ["path": "report.txt"], state: .completed, verification: .passed),
+                TaskStep(stepNumber: 3, description: "inspect report", toolName: "read_file",
+                         arguments: ["path": "report.txt"]),
+                TaskStep(stepNumber: 4, description: "verify summary", toolName: "read_file",
+                         arguments: ["path": "report.txt"])
+            ], currentStepIndex: 2, createdAt: activityNow, updatedAt: activityNow,
+            resolutionRecords: [
+                StepResolutionRecord(stepNumber: 1, toolName: "read_file", rawOutput: "source",
+                                     completedAt: activityNow, verification: .passed),
+                StepResolutionRecord(stepNumber: 2, toolName: "write_file", rawOutput: "report",
+                                     completedAt: activityNow, verification: .passed)
+            ])
+        let fourStepRemaining = TaskContinuity.summary(
+            query: .remaining, tasks: [fourStepContinuityTask], now: activityNow)
+        check(fourStepRemaining.contains("Step 3: inspect report")
+              && fourStepRemaining.contains("Step 4: verify summary")
+              && !fourStepRemaining.contains("Step 1:")
+              && !fourStepRemaining.contains("Step 2:"),
+              "what's left derives only the unverified TaskState steps")
 
         let failedContinuityTask = JarvisTask(
             id: UUID(), title: "FailedContinuityProbe", goal: "write and verify the report",
@@ -156,8 +210,14 @@ enum SelfTest {
             query: .continueTask, tasks: [interruptedContinuityTask], now: activityNow)
           check(interruptedContinuation.contains("interrupted or stopped")
               && interruptedContinuation.contains("Emergency Stop")
-              && interruptedContinuation.contains("haven't resumed"),
+              && interruptedContinuation.contains("haven't resumed")
+              && TaskContinuity.resumableTaskID(tasks: [interruptedContinuityTask], now: activityNow)
+                  == interruptedContinuityTask.id,
               "emergency-interrupted continuation reports recorded stop and never resumes")
+          var retryExhaustedTask = failedContinuityTask
+          retryExhaustedTask.retryCount = retryExhaustedTask.maxRetries
+          check(TaskContinuity.resumableTaskID(tasks: [retryExhaustedTask], now: activityNow) == nil,
+              "failed task at its retry limit is not resumable")
 
         var staleContinuityTask = continuityTask
         staleContinuityTask.updatedAt = activityNow.addingTimeInterval(-60 * 60)
@@ -226,9 +286,13 @@ enum SelfTest {
             ("what are we doing?", .status),
             ("what's left?", .remaining),
             ("continue", .continueTask),
+            ("Can you continue?", .continueTask),
+            ("continue the task", .continueTask),
+            ("finish it", .continueTask),
             ("finish what you were doing", .continueTask),
             ("continue from where you stopped", .continueTask),
             ("did that work?", .verification),
+            ("did it succeed?", .verification),
             ("what were you doing?", .status)
         ]
         check(continuityRoutes.allSatisfy {
@@ -647,6 +711,221 @@ enum SelfTest {
         }
         check(taskContinuityAgentLoopE2E,
               "AgentLoop E2E: continue at L0 reads verified TaskState and does not mutate, resume, plan, or execute")
+
+        var taskWorkerResolutionEvidence = false
+        let taskWorkerEvidenceSemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let previousLevel = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 2
+            defer { Config.shared.autonomyLevel = previousLevel }
+            do {
+                let command = "echo task_worker_resolution_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+                let machine = TaskStateMachine.shared
+                let task = machine.createTask(title: "TaskWorker verified step", goal: "run a verified shell step")
+                try machine.setSteps(taskId: task.id, steps: [TaskStep(
+                    stepNumber: 1, description: command, toolName: "run_shell",
+                    arguments: ["command": command])])
+                try await TaskWorker().execute(task: machine.getTask(id: task.id)!)
+                let completedTask = machine.getTask(id: task.id)
+                taskWorkerResolutionEvidence = completedTask?.state == .completed
+                    && completedTask?.steps.first?.verification == .passed
+                    && completedTask?.resolutionRecords.last?.toolName == "run_shell"
+                    && completedTask?.resolutionRecords.last?.verification == .passed
+            } catch {
+                print("  ✗ TaskWorker resolution evidence E2E failed: \(error.localizedDescription)")
+                taskWorkerResolutionEvidence = false
+            }
+            taskWorkerEvidenceSemaphore.signal()
+        }
+        while taskWorkerEvidenceSemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(taskWorkerResolutionEvidence,
+              "TaskWorker E2E: independently verified completion records the evidence required to avoid rerunning it on continuation")
+
+        var interruptedStepStayedUnverified = false
+        var destructiveContinuationDenied = false
+        var resumedTaskFromSavedPlan = false
+        var completedTaskContinuationStayedClosed = false
+        let continuationExecutionSemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let previousLevel = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 2
+            let machine = TaskStateMachine.shared
+            var continuationTaskID: UUID?
+            defer {
+                if let continuationTaskID, let current = machine.getTask(id: continuationTaskID), !current.state.isTerminal {
+                    _ = try? machine.transition(taskId: continuationTaskID, to: .cancelled, error: "SelfTest fixture cleanup")
+                }
+                Config.shared.autonomyLevel = previousLevel
+            }
+            do {
+                let markerOne = "continue_step_one_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+                let markerTwo = "continue_step_two_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+                let markerThree = "continue_step_three_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+                let task = machine.createTask(
+                    title: "Interrupted continuation E2E",
+                    goal: "run the saved shell steps in order")
+                continuationTaskID = task.id
+                try machine.setSteps(taskId: task.id, steps: [
+                    TaskStep(stepNumber: 1, description: "emit first marker", toolName: "run_shell",
+                             arguments: ["command": "echo \(markerOne)"]),
+                    TaskStep(stepNumber: 2, description: "emit second marker", toolName: "run_shell",
+                             arguments: ["command": "echo \(markerTwo)"]),
+                    TaskStep(stepNumber: 3, description: "emit third marker", toolName: "run_shell",
+                             arguments: ["command": "echo \(markerThree)"])
+                ])
+                guard let plannedTask = machine.getTask(id: task.id), plannedTask.steps.count == 3 else {
+                    throw JarvisError.actionFailed(action: "SelfTest", reason: "Saved continuation plan was not recorded")
+                }
+                try machine.transition(taskId: task.id, to: .running)
+                try machine.beginStepAttempt(taskId: task.id, stepIndex: 0)
+                let firstResult = try await ToolExecutor.shared.execute(
+                    toolName: "run_shell", arguments: ["command": "echo \(markerOne)"])
+                guard firstResult.verification?.outcome == .passed else {
+                    throw JarvisError.actionFailed(action: "SelfTest", reason: "Step 1 did not verify")
+                }
+                try machine.markStepVerification(taskId: task.id, stepIndex: 0, outcome: .passed)
+                try machine.updateStep(taskId: task.id, stepIndex: 0, state: .completed, output: firstResult.output)
+                try machine.appendResolutionRecord(StepResolutionRecord(
+                    stepNumber: 1, toolName: "run_shell", rawOutput: firstResult.output,
+                    completedAt: Date(), verification: .passed), for: task.id)
+                try machine.beginStepAttempt(taskId: task.id, stepIndex: 1)
+                try machine.setCurrentStepIndex(taskId: task.id, index: 1)
+                try machine.transition(taskId: task.id, to: .cancelled, error: "Emergency Stop")
+                let interruptedTask = machine.getTask(id: task.id)
+                interruptedStepStayedUnverified = interruptedTask?.steps[1].state == .running
+                    && interruptedTask?.steps[1].verification == nil
+                    && interruptedTask?.steps[2].state == .created
+
+                Config.shared.autonomyLevel = 1
+                do {
+                    _ = try await AgentLoop.shared.run(goal: "continue")
+                } catch JarvisError.permissionDenied(let action, let requiredLevel, let currentLevel) {
+                    destructiveContinuationDenied = action == "run_shell" && requiredLevel == 2 && currentLevel == 1
+                }
+                let deniedTask = machine.getTask(id: task.id)
+                destructiveContinuationDenied = destructiveContinuationDenied
+                    && deniedTask?.state == .failed
+                    && deniedTask?.steps[1].verification == .unavailable
+                    && deniedTask?.steps[1].output == nil
+                    && deniedTask?.steps[0].verification == .passed
+
+                Config.shared.autonomyLevel = 2
+                let response = try await AgentLoop.shared.run(goal: "continue")
+                let finalTask = machine.getTask(id: task.id)
+                let events = ExecutionTelemetry.shared.snapshot().filter { $0.taskID == task.id }
+                let stepOneStarted = events.contains {
+                    $0.kind == .stepStarted && $0.stepID == plannedTask.steps[0].id
+                }
+                let stepTwoStarted = events.contains {
+                    $0.kind == .stepStarted && $0.stepID == plannedTask.steps[1].id
+                }
+                let stepThreeStarted = events.contains {
+                    $0.kind == .stepStarted && $0.stepID == plannedTask.steps[2].id
+                }
+                let passedVerificationSteps = Set(events.compactMap { event -> UUID? in
+                    event.kind == .verificationCompleted && event.verification == .passed ? event.stepID : nil
+                })
+                resumedTaskFromSavedPlan = response.contains(markerOne)
+                    && response.contains(markerTwo)
+                    && response.contains(markerThree)
+                    && finalTask?.id == task.id
+                    && finalTask?.state == .completed
+                    && finalTask?.steps.map(\.verification) == [.passed, .passed, .passed]
+                    && finalTask?.resolutionRecords.filter({ $0.verification == .passed }).count == 3
+                    && !stepOneStarted && stepTwoStarted && stepThreeStarted
+                    && passedVerificationSteps.contains(plannedTask.steps[1].id)
+                    && passedVerificationSteps.contains(plannedTask.steps[2].id)
+                    && events.contains(where: { $0.kind == .recoveryAttempted && $0.status == "task_continuation" })
+                    && events.contains(where: { $0.kind == .taskCompleted })
+
+                let taskCountBeforeCompletedContinue = machine.allTasks.count
+                let stepStartsBeforeCompletedContinue = ExecutionTelemetry.shared.snapshot().filter {
+                    $0.taskID == task.id && $0.kind == .stepStarted
+                }.count
+                let completedContinueResponse = try await AgentLoop.shared.run(goal: "continue")
+                let stepStartsAfterCompletedContinue = ExecutionTelemetry.shared.snapshot().filter {
+                    $0.taskID == task.id && $0.kind == .stepStarted
+                }.count
+                completedTaskContinuationStayedClosed = completedContinueResponse.contains("is complete")
+                    && completedContinueResponse.contains("Nothing remains")
+                    && machine.allTasks.count == taskCountBeforeCompletedContinue
+                    && stepStartsAfterCompletedContinue == stepStartsBeforeCompletedContinue
+            } catch {
+                print("  ✗ Saved-task continuation E2E failed: \(error.localizedDescription)")
+                resumedTaskFromSavedPlan = false
+            }
+            continuationExecutionSemaphore.signal()
+        }
+        while continuationExecutionSemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(interruptedStepStayedUnverified,
+              "continuation E2E: interrupted in-flight step remains unknown, never promoted to success")
+        check(destructiveContinuationDenied,
+              "continuation E2E: destructive saved step remains blocked by PermissionGate until L2")
+        check(resumedTaskFromSavedPlan,
+              "continuation E2E: same TaskState resumes at step 2, preserves verified step 1, validates, executes, verifies, and records telemetry")
+          check(completedTaskContinuationStayedClosed,
+              "continuation E2E: a completed task answers continue without creating a task or executing another step")
+
+        var inconclusiveContinuationPreserved = false
+        var unavailableContinuationPreserved = false
+        let verifierOutcomeSemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let previousLevel = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 2
+            let machine = TaskStateMachine.shared
+            defer {
+                ToolRegistry.shared.register(RunShellTool())
+                Config.shared.autonomyLevel = previousLevel
+            }
+            for outcome in [VerificationOutcome.inconclusive, .unavailable] {
+                do {
+                    ToolRegistry.shared.register(SelfTestVerificationOutcomeTool(outcome: outcome))
+                    let task = machine.createTask(
+                        title: "Verifier outcome continuation \(outcome.rawValue)",
+                        goal: "run the saved shell verification probe")
+                    try machine.setSteps(taskId: task.id, steps: [TaskStep(
+                        stepNumber: 1, description: "run verification probe", toolName: "run_shell",
+                        arguments: ["command": "echo verifier_\(outcome.rawValue)"] )])
+                    try machine.transition(taskId: task.id, to: .running)
+                    try machine.beginStepAttempt(taskId: task.id, stepIndex: 0)
+                    try machine.incrementRetryCount(taskId: task.id)
+                    try machine.incrementRetryCount(taskId: task.id)
+                    try machine.transition(taskId: task.id, to: .cancelled, error: "Interrupted before probe")
+
+                    do {
+                        _ = try await AgentLoop.shared.run(goal: "continue")
+                    } catch { }
+
+                    guard let finalTask = machine.getTask(id: task.id),
+                          finalTask.state == .failed,
+                          finalTask.steps.first?.verification == outcome,
+                          finalTask.resolutionRecords.last?.verification == outcome else {
+                        throw JarvisError.actionFailed(action: "SelfTest", reason: "Verifier outcome was not retained in TaskState")
+                    }
+                    let verifierEvent = ExecutionTelemetry.shared.snapshot().contains {
+                        $0.taskID == task.id && $0.kind == .verificationCompleted && $0.verification == outcome
+                    }
+                    let summary = TaskContinuity.summary(
+                        query: .continueTask, tasks: [finalTask], now: Date())
+                    let preserved = verifierEvent && summary.contains("verification \(outcome.rawValue)")
+                    if outcome == .inconclusive { inconclusiveContinuationPreserved = preserved }
+                    if outcome == .unavailable { unavailableContinuationPreserved = preserved }
+                    try machine.transition(taskId: task.id, to: .cancelled, error: "SelfTest fixture cleanup")
+                } catch {
+                    print("  ✗ Verification outcome continuation \(outcome.rawValue) failed: \(error.localizedDescription)")
+                }
+            }
+            verifierOutcomeSemaphore.signal()
+        }
+        while verifierOutcomeSemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(inconclusiveContinuationPreserved && unavailableContinuationPreserved,
+              "continuation E2E: ToolExecutor preserves inconclusive and unavailable verification without converting either to success")
 
         var transcriptOnlyCommandBlocked = false
         let transcriptCommandTaskIDs = Set(TaskStateMachine.shared.allTasks.map(\.id))

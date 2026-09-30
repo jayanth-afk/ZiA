@@ -293,6 +293,68 @@ final class TaskStateMachine: @unchecked Sendable {
         return task
     }
 
+    /// Explicitly resume only a failed/cancelled task with unresolved steps and remaining retry budget.
+    /// CANCELLED remains terminal for every ordinary transition; this operation is the user-authorized path.
+    @discardableResult
+    func beginContinuation(taskId: UUID) throws -> JarvisTask {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var task = tasks[taskId] else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.beginContinuation", reason: "Task \(taskId) not found")
+        }
+        guard task.state == .failed || task.state == .cancelled else {
+            throw JarvisError.invalidState(expected: "FAILED or CANCELLED", actual: task.state.rawValue)
+        }
+        guard task.retryCount < task.maxRetries else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.beginContinuation", reason: "Task retry limit exhausted")
+        }
+        guard TaskContinuity.firstIncompleteStepIndex(task: task) != nil else {
+            throw JarvisError.invalidState(expected: "at least one unresolved task step", actual: "all steps resolved")
+        }
+
+        for index in task.steps.indices where TaskContinuity.independentlyVerified(task.steps[index], task: task)
+            && task.steps[index].state != .completed {
+            task.steps[index].state = .completed
+            if task.steps[index].output == nil,
+               let record = task.resolutionRecords.last(where: { $0.stepNumber == task.steps[index].stepNumber }) {
+                task.steps[index].output = record.rawOutput
+            }
+        }
+        task.retryCount += 1
+        task.error = nil
+        task.completedAt = nil
+        for state in [TaskState.recovering, .replanning, .running] {
+            task.state = state
+            task.updatedAt = Date()
+            stateHistory[taskId, default: []].append((state, task.updatedAt))
+        }
+        tasks[taskId] = task
+        return task
+    }
+
+    /// Starts a fresh attempt without carrying stale verification/error state forward.
+    @discardableResult
+    func beginStepAttempt(taskId: UUID, stepIndex: Int) throws -> JarvisTask {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var task = tasks[taskId] else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.beginStepAttempt", reason: "Task \(taskId) not found")
+        }
+        guard stepIndex >= 0 && stepIndex < task.steps.count else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.beginStepAttempt", reason: "Invalid step index \(stepIndex)")
+        }
+
+        task.steps[stepIndex].state = .running
+        task.steps[stepIndex].output = nil
+        task.steps[stepIndex].error = nil
+        task.steps[stepIndex].verification = nil
+        task.updatedAt = Date()
+        tasks[taskId] = task
+        return task
+    }
+
     /// Record the verification outcome of a specific step (P1: verification
     /// result is explicit task state, not reconstructed from error text).
     @discardableResult

@@ -23,16 +23,22 @@ enum TaskContinuity {
         var normalized = goal.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         while let last = normalized.last, ".?!".contains(last) { normalized.removeLast() }
         normalized = normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+        for prefix in ["please ", "can you please ", "can you ", "could you please ", "could you "] {
+            if normalized.hasPrefix(prefix) {
+                normalized = String(normalized.dropFirst(prefix.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                break
+            }
+        }
 
         switch normalized {
         case "what are we doing", "what are we working on", "what were you doing", "what was i doing":
             return .status
         case "what's left", "what is left", "what's left to do", "what remains":
             return .remaining
-        case "continue", "continue from where you stopped", "continue where you left off",
-             "finish what you were doing", "finish that":
+           case "continue", "continue the task", "continue from where you stopped", "continue where you left off",
+               "finish it", "finish what you were doing", "finish that":
             return .continueTask
-        case "did that work", "did it work":
+           case "did that work", "did it work", "did it succeed":
             return .verification
         default:
             return nil
@@ -47,7 +53,7 @@ enum TaskContinuity {
     ) -> String {
         switch selectTask(in: tasks, now: now, maxAge: maxAge) {
         case .noTask:
-            return "I don't have a current task recorded in TaskState. Conversation, memory, or model output isn't enough to infer one."
+            return "I don't have a current task recorded in TaskState. Conversation, memory, or model output isn't enough to infer one. What would you like me to continue?"
         case .stale:
             return "The most recent TaskState is stale. I won't continue or infer unfinished work from it without a fresh task state."
         case .ambiguous:
@@ -55,6 +61,22 @@ enum TaskContinuity {
         case .task(let task):
             return render(query: query, task: task)
         }
+    }
+
+    static func resumableTaskID(
+        tasks: [JarvisTask],
+        now: Date = .now,
+        maxAge: TimeInterval = maxTaskAge
+    ) -> UUID? {
+        guard case .task(let task) = selectTask(in: tasks, now: now, maxAge: maxAge),
+              task.state == .failed || task.state == .cancelled,
+              task.retryCount < task.maxRetries,
+              firstIncompleteStepIndex(task: task) != nil else { return nil }
+        return task.id
+    }
+
+    static func firstIncompleteStepIndex(task: JarvisTask) -> Int? {
+        task.steps.indices.first { !isResolved(task.steps[$0], task: task) }
     }
 
     private static func selectTask(in tasks: [JarvisTask], now: Date, maxAge: TimeInterval) -> Selection {
@@ -104,12 +126,18 @@ enum TaskContinuity {
                 ? "Task \"\(title)\" is complete. \(count). Nothing remains to continue."
                 : "TaskState marks \"\(title)\" complete, but not every step has passed independent verification. \(count). \(remainingText)"
         case .failed:
-            let detail = task.steps.first(where: { $0.state == .failed || $0.verification == .failed })
-                .map { " Failed at step \($0.stepNumber): \(String(($0.error ?? $0.description).prefix(160)))." } ?? ""
-            response = "Task \"\(title)\" failed. \(count).\(detail) I won't replay an unverified step automatically."
+            let detail = task.steps.first(where: { $0.state == .failed || $0.verification == .failed
+                || $0.verification == .inconclusive || $0.verification == .unavailable })
+                .map { step in
+                    let outcome = step.verification.map { " (verification \($0.rawValue))" } ?? ""
+                    return " Failed at step \(step.stepNumber)\(outcome): \(String((step.error ?? step.description).prefix(160)))."
+                } ?? ""
+            let retryLimit = task.retryCount >= task.maxRetries ? " The task's retry limit is exhausted." : ""
+            response = "Task \"\(title)\" failed. \(count).\(detail)\(retryLimit) I won't replay an unverified step automatically. Please clarify how you'd like to proceed."
         case .cancelled:
             let reason = task.error.map { " Recorded reason: \(String($0.prefix(120)))." } ?? ""
-            response = "Task \"\(title)\" was interrupted or stopped.\(reason) \(count). \(remainingText) I haven't resumed it."
+            let retryLimit = task.retryCount >= task.maxRetries ? " The task's retry limit is exhausted." : ""
+            response = "Task \"\(title)\" was interrupted or stopped.\(reason) \(count). \(remainingText)\(retryLimit) I haven't resumed it. Please clarify how you'd like to proceed."
         default:
             let state = task.state.rawValue.lowercased()
             let currentStep = task.steps.first(where: { $0.state == .running })
@@ -138,16 +166,15 @@ enum TaskContinuity {
         }
     }
 
-    private static func independentlyVerified(_ step: TaskStep, task: JarvisTask) -> Bool {
-        guard step.state == .completed, step.verification == .passed else { return false }
-        return task.resolutionRecords.contains {
-            $0.stepNumber == step.stepNumber
-                && $0.toolName == step.toolName
-                && $0.verification == .passed
-        }
+    static func independentlyVerified(_ step: TaskStep, task: JarvisTask) -> Bool {
+        guard step.verification == .passed,
+              step.state == .completed || step.state == .running || step.state == .cancelled else { return false }
+        return task.resolutionRecords.last(where: {
+            $0.stepNumber == step.stepNumber && $0.toolName == step.toolName
+        })?.verification == .passed
     }
 
-    private static func isResolved(_ step: TaskStep, task: JarvisTask) -> Bool {
+    static func isResolved(_ step: TaskStep, task: JarvisTask) -> Bool {
         if step.toolName == nil {
             return step.state == .completed && step.verification == .notApplicable
         }
@@ -156,7 +183,8 @@ enum TaskContinuity {
 
     private static func stepStatus(_ step: TaskStep) -> String {
         if step.verification == .failed { return "verification failed" }
-        if step.verification == .inconclusive || step.verification == .unavailable { return "verification inconclusive" }
+        if step.verification == .inconclusive { return "verification inconclusive" }
+        if step.verification == .unavailable { return "verification unavailable" }
         return step.state.rawValue.lowercased()
     }
 }

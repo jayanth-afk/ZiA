@@ -155,6 +155,131 @@ enum ReferenceResolver {
         case resolved(path: String)
     }
 
+    enum CrossTurnCommandReference: Sendable, Equatable {
+        case notApplicable
+        case unavailable
+        case ambiguous
+        case resolved(command: String)
+    }
+
+    enum CrossTurnURLReference: Sendable, Equatable {
+        case notApplicable
+        case unavailable
+        case ambiguous
+        case resolved(url: String)
+    }
+
+    private static func normalizeReferenceGoal(_ goal: String) -> String {
+        var normalized = goal.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while let last = normalized.last, ".?!".contains(last) { normalized.removeLast() }
+        return normalized.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Resolve cross-turn command reruns using only the latest completed, verified run_shell evidence.
+    static func resolveCrossTurnCommandReference(
+        goal: String,
+        tasks: [JarvisTask],
+        now: Date = .now,
+        maxAge: TimeInterval = 15 * 60
+    ) -> CrossTurnCommandReference {
+        let normalized = normalizeReferenceGoal(goal)
+        let commandFollowUps: Set<String> = [
+            "run that command",
+            "run that command again",
+            "run that again",
+            "run the command",
+            "run the command again",
+            "execute that command",
+            "execute that again",
+            "execute the command",
+            "execute the command again",
+            "rerun that command",
+            "rerun the command",
+            "run the last command",
+            "execute the last command"
+        ]
+        guard commandFollowUps.contains(normalized) else {
+            return .notApplicable
+        }
+
+        let cutoff = now.addingTimeInterval(-maxAge)
+        let relevantTasks = tasks.filter { task in
+            (task.completedAt ?? task.updatedAt) >= cutoff
+                && task.steps.contains(where: { $0.toolName == "run_shell" })
+        }
+        guard let latestDate = relevantTasks.map({ $0.completedAt ?? $0.updatedAt }).max() else {
+            return .unavailable
+        }
+        let latestTasks = relevantTasks.filter { ($0.completedAt ?? $0.updatedAt) == latestDate }
+        guard latestTasks.count == 1, let latestTask = latestTasks.first,
+              latestTask.state == .completed else { return .unavailable }
+        let shellSteps = latestTask.steps.filter { $0.toolName == "run_shell" }
+        guard shellSteps.count == 1, let step = shellSteps.first else { return .ambiguous }
+        guard step.state == .completed, step.verification == .passed,
+              let command = step.arguments["command"], !command.isEmpty,
+              !command.contains("\n"), !command.contains("\r"),
+              latestTask.resolutionRecords.contains(where: {
+                  $0.stepNumber == step.stepNumber
+                      && $0.toolName == step.toolName
+                      && $0.verification == .passed
+              }) else { return .unavailable }
+        return .resolved(command: command)
+    }
+
+    /// Resolve cross-turn webpage reruns using only the latest completed, verified fetch_url/open_browser evidence.
+    static func resolveCrossTurnURLReference(
+        goal: String,
+        tasks: [JarvisTask],
+        now: Date = .now,
+        maxAge: TimeInterval = 15 * 60
+    ) -> CrossTurnURLReference {
+        let normalized = normalizeReferenceGoal(goal)
+        let urlFollowUps: Set<String> = [
+            "fetch that url",
+            "fetch that",
+            "fetch the url",
+            "download that url",
+            "download that",
+            "go back to that webpage",
+            "go back to that page",
+            "return to that webpage",
+            "open that webpage",
+            "open that page",
+            "visit that webpage",
+            "open the webpage",
+            "fetch that website",
+            "download the url"
+        ]
+        guard urlFollowUps.contains(normalized) else {
+            return .notApplicable
+        }
+
+        let cutoff = now.addingTimeInterval(-maxAge)
+        let relevantTasks = tasks.filter { task in
+            (task.completedAt ?? task.updatedAt) >= cutoff
+                && task.steps.contains(where: { $0.toolName == "fetch_url" || $0.toolName == "open_browser" })
+        }
+        guard let latestDate = relevantTasks.map({ $0.completedAt ?? $0.updatedAt }).max() else {
+            return .unavailable
+        }
+        let latestTasks = relevantTasks.filter { ($0.completedAt ?? $0.updatedAt) == latestDate }
+        guard latestTasks.count == 1, let latestTask = latestTasks.first,
+              latestTask.state == .completed else { return .unavailable }
+        let urlSteps = latestTask.steps.filter { $0.toolName == "fetch_url" || $0.toolName == "open_browser" }
+        guard urlSteps.count == 1, let step = urlSteps.first else { return .ambiguous }
+        guard step.state == .completed, step.verification == .passed,
+              let url = step.arguments["url"], !url.isEmpty,
+              let parsed = URL(string: url),
+              ["http", "https"].contains(parsed.scheme?.lowercased() ?? ""),
+              parsed.host != nil,
+              latestTask.resolutionRecords.contains(where: {
+                  $0.stepNumber == step.stepNumber
+                      && $0.toolName == step.toolName
+                      && $0.verification == .passed
+              }) else { return .unavailable }
+        return .resolved(url: url)
+    }
+
     /// Resolve a small set of file anaphora using only completed TaskState
     /// writes with matching passed resolution evidence. Conversation and user
     /// memory are never read here. The resulting path is passed back through

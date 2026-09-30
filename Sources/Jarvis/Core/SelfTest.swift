@@ -137,6 +137,159 @@ enum SelfTest {
             goal: "open that file", tasks: [artifactTask], now: activityNow,
             fileExists: { _ in false }) == .unavailable,
               "a deleted verified artifact cannot resolve a cross-turn file reference")
+        let shellTask = JarvisTask(
+            id: UUID(), title: "Verified shell rerun", goal: "show the git status",
+            state: .completed,
+            steps: [TaskStep(
+                stepNumber: 1, description: "run git status", toolName: "run_shell",
+                arguments: ["command": "git status"], state: .completed,
+                output: "On branch main", verification: .passed)],
+            createdAt: activityNow.addingTimeInterval(-120), updatedAt: activityNow.addingTimeInterval(-110),
+            completedAt: activityNow.addingTimeInterval(-110),
+            resolutionRecords: [StepResolutionRecord(
+                stepNumber: 1, toolName: "run_shell", rawOutput: "On branch main",
+                completedAt: activityNow.addingTimeInterval(-110), verification: .passed)])
+                check(ReferenceResolver.resolveCrossTurnCommandReference(
+                        goal: "run that command again", tasks: [shellTask], now: activityNow) == .resolved(command: "git status"),
+                            "exact 'run that command again' wording resolves from verified TaskState")
+        check(ReferenceResolver.resolveCrossTurnCommandReference(
+            goal: "run that again", tasks: [shellTask], now: activityNow) == .resolved(command: "git status"),
+              "verified shell command references resolve from the latest completed run_shell evidence")
+                var conversationOnlyCommandContext = PlannerContext.initial(goal: "run that command again")
+                conversationOnlyCommandContext.conversationTurns = ["User: Earlier I ran echo conversation_only_command"]
+                check(!conversationOnlyCommandContext.conversationTurns.isEmpty
+                            && ReferenceResolver.resolveCrossTurnCommandReference(
+                                goal: conversationOnlyCommandContext.goal, tasks: []) == .unavailable,
+                            "conversation-only command mention cannot resolve without authoritative TaskState")
+                var memoryOnlyCommandContext = PlannerContext.initial(goal: "run that command again")
+                memoryOnlyCommandContext.userMemoryContext = "Previously used command: echo memory_only_command"
+                check(!memoryOnlyCommandContext.userMemoryContext.isEmpty
+                            && ReferenceResolver.resolveCrossTurnCommandReference(
+                                goal: memoryOnlyCommandContext.goal, tasks: []) == .unavailable,
+                            "user-memory-only command mention cannot resolve without authoritative TaskState")
+                check(ReferenceResolver.resolveCrossTurnCommandReference(
+                        goal: "run that command again", tasks: []) == .unavailable,
+                            "no authoritative command state fails closed")
+                let failedCommandTask = JarvisTask(
+                        id: UUID(), title: "Failed shell command", goal: "run command B", state: .failed,
+                        steps: [TaskStep(
+                                stepNumber: 1, description: "run command B", toolName: "run_shell",
+                                arguments: ["command": "echo command-B"], state: .failed,
+                                error: "command failed", verification: .failed)],
+                        createdAt: activityNow, updatedAt: activityNow,
+                        resolutionRecords: [StepResolutionRecord(
+                                stepNumber: 1, toolName: "run_shell", rawOutput: "", completedAt: activityNow,
+                                verification: .failed)])
+                check(ReferenceResolver.resolveCrossTurnCommandReference(
+                        goal: "run that command again", tasks: [failedCommandTask], now: activityNow) == .unavailable,
+                            "failed command TaskState cannot establish a cross-turn reference")
+        let staleShellTask = shellTask
+        let staleCommandRef = ReferenceResolver.resolveCrossTurnCommandReference(
+            goal: "run that again", tasks: [staleShellTask], now: activityNow.addingTimeInterval(2 * 60 * 60))
+        check(staleCommandRef == .unavailable,
+              "stale verified command evidence cannot be reopened as a fresh cross-turn rerun")
+        var failedLatestShellTask = shellTask
+        failedLatestShellTask.state = .failed
+        failedLatestShellTask.steps[0] = TaskStep(
+            stepNumber: 1, description: "run command B", toolName: "run_shell",
+            arguments: ["command": "echo command-B"], state: .failed,
+            error: "command B failed", verification: .failed)
+        failedLatestShellTask.updatedAt = activityNow.addingTimeInterval(1)
+        failedLatestShellTask.completedAt = nil
+        failedLatestShellTask.resolutionRecords = [StepResolutionRecord(
+            stepNumber: 1, toolName: "run_shell", rawOutput: "", completedAt: activityNow.addingTimeInterval(1),
+            verification: .failed)]
+        check(ReferenceResolver.resolveCrossTurnCommandReference(
+            goal: "run that again", tasks: [shellTask, failedLatestShellTask], now: activityNow) == .unavailable,
+              "a newer failed shell attempt blocks fallback to an older verified command")
+        var multipleShellStepsTask = shellTask
+        multipleShellStepsTask.steps.append(TaskStep(
+            stepNumber: 2, description: "run pwd", toolName: "run_shell",
+            arguments: ["command": "pwd"], state: .completed, output: "/tmp", verification: .passed))
+        multipleShellStepsTask.resolutionRecords.append(StepResolutionRecord(
+            stepNumber: 2, toolName: "run_shell", rawOutput: "/tmp", completedAt: activityNow,
+            verification: .passed))
+        check(ReferenceResolver.resolveCrossTurnCommandReference(
+            goal: "run that again", tasks: [multipleShellStepsTask], now: activityNow) == .ambiguous,
+              "multiple verified shell commands in the latest task require clarification")
+                multipleShellStepsTask.updatedAt = activityNow.addingTimeInterval(2)
+                multipleShellStepsTask.completedAt = activityNow.addingTimeInterval(2)
+                check(ReferenceResolver.resolveCrossTurnCommandReference(
+                        goal: "run that again", tasks: [shellTask, multipleShellStepsTask], now: activityNow) == .ambiguous,
+                            "a newer ambiguous shell task blocks fallback to an older verified command")
+          check(DirectAnswerRouter.refusalReason(for: "run that command again") == .unresolvedCommandReference,
+              "ambiguous or missing exact command references clarify instead of reaching the planner")
+        let webTask = JarvisTask(
+            id: UUID(), title: "Verified webpage", goal: "fetch the Zia docs",
+            state: .completed,
+            steps: [TaskStep(
+                stepNumber: 1, description: "fetch the docs", toolName: "fetch_url",
+                arguments: ["url": "https://example.com/docs"], state: .completed,
+                output: "Example docs", verification: .passed)],
+            createdAt: activityNow.addingTimeInterval(-180), updatedAt: activityNow.addingTimeInterval(-170),
+            completedAt: activityNow.addingTimeInterval(-170),
+            resolutionRecords: [StepResolutionRecord(
+                stepNumber: 1, toolName: "fetch_url", rawOutput: "Example docs",
+                completedAt: activityNow.addingTimeInterval(-170), verification: .passed)])
+        check(ReferenceResolver.resolveCrossTurnURLReference(
+            goal: "go back to that webpage", tasks: [webTask], now: activityNow) == .resolved(url: "https://example.com/docs"),
+              "verified webpage references resolve to the latest passed fetch_url or browser URL evidence")
+        check(ReferenceResolver.resolveCrossTurnURLReference(
+            goal: "go back to that webpage", tasks: []) == .unavailable,
+              "conversation-only webpage mention cannot resolve without authoritative TaskState")
+        check(ReferenceResolver.resolveCrossTurnURLReference(
+            goal: "go back to that webpage", tasks: []) == .unavailable,
+              "no authoritative webpage state fails closed")
+        let failedWebTask = JarvisTask(
+            id: UUID(), title: "Failed webpage", goal: "fetch page B", state: .failed,
+            steps: [TaskStep(
+                stepNumber: 1, description: "fetch page B", toolName: "fetch_url",
+                arguments: ["url": "https://example.com/failed"], state: .failed,
+                error: "fetch failed", verification: .failed)],
+            createdAt: activityNow, updatedAt: activityNow,
+            resolutionRecords: [StepResolutionRecord(
+                stepNumber: 1, toolName: "fetch_url", rawOutput: "", completedAt: activityNow,
+                verification: .failed)])
+        check(ReferenceResolver.resolveCrossTurnURLReference(
+            goal: "go back to that webpage", tasks: [failedWebTask], now: activityNow) == .unavailable,
+              "failed webpage TaskState cannot establish a cross-turn reference")
+        var ambiguousWebTask = webTask
+        ambiguousWebTask.steps.append(TaskStep(
+            stepNumber: 2, description: "fetch another page", toolName: "fetch_url",
+            arguments: ["url": "https://example.com/other"], state: .completed,
+            verification: .passed))
+        ambiguousWebTask.resolutionRecords.append(StepResolutionRecord(
+            stepNumber: 2, toolName: "fetch_url", rawOutput: "Other page", completedAt: activityNow,
+            verification: .passed))
+        check(ReferenceResolver.resolveCrossTurnURLReference(
+            goal: "go back to that webpage", tasks: [ambiguousWebTask], now: activityNow) == .ambiguous,
+              "ambiguous verified webpage evidence requires clarification")
+        ambiguousWebTask.updatedAt = activityNow.addingTimeInterval(2)
+        ambiguousWebTask.completedAt = activityNow.addingTimeInterval(2)
+        check(ReferenceResolver.resolveCrossTurnURLReference(
+            goal: "go back to that webpage", tasks: [webTask, ambiguousWebTask], now: activityNow) == .ambiguous,
+              "a newer ambiguous webpage task blocks fallback to an older verified URL")
+          check(DirectAnswerRouter.refusalReason(for: "go back to that webpage") == .unresolvedURLReference,
+              "ambiguous or missing webpage references clarify instead of reaching the planner")
+        let staleWebTask = webTask
+        let staleWebRef = ReferenceResolver.resolveCrossTurnURLReference(
+            goal: "go back to that webpage", tasks: [staleWebTask], now: activityNow.addingTimeInterval(2 * 60 * 60))
+        check(staleWebRef == .unavailable,
+              "stale verified webpage evidence cannot be reopened as a fresh cross-turn page reference")
+                var failedLatestWebTask = webTask
+                failedLatestWebTask.state = .failed
+                failedLatestWebTask.steps[0] = TaskStep(
+                    stepNumber: 1, description: "fetch page B", toolName: "fetch_url",
+                    arguments: ["url": "https://example.com/failed-B"], state: .failed,
+                    error: "page B fetch failed", verification: .failed)
+                failedLatestWebTask.updatedAt = activityNow.addingTimeInterval(1)
+                failedLatestWebTask.completedAt = nil
+                failedLatestWebTask.resolutionRecords = [StepResolutionRecord(
+                        stepNumber: 1, toolName: "fetch_url", rawOutput: "", completedAt: activityNow.addingTimeInterval(1),
+                        verification: .failed)]
+                check(ReferenceResolver.resolveCrossTurnURLReference(
+            goal: "go back to that webpage", tasks: [webTask, failedLatestWebTask], now: activityNow) == .unavailable,
+              "a newer failed webpage attempt blocks fallback to an older verified URL")
         var multiArtifactTask = artifactTask
         multiArtifactTask.steps.append(TaskStep(
             stepNumber: 2, description: "write second file", toolName: "write_file",
@@ -210,6 +363,7 @@ enum SelfTest {
               "failed/inconclusive or stale artifact evidence cannot be promoted to current file status")
         check(DirectAnswerRouter.refusalReason(for: "open that file") == .unresolvedFileReference
               && DirectAnswerRouter.refusalReason(for: "run that again") == .unresolvedCommandReference
+              && DirectAnswerRouter.refusalReason(for: "run that command again") == .unresolvedCommandReference
               && DirectAnswerRouter.refusalReason(for: "go back to that webpage") == .unresolvedURLReference,
               "transcript-only file, command and webpage references remain fail-closed before planning")
         var artifactFollowUpE2E = false
@@ -296,6 +450,111 @@ enum SelfTest {
         }
         check(crossTurnReferenceE2E,
               "AgentLoop E2E: verified write → bare file follow-up → normal validated read execution")
+
+        var transcriptOnlyCommandBlocked = false
+        let transcriptCommandTaskIDs = Set(TaskStateMachine.shared.allTasks.map(\.id))
+        ConversationManager.shared.addUserMessage("Earlier command mention: echo transcript_only_command_marker")
+        let transcriptCommandSemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            do {
+                let response = try await AgentLoop.shared.run(goal: "run that command again")
+                let newTasks = TaskStateMachine.shared.allTasks.filter { !transcriptCommandTaskIDs.contains($0.id) }
+                let route = await AgentLoop.shared.latestRoute()
+                transcriptOnlyCommandBlocked = response.contains("Which command")
+                    && route == .refusal
+                    && newTasks.isEmpty
+            } catch {
+                transcriptOnlyCommandBlocked = false
+            }
+            transcriptCommandSemaphore.signal()
+        }
+        while transcriptCommandSemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(transcriptOnlyCommandBlocked,
+              "AgentLoop E2E: transcript-only exact command follow-up clarifies before task creation or execution")
+
+        var commandReferenceAgentLoopE2E = false
+        let commandReferenceSemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let previousLevel = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 2
+            defer { Config.shared.autonomyLevel = previousLevel }
+            do {
+                let token = "verified_command_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+                let command = "echo \(token)"
+                let machine = TaskStateMachine.shared
+                let priorTask = machine.createTask(title: "Verified prior shell command", goal: command)
+                try machine.setSteps(taskId: priorTask.id, steps: [TaskStep(
+                    stepNumber: 1, description: command, toolName: "run_shell",
+                    arguments: ["command": command])])
+                try machine.transition(taskId: priorTask.id, to: .running)
+                try machine.updateStep(taskId: priorTask.id, stepIndex: 0, state: .running)
+                let priorResult = try await ToolExecutor.shared.execute(
+                    toolName: "run_shell", arguments: ["command": command])
+                guard priorResult.success, priorResult.verification?.outcome == .passed else {
+                    throw JarvisError.actionFailed(action: "SelfTest", reason: "Prior shell command did not independently verify")
+                }
+                try machine.markStepVerification(taskId: priorTask.id, stepIndex: 0, outcome: .passed)
+                try machine.updateStep(taskId: priorTask.id, stepIndex: 0, state: .completed, output: priorResult.output)
+                try machine.appendResolutionRecord(StepResolutionRecord(
+                    stepNumber: 1, toolName: "run_shell", rawOutput: priorResult.output,
+                    completedAt: Date(), verification: .passed), for: priorTask.id)
+                try machine.transition(taskId: priorTask.id, to: .verifying)
+                try machine.transition(taskId: priorTask.id, to: .completed)
+
+                let response = try await AgentLoop.shared.run(goal: "run that command again")
+                let executedTask = machine.allTasks.first {
+                    $0.id != priorTask.id && $0.goal == "run that command again"
+                }
+                commandReferenceAgentLoopE2E = response.contains(token)
+                    && executedTask?.state == .completed
+                    && executedTask?.steps.first?.toolName == "run_shell"
+                    && executedTask?.steps.first?.arguments["command"] == command
+                    && executedTask?.steps.first?.verification == .passed
+                    && executedTask?.resolutionRecords.first?.verification == .passed
+            } catch {
+                print("  ✗ Verified command AgentLoop E2E failed: \(error.localizedDescription)")
+                commandReferenceAgentLoopE2E = false
+            }
+            commandReferenceSemaphore.signal()
+        }
+        while commandReferenceSemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(commandReferenceAgentLoopE2E,
+              "AgentLoop E2E: exact command follow-up resolves verified TaskState, compiles, passes PermissionGate and executes via ToolExecutor")
+
+        var webpagePlanPermissionE2E = false
+        let webpagePermissionSemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let previousLevel = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 0
+            defer { Config.shared.autonomyLevel = previousLevel }
+            guard case .resolved(let url) = ReferenceResolver.resolveCrossTurnURLReference(
+                goal: "go back to that webpage", tasks: [webTask], now: activityNow),
+                  let extraction = PlannerExtraction.explicitURLOpenExtraction(goal: "open \(url)"),
+                  case .success(let plan) = PlannerExtraction.compile(extraction, goal: "open \(url)"),
+                  case .success(let validatedPlan) = PlanValidator.validate(plan),
+                  let step = validatedPlan.steps.first,
+                  let toolName = step.toolName else {
+                webpagePermissionSemaphore.signal()
+                return
+            }
+            do {
+                _ = try await ToolExecutor.shared.execute(toolName: toolName, arguments: step.arguments)
+            } catch JarvisError.permissionDenied(let action, let requiredLevel, let currentLevel) {
+                webpagePlanPermissionE2E = action == toolName && requiredLevel == 1 && currentLevel == 0
+            } catch {
+                webpagePlanPermissionE2E = false
+            }
+            webpagePermissionSemaphore.signal()
+        }
+        while webpagePermissionSemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(webpagePlanPermissionE2E,
+              "webpage reference E2E: verified URL resolves, canonical plan validates, and ToolExecutor enforces PermissionGate without browser navigation")
 
         // ── AppState Tests ──
         print("\n─── AppState ───")

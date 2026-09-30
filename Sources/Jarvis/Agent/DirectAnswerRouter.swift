@@ -194,7 +194,7 @@ enum DirectAnswerRouter {
         }
 
         let unresolvedCommandPatterns = [
-            "run that command", "run that", "execute that command", "execute that",
+            "run that command", "run that command again", "run that", "execute that command", "execute that",
             "run the command", "execute the command", "run that script", "execute that script",
             "run that again", "execute that again"
         ]

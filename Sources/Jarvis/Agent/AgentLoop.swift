@@ -251,6 +251,18 @@ actor AgentLoop {
         return context
     }
 
+    private static func commandGoal(for command: String) -> String {
+        let delimiter: Character
+        if command.contains("\"") && !command.contains("'") {
+            delimiter = "'"
+        } else if command.contains("\"") && command.contains("'") {
+            delimiter = "`"
+        } else {
+            delimiter = "\""
+        }
+        return "run command \(delimiter)\(command)\(delimiter)"
+    }
+
     private func runInternal(
         goal: String,
         telemetryTaskID: UUID,
@@ -310,11 +322,23 @@ actor AgentLoop {
         let crossTurnFileReference = ReferenceResolver.resolveCrossTurnFileReference(
             goal: goal,
             tasks: TaskStateMachine.shared.allTasks)
+        let crossTurnCommandReference = ReferenceResolver.resolveCrossTurnCommandReference(
+            goal: goal,
+            tasks: TaskStateMachine.shared.allTasks)
+        let crossTurnURLReference = ReferenceResolver.resolveCrossTurnURLReference(
+            goal: goal,
+            tasks: TaskStateMachine.shared.allTasks)
         let resolvedReferencePath: String?
+        let resolvedCommand: String?
+        let resolvedURL: String?
         if case .resolved(let path) = crossTurnFileReference { resolvedReferencePath = path }
         else { resolvedReferencePath = nil }
+        if case .resolved(let command) = crossTurnCommandReference { resolvedCommand = command }
+        else { resolvedCommand = nil }
+        if case .resolved(let url) = crossTurnURLReference { resolvedURL = url }
+        else { resolvedURL = nil }
 
-        if resolvedReferencePath == nil {
+        if resolvedReferencePath == nil && resolvedCommand == nil && resolvedURL == nil {
         switch DirectAnswerRouter.decide(goal: goal) {
         case .refusal(let reason):
             JarvisLogger.brain.info("AgentLoop: explicit refusal (\(reason.rawValue)) for goal '\(goal, privacy: .public)'")
@@ -417,6 +441,44 @@ actor AgentLoop {
                 attribute(.refusal)
                 recordConversationTurn(goal: goal, response: nil)
                 return "I couldn’t safely open that verified file. Please provide its path or choose another file."
+            }
+        } else if let resolvedCommand {
+            let commandGoal = Self.commandGoal(for: resolvedCommand)
+            planningGoal = commandGoal
+            guard let extraction = PlannerExtraction.explicitRunShellCommandExtraction(goal: planningGoal) else {
+                _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: "Verified command reference could not be compiled")
+                attribute(.refusal)
+                recordConversationTurn(goal: goal, response: nil)
+                return "I couldn’t safely rerun that verified command. Please provide the exact command."
+            }
+            switch await PlannerExtraction.compile(extraction, goal: planningGoal) {
+            case .success(let compiledPlan): verifiedReferencePlan = compiledPlan
+            case .failure:
+                _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: "Verified command reference failed plan validation")
+                attribute(.refusal)
+                recordConversationTurn(goal: goal, response: nil)
+                return "I couldn’t safely execute that verified command. Please provide the exact command."
+            }
+        } else if let resolvedURL {
+            let normalizedGoal = goal.lowercased()
+            let shouldFetch = normalizedGoal.contains("fetch") || normalizedGoal.contains("download")
+            planningGoal = shouldFetch ? "fetch the url \(resolvedURL)" : "open \(resolvedURL)"
+            let extraction = shouldFetch
+                ? PlannerExtraction.explicitFetchURLExtraction(goal: planningGoal)
+                : PlannerExtraction.explicitURLOpenExtraction(goal: planningGoal)
+            guard let extraction else {
+                _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: "Verified URL reference could not be compiled")
+                attribute(.refusal)
+                recordConversationTurn(goal: goal, response: nil)
+                return "I couldn’t safely reopen that verified page. Please provide the URL."
+            }
+            switch await PlannerExtraction.compile(extraction, goal: planningGoal) {
+            case .success(let compiledPlan): verifiedReferencePlan = compiledPlan
+            case .failure:
+                _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: "Verified URL reference failed plan validation")
+                attribute(.refusal)
+                recordConversationTurn(goal: goal, response: nil)
+                return "I couldn’t safely open that verified page. Please provide the URL."
             }
         } else {
             planningGoal = goal

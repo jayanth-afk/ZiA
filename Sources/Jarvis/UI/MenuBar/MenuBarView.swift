@@ -4,6 +4,7 @@ import SwiftUI
 ///
 /// Displays:
 ///   - JARVIS status (state, network, memory)
+///   - Recent conversation transcript (bounded, via HistoryService)
 ///   - Enable/disable toggle
 ///   - Quit button
 struct MenuBarView: View {
@@ -63,6 +64,12 @@ struct MenuBarView: View {
 
             Divider()
 
+            // Recent conversation transcript (HistoryService boundary — never
+            // SQLite internals). Bounded window with older-page loading.
+            MenuHistorySection()
+
+            Divider()
+
             // Controls
             Button(action: {
                 FloatingPanel.shared.toggle()
@@ -92,6 +99,9 @@ struct MenuBarView: View {
         }
         .padding(16)
         .frame(width: 260)
+        .onAppear {
+            HistoryService.shared.loadRecent()
+        }
     }
 
     // MARK: - Computed Properties
@@ -134,6 +144,58 @@ struct MenuBarView: View {
             appState.transition(to: .sleep)
         case .sleep, .active:
             appState.transition(to: .off)
+        }
+    }
+}
+
+/// Minimal transcript section (Phase 3 foundation): bounded recent history
+/// through the HistoryService boundary, with one older-page affordance. Not
+/// the final Zia conversation UI — this proves the data boundary end to end.
+struct MenuHistorySection: View {
+    @ObservedObject private var history = HistoryService.shared
+    @State private var showAll = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Recent conversation", systemImage: "bubble.left.and.bubble.right")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                if showAll {
+                    Button("Show less") {
+                        showAll = false
+                        history.loadRecent()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption2)
+                } else if history.turns.count > 4 {
+                    Button("Older") {
+                        showAll = true
+                        history.loadOlder()
+                    }
+                    .buttonStyle(.plain)
+                    .font(.caption2)
+                }
+            }
+
+            if history.turns.isEmpty {
+                Text("No conversation yet.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach((showAll ? history.turns : Array(history.turns.suffix(4)))) { turn in
+                    HStack(alignment: .top, spacing: 4) {
+                        Image(systemName: turn.isFromUser ? "person.fill" : "brain.head.profile")
+                            .font(.caption2)
+                            .foregroundStyle(turn.isFromUser ? Color.secondary : Color.blue)
+                            .frame(width: 14)
+                        Text(turn.text)
+                            .font(.caption2)
+                            .lineLimit(2)
+                            .foregroundStyle(.primary)
+                    }
+                }
+            }
         }
     }
 }

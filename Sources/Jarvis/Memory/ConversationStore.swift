@@ -96,11 +96,12 @@ final class ConversationStore: @unchecked Sendable {
     /// everything recent after a long history.) Ordering uses `rowid`
     /// (insertion order) as the tie-break so a user+assistant turn pair written
     /// in the same instant can never be reordered.
-    func loadMessages(conversationId: String = "default", limit: Int = 50) -> [Message] {
+    /// `offset` pages BACKWARD through history (0 = newest page).
+    func loadMessages(conversationId: String = "default", limit: Int = 50, offset: Int = 0) -> [Message] {
         lock.lock()
         defer { lock.unlock() }
 
-        let querySQL = "SELECT id, role, content, timestamp FROM messages WHERE conversation_id = ? ORDER BY rowid DESC LIMIT ?;"
+        let querySQL = "SELECT id, role, content, timestamp FROM messages WHERE conversation_id = ? ORDER BY rowid DESC LIMIT ? OFFSET ?;"
         var stmt: OpaquePointer?
 
         guard sqlite3_prepare_v2(db, querySQL, -1, &stmt, nil) == SQLITE_OK else {
@@ -110,6 +111,7 @@ final class ConversationStore: @unchecked Sendable {
 
         sqlite3_bind_text(stmt, 1, conversationId, -1, SQLITE_TRANSIENT)
         sqlite3_bind_int(stmt, 2, Int32(limit))
+        sqlite3_bind_int(stmt, 3, Int32(max(0, offset)))
 
         var messages: [Message] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
@@ -148,6 +150,26 @@ final class ConversationStore: @unchecked Sendable {
             return Int(sqlite3_column_int(stmt, 0))
         }
         return 0
+    }
+
+    /// Distinct conversation IDs with their message counts, oldest first.
+    /// (Currently the app writes everything under "default"; this keeps the
+    /// store ready for multi-conversation history without schema changes.)
+    func conversationSummaries() -> [(id: String, messageCount: Int)] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let sql = "SELECT conversation_id, COUNT(*) FROM messages GROUP BY conversation_id ORDER BY MIN(rowid) ASC;"
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+
+        var summaries: [(id: String, messageCount: Int)] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let idCStr = sqlite3_column_text(stmt, 0) else { continue }
+            summaries.append((id: String(cString: idCStr), messageCount: Int(sqlite3_column_int(stmt, 1))))
+        }
+        return summaries
     }
 
     /// Clear all messages for a specific conversation.

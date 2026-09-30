@@ -4522,6 +4522,48 @@ enum SelfTest {
         }
         check(memoryNeverAuthorizes, "conversation persistence 21.8: restored memory never authorizes — PermissionGate denial unchanged with memory present")
 
+        // 21.9 HISTORY UI BOUNDARY: HistoryService exposes a bounded,
+        // chronological, paginated transcript through its own turn model —
+        // without exposing Message/SQLite types to the UI. loadRecent keeps
+        // the NEWEST page; loadOlder pages BACKWARD, prepending older turns
+        // in order; refresh stays bounded.
+        var historyBoundaryOK = false
+        let semMem219 = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            let probeConv = "selftest_history_\(UUID().uuidString)"
+            defer { ConversationStore.shared.clearHistory(conversationId: probeConv) }
+            for i in 1...4 {
+                ConversationStore.shared.saveMessage(Message(role: .user, content: "hq \(i)"), conversationId: probeConv)
+                ConversationStore.shared.saveMessage(Message(role: .assistant, content: "ha \(i)"), conversationId: probeConv)
+            }
+            let history = HistoryService.shared
+            history.pageSize = 4
+            defer { history.pageSize = 50; history.loadRecent() }
+            history._loadWindowForTest(conversationId: probeConv, limit: history.pageSize)
+            let newestPageOK = history.turns.count == 4
+                && history.turns.first?.text == "hq 3"
+                && history.turns.last?.text == "ha 4"
+                && history.turns.map(\.isFromUser) == [true, false, true, false]
+            // Page one window BACK: turns 1–2 prepend in chronological order.
+            let pagedBack = history.loadOlder()
+            let olderPageOK = pagedBack
+                && history.turns.count == 8
+                && history.turns.first?.text == "hq 1"
+                && history.turns[3].text == "ha 2"
+                && history.turns[4].text == "hq 3"
+                && history.turns.last?.text == "ha 4"
+            // No further pages: loadOlder returns false, window unchanged.
+            let exhausted = !history.loadOlder() && history.turns.count == 8
+            if newestPageOK && olderPageOK && exhausted {
+                historyBoundaryOK = true
+            }
+            semMem219.signal()
+        }
+        while semMem219.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(historyBoundaryOK, "history service 21.9: bounded newest-first transcript window pages backward chronologically through the UI boundary — no store internals exposed")
+
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

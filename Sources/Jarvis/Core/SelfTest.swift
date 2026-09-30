@@ -2,15 +2,29 @@ import Foundation
 import AppKit
 import AVFoundation
 import SwiftUI
+import CryptoKit
 
 /// Lightweight test runner that works without Xcode/XCTest.
 /// Run with: swift run Jarvis --self-test
 @MainActor
 enum SelfTest {
 
+    /// SHA-256 of the REAL production conversation database on disk, read
+    /// before the suite runs and compared after. Read-only: this never opens
+    /// or writes the production database. Nil when no production database
+    /// exists yet (fresh machine) — nothing to protect in that case.
+    private static func productionDatabaseFingerprint() -> String? {
+        guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+        let url = appSupport.appendingPathComponent("Jarvis", isDirectory: true)
+            .appendingPathComponent("conversations.sqlite")
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+    }
+
     static func runAll() {
         let previousConversationStore = ConversationStore.beginIsolatedTesting()
         defer { ConversationStore.endIsolatedTesting(restoring: previousConversationStore) }
+        let productionDBFingerprintBefore = productionDatabaseFingerprint()
 
         setbuf(stdout, nil)
         print("╔══════════════════════════════════════════╗")
@@ -32,6 +46,43 @@ enum SelfTest {
 
         print("\n─── Structured Execution Telemetry ───")
         ExecutionTelemetry.runSelfTests(check: check)
+        let activityNow = Date()
+        let activityTaskID = UUID()
+        let activityStepID = UUID()
+        let activityTask = JarvisTask(
+            id: activityTaskID,
+            title: "ActivityProbe",
+            goal: "open Safari and verify the foreground app",
+            state: .completed,
+            steps: [TaskStep(
+                id: activityStepID,
+                stepNumber: 1,
+                description: "open Safari",
+                toolName: "open_app",
+                state: .completed,
+                verification: .passed)],
+            createdAt: activityNow.addingTimeInterval(-90),
+            updatedAt: activityNow.addingTimeInterval(-80),
+            completedAt: activityNow.addingTimeInterval(-80))
+        let activityEvents = [
+            ExecutionTelemetryEvent(timestamp: activityNow.addingTimeInterval(-90), taskID: activityTaskID, kind: .taskStarted, phase: .understanding),
+            ExecutionTelemetryEvent(timestamp: activityNow.addingTimeInterval(-88), taskID: activityTaskID, stepID: activityStepID, kind: .stepStarted, phase: .executing, action: "open_app"),
+            ExecutionTelemetryEvent(timestamp: activityNow.addingTimeInterval(-82), taskID: activityTaskID, stepID: activityStepID, kind: .verificationCompleted, phase: .executing, action: "open_app", verification: .passed),
+            ExecutionTelemetryEvent(timestamp: activityNow.addingTimeInterval(-81), taskID: activityTaskID, stepID: activityStepID, kind: .stepCompleted, phase: .executing, action: "open_app", verification: .passed),
+            ExecutionTelemetryEvent(timestamp: activityNow.addingTimeInterval(-80), taskID: activityTaskID, kind: .taskCompleted, phase: .success)
+        ]
+        let activitySummary = ActivityHistory.summary(tasks: [activityTask], events: activityEvents, now: activityNow)
+        check(activitySummary.contains(activityTask.goal) && activitySummary.contains("1 step passed verification"),
+              "activity history combines authoritative task outcome with observed verifier evidence")
+        let directAnswerEnvelope = [
+            ExecutionTelemetryEvent(timestamp: activityNow.addingTimeInterval(-2), taskID: UUID(), kind: .taskStarted, phase: .understanding),
+            ExecutionTelemetryEvent(timestamp: activityNow.addingTimeInterval(-1), taskID: UUID(), kind: .taskCompleted, phase: .success)
+        ]
+        check(ActivityHistory.summary(tasks: [activityTask], events: activityEvents + directAnswerEnvelope, now: activityNow)
+            .contains(activityTask.goal),
+              "activity history ignores conversational task envelopes that contain no action")
+        check(DirectAnswerRouter.decide(goal: "What did you do a few minutes ago?") == .activitySummary,
+              "recent activity question routes deterministically without planner generation")
 
         let prevAutonomy = Config.shared.autonomyLevel
         Config.shared.autonomyLevel = 1
@@ -4276,13 +4327,14 @@ enum SelfTest {
 
         // 20.163: Intermediate failure preserves partial state and fails safely
         var intermediateFailurePreserved = false
+        let failedGoalForActivityTest = "run an initial command and then run a command that fails"
         let semInter = DispatchSemaphore(value: 0)
         Task { @MainActor in
             let prevAutonomy = Config.shared.autonomyLevel
             Config.shared.autonomyLevel = 2
             defer { Config.shared.autonomyLevel = prevAutonomy }
 
-            let goalStr = "run an initial command and then run a command that fails"
+            let goalStr = failedGoalForActivityTest
             ExecutionTelemetry.shared.removeAll()
             let plan = AgentPlan(goal: goalStr, steps: [
                 PlanStep(id: "fixed_step_1", toolName: "run_shell", arguments: ["command": "echo intermediate_success"], purpose: "print intermediate success"),
@@ -4313,6 +4365,24 @@ enum SelfTest {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
         }
         check(intermediateFailurePreserved, "agent loop 20.163: intermediate step failure preserves Step 1 completed state, marks Step 2 failed, and reports truthful partial state")
+
+        var recentActivityGroundedInTaskState = false
+        let activitySemaphore = DispatchSemaphore(value: 0)
+        let activityQuestion = "What did you do a few minutes ago?"
+        Task { @MainActor in
+            do {
+                let answer = try await AgentLoop.shared.run(goal: activityQuestion)
+                recentActivityGroundedInTaskState = answer.contains(failedGoalForActivityTest)
+                    && answer.contains("couldn't complete")
+                    && TaskStateMachine.shared.tasks(matchingGoal: activityQuestion).isEmpty
+            } catch {}
+            activitySemaphore.signal()
+        }
+        while activitySemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(recentActivityGroundedInTaskState,
+              "activity history E2E: follow-up reports the actual failed AgentLoop task without planner generation")
 
         // 20.164: partialCompletionReport() states partial completion truthfully —
         // the completed-and-verified step count and the actual failed step, never
@@ -4781,6 +4851,19 @@ enum SelfTest {
         }
         check(retentionContextOK, "history retention 21.11: storage retention is orthogonal to the model context window — enforcement and restore leave planner-visible memory unchanged")
 
+        // 21.12 PRODUCTION DATABASE INVARIANCE (byte-level evidence): the real
+        // Application Support conversation archive must be byte-identical
+        // before and after the ENTIRE suite. Complements the in-process
+        // `!store.isPersistentStorage` check with on-disk proof that no test
+        // deleted, mutated, or truncated production storage — and that
+        // repeated SelfTest runs are idempotent with respect to production data.
+        if let before = productionDBFingerprintBefore {
+            let after = productionDatabaseFingerprint()
+            check(after == before,
+                  "production database invariance 21.12: Application Support conversations.sqlite is byte-identical before and after the full suite")
+        } else {
+            check(true, "production database invariance 21.12: no production database exists yet; nothing to protect")
+        }
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed")

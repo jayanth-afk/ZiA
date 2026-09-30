@@ -71,6 +71,7 @@ actor AgentLoop {
         }
         switch DirectAnswerRouter.decide(goal: goal) {
         case .directAnswer: return .directAnswer
+        case .activitySummary: return .directAnswer
         case .refusal: return .refusal
         case .planner: return .planner
         }
@@ -83,6 +84,7 @@ actor AgentLoop {
         if DeterministicRouter.shared.match(goal) != nil { return .deterministic }
         switch DirectAnswerRouter.decide(goal: goal) {
         case .directAnswer: return .directAnswer
+        case .activitySummary: return .directAnswer
         case .refusal: return .refusal
         case .planner: return .planner
         }
@@ -325,6 +327,13 @@ actor AgentLoop {
                 // Direct answer failed → fall forward to the planner (never fake).
                 JarvisLogger.brain.warning("Direct-answer composition failed (\(error.localizedDescription)); falling forward to planner")
             }
+        case .activitySummary:
+            attribute(.directAnswer)
+            lastReplanCount.value = 0
+            lastPlannerMetrics.value = nil
+            let summary = ActivityHistory.recentSummary()
+            recordConversationTurn(goal: goal, response: summary)
+            return summary
         case .planner:
             break
         }

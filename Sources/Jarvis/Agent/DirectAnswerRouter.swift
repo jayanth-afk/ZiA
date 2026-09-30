@@ -74,6 +74,8 @@ enum DirectAnswerRouter {
     enum Decision: Sendable, Equatable {
         /// Obvious conversational/knowledge request — answer directly without planning.
         case directAnswer
+        /// Recent-action question answered from TaskState and observed telemetry.
+        case activitySummary
         /// Explicit refusal with a typed, auditable reason.
         case refusal(RefusalReason)
         /// Genuine tool task or ambiguous goal — route to the planner.
@@ -202,6 +204,15 @@ enum DirectAnswerRouter {
         ]
         if unresolvedVolumePatterns.contains(normalized) {
             return .refusal(.unresolvedVolumeReference)
+        }
+
+        let recentActivityQuestions = [
+            "what did you do", "what did you just do", "what did you do recently",
+            "what did you do a few minutes ago", "what have you done recently",
+            "what happened a few minutes ago", "what did you do a moment ago"
+        ]
+        if recentActivityQuestions.contains(normalized) {
+            return .activitySummary
         }
 
         // 2. Obvious knowledge/conversational question → direct answer.

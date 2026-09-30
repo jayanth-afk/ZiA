@@ -134,14 +134,24 @@ actor AgentLoop {
 
     /// Execute an autonomous compound goal through the full pipeline.
     func run(goal: String) async throws -> String {
+        try await run(goal: goal, stateMachine: TaskStateMachine.shared)
+    }
+
+    /// Deterministic restart-style test seam; production calls always use the shared authority.
+    func runUsingTaskStateMachineForTesting(goal: String, stateMachine: TaskStateMachine) async throws -> String {
+        try await run(goal: goal, stateMachine: stateMachine)
+    }
+
+    private func run(goal: String, stateMachine: TaskStateMachine) async throws -> String {
         let continuationTaskID = TaskContinuity.query(for: goal) == .continueTask
-            ? TaskContinuity.resumableTaskID(tasks: TaskStateMachine.shared.allTasks)
+            ? TaskContinuity.resumableTaskID(tasks: stateMachine.allTasks)
             : nil
         return try await run(
             goal: goal,
             fixedPlanForTesting: nil,
             stopRecoveryAfterAttemptForTesting: false,
-            continuationTaskID: continuationTaskID)
+            continuationTaskID: continuationTaskID,
+            stateMachine: stateMachine)
     }
 
     /// Deterministic SelfTest seam: injects a fixed Task IR plan while retaining
@@ -157,7 +167,8 @@ actor AgentLoop {
         goal: String,
         fixedPlanForTesting: AgentPlan?,
         stopRecoveryAfterAttemptForTesting: Bool,
-        continuationTaskID: UUID? = nil
+        continuationTaskID: UUID? = nil,
+        stateMachine: TaskStateMachine = TaskStateMachine.shared
     ) async throws -> String {
         let telemetryTaskID = continuationTaskID ?? UUID()
         let runStart = DispatchTime.now().uptimeNanoseconds
@@ -180,7 +191,8 @@ actor AgentLoop {
                 telemetryTaskID: telemetryTaskID,
                 fixedPlanForTesting: fixedPlanForTesting,
                 stopRecoveryAfterAttemptForTesting: stopRecoveryAfterAttemptForTesting,
-                continuationTaskID: continuationTaskID)
+                continuationTaskID: continuationTaskID,
+                stateMachine: stateMachine)
             telemetry.record(ExecutionTelemetryEvent(taskID: telemetryTaskID, kind: .taskCompleted, phase: .success, status: "completed", durationMilliseconds: Int((DispatchTime.now().uptimeNanoseconds - runStart) / 1_000_000)))
             await reportInteractionPhase(.success)
             return response
@@ -279,7 +291,8 @@ actor AgentLoop {
         telemetryTaskID: UUID,
         fixedPlanForTesting: AgentPlan? = nil,
         stopRecoveryAfterAttemptForTesting: Bool = false,
-        continuationTaskID: UUID? = nil
+        continuationTaskID: UUID? = nil,
+        stateMachine: TaskStateMachine
     ) async throws -> String {
         let timer = PipelineTimer()
         timer.mark(.actionStart)
@@ -339,13 +352,13 @@ actor AgentLoop {
         // and ambiguous goals fall forward to the planner unchanged.
         let crossTurnFileReference = ReferenceResolver.resolveCrossTurnFileReference(
             goal: goal,
-            tasks: TaskStateMachine.shared.allTasks)
+            tasks: stateMachine.allTasks)
         let crossTurnCommandReference = ReferenceResolver.resolveCrossTurnCommandReference(
             goal: goal,
-            tasks: TaskStateMachine.shared.allTasks)
+            tasks: stateMachine.allTasks)
         let crossTurnURLReference = ReferenceResolver.resolveCrossTurnURLReference(
             goal: goal,
-            tasks: TaskStateMachine.shared.allTasks)
+            tasks: stateMachine.allTasks)
         let resolvedReferencePath: String?
         let resolvedCommand: String?
         let resolvedURL: String?
@@ -409,7 +422,7 @@ actor AgentLoop {
             attribute(.directAnswer)
             lastReplanCount.value = 0
             lastPlannerMetrics.value = nil
-            let summary = TaskContinuity.summary(query: query, tasks: TaskStateMachine.shared.allTasks)
+            let summary = TaskContinuity.summary(query: query, tasks: stateMachine.allTasks)
             recordConversationTurn(goal: goal, response: summary)
             return summary
         case .informationAnswer(let source):
@@ -433,7 +446,6 @@ actor AgentLoop {
         }
 
         // 4. PLAN via the real local MLX model (structured, validated, bounded).
-        let stateMachine = TaskStateMachine.shared
         // Evidence ledger: the harness (or a self-contained run) owns the scope;
         // MLXPlanner.plan(goal:context:taskID:) attributes every attempt of THIS
         // run (initial + all replan cycles) to one runID + taskID.
@@ -618,6 +630,7 @@ actor AgentLoop {
         if continuationTaskID == nil {
             plan = PlannerExtraction.enforceRecency(plan: plan, goal: planningGoal)
             try stateMachine.setSteps(taskId: task.id, steps: toTaskSteps(plan))
+            _ = try stateMachine.enablePersistence(for: task.id)
         }
 
         // 4. EXECUTE -> OBSERVE -> VERIFY -> RECOVER loop
@@ -670,7 +683,7 @@ actor AgentLoop {
                 ? stateMachine.getTask(id: task.id)?.steps[stepIndex].id : nil
             let telemetryStepStart = DispatchTime.now().uptimeNanoseconds
             telemetryTaskEvent(task.id, .stepStarted, phase: .executing, stepID: telemetryStepID, action: step.toolName, status: "started")
-            try? stateMachine.setCurrentStepIndex(taskId: task.id, index: stepIndex)
+            _ = try? stateMachine.setCurrentStepIndex(taskId: task.id, index: stepIndex)
 
             do {
                 // Cooperative cancellation points: task cancellation (user or
@@ -914,7 +927,7 @@ actor AgentLoop {
                 try stateMachine.transition(taskId: task.id, to: .recovering)
                 try stateMachine.transition(taskId: task.id, to: .replanning)
                 await reportInteractionPhase(.thinking, taskID: task.id)
-                try? stateMachine.incrementRetryCount(taskId: task.id)
+                _ = try? stateMachine.incrementRetryCount(taskId: task.id)
 
                 // REPLAN with real failure context (not a blind repeat): the
                 // planner sees the actual error and prior observations.
@@ -1110,7 +1123,7 @@ actor AgentLoop {
                 // REPLANNING here would make the later DONE-accept path attempt
                 // the illegal REPLANNING → VERIFYING transition.
                 try stateMachine.transition(taskId: task.id, to: .running)
-                try? stateMachine.incrementRetryCount(taskId: task.id)
+                _ = try? stateMachine.incrementRetryCount(taskId: task.id)
                 do {
                     plan = try await MLXPlanner.shared.planNextStep(
                         goal: goal,
@@ -1185,7 +1198,7 @@ actor AgentLoop {
                 continue
             }
             stepNumber += 1
-            try? stateMachine.setCurrentStepIndex(taskId: task.id, index: stepNumber - 1)
+            _ = try? stateMachine.setCurrentStepIndex(taskId: task.id, index: stepNumber - 1)
             // Replace the task's step list with executed history + the new step
             // (append-only progress view; snapshots preserve every cycle).
             var allSteps = stateMachine.getTask(id: task.id)?.steps ?? []
@@ -1195,7 +1208,14 @@ actor AgentLoop {
                 toolName: step.toolName,
                 arguments: step.arguments)
             allSteps.append(newStep)
-            try? stateMachine.setSteps(taskId: task.id, steps: allSteps)
+            do {
+                try stateMachine.setSteps(taskId: task.id, steps: allSteps)
+                _ = try stateMachine.enablePersistence(for: task.id)
+            } catch {
+                _ = try? stateMachine.transition(taskId: task.id, to: .failed,
+                                                 error: "Validated sequential step could not be persisted: \(error.localizedDescription)")
+                throw error
+            }
             let telemetryStepID = newStep.id
             let telemetryStepStart = DispatchTime.now().uptimeNanoseconds
             telemetryTaskEvent(task.id, .stepStarted, phase: .executing, stepID: telemetryStepID, action: step.toolName, status: "started")
@@ -1274,13 +1294,13 @@ actor AgentLoop {
                 try stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
                 try stateMachine.transition(taskId: task.id, to: .recovering)
                 try stateMachine.transition(taskId: task.id, to: .replanning)
-                try? stateMachine.incrementRetryCount(taskId: task.id)
+                _ = try? stateMachine.incrementRetryCount(taskId: task.id)
                 try stateMachine.transition(taskId: task.id, to: .running)
                 // Drop the partially-appended step from the task's step list so
                 // the next generation plans it fresh (bounded by maxGenerations).
                 var allSteps = stateMachine.getTask(id: task.id)?.steps ?? []
                 if !allSteps.isEmpty { allSteps.removeLast() }
-                try? stateMachine.setSteps(taskId: task.id, steps: allSteps)
+                _ = try? stateMachine.setSteps(taskId: task.id, steps: allSteps)
             }
         }
 
@@ -1328,7 +1348,7 @@ actor AgentLoop {
             try stateMachine.transition(taskId: taskId, to: .failed, error: "Planner failed: \(error.localizedDescription)")
             try stateMachine.transition(taskId: taskId, to: .recovering)
             try stateMachine.transition(taskId: taskId, to: .replanning)
-            try? stateMachine.incrementRetryCount(taskId: taskId)
+            _ = try? stateMachine.incrementRetryCount(taskId: taskId)
             do {
                 let retryPlan = try await MLXPlanner.shared.plan(goal: goal, context: context, taskID: taskId)
                 if let metrics = await MLXPlanner.shared.latestMetrics() {

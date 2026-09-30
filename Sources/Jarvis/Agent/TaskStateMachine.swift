@@ -165,6 +165,60 @@ struct JarvisTask: Identifiable, Sendable {
 /// Persistent task state machine enforcing state transitions and history.
 /// Thread-safe via NSLock, callable synchronously or asynchronously from any actor or thread.
 final class TaskStateMachine: @unchecked Sendable {
+    private struct PersistedTask: Codable {
+        let id: UUID
+        let title: String
+        let goal: String
+        var state: TaskState
+        var steps: [TaskStep]
+        var currentStepIndex: Int
+        var maxRetries: Int
+        var retryCount: Int
+        let createdAt: Date
+        var updatedAt: Date
+        var completedAt: Date?
+        var error: String?
+        var resolutionRecords: [StepResolutionRecord]
+
+        init(_ task: JarvisTask) {
+            id = task.id
+            title = task.title
+            goal = task.goal
+            state = task.state
+            steps = task.steps
+            currentStepIndex = task.currentStepIndex
+            maxRetries = task.maxRetries
+            retryCount = task.retryCount
+            createdAt = task.createdAt
+            updatedAt = task.updatedAt
+            completedAt = task.completedAt
+            error = task.error
+            resolutionRecords = task.resolutionRecords
+        }
+
+        var task: JarvisTask {
+            JarvisTask(id: id, title: title, goal: goal, state: state, steps: steps,
+                       currentStepIndex: currentStepIndex, maxRetries: maxRetries,
+                       retryCount: retryCount, createdAt: createdAt, updatedAt: updatedAt,
+                       completedAt: completedAt, error: error, resolutionRecords: resolutionRecords)
+        }
+    }
+
+    private struct PersistenceSnapshot: Codable {
+        let schemaVersion: Int
+        let tasks: [PersistedTask]
+    }
+
+    private struct InMemoryState {
+        let tasks: [UUID: JarvisTask]
+        let stateHistory: [UUID: [(TaskState, Date)]]
+        let runAttribution: [UUID: UUID]
+        let stepsHistory: [UUID: [(cycle: Int, steps: [TaskStep], at: Date)]]
+        let persistentTaskIDs: Set<UUID>
+        let persistenceHealthy: Bool
+        let persistenceSuspended: Bool
+    }
+
     static let shared = TaskStateMachine()
 
     private let lock = NSLock()
@@ -177,8 +231,231 @@ final class TaskStateMachine: @unchecked Sendable {
     // Evidence-integrity pass: every setSteps() snapshot is preserved (indexed by
     // planning cycle) so a replan NEVER overwrites the evidence of earlier plans.
     private var stepsHistory: [UUID: [(cycle: Int, steps: [TaskStep], at: Date)]] = [:]
+    private let persistenceURL: URL?
+    private var persistentTaskIDs = Set<UUID>()
+    private var persistenceHealthy = true
+    private var persistenceSuspended = false
 
-    private init() {}
+    private static let persistenceSchemaVersion = 1
+    private static let maxPersistedTasks = 64
+    private static let maxSnapshotBytes = 8 * 1_024 * 1_024
+
+    private static var defaultPersistenceURL: URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Jarvis", isDirectory: true)
+            .appendingPathComponent("task-state-v1.json", isDirectory: false)
+    }
+
+    init(storageURL: URL? = TaskStateMachine.defaultPersistenceURL) {
+        persistenceURL = storageURL
+        guard let storageURL, FileManager.default.fileExists(atPath: storageURL.path) else { return }
+        do {
+            let data = try Data(contentsOf: storageURL)
+            guard data.count <= Self.maxSnapshotBytes else {
+                throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot exceeds size limit")
+            }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .millisecondsSince1970
+            let snapshot = try decoder.decode(PersistenceSnapshot.self, from: data)
+            guard snapshot.schemaVersion == Self.persistenceSchemaVersion,
+                  snapshot.tasks.count <= Self.maxPersistedTasks else {
+                throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot schema or size is invalid")
+            }
+
+            var restored: [UUID: JarvisTask] = [:]
+                        let restoreDate = Date()
+            for persisted in snapshot.tasks {
+                var task = persisted.task
+                guard restored[task.id] == nil, Self.isValidPersistedTask(task) else {
+                    throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot contains invalid or duplicate task evidence")
+                }
+                if [.created, .planning, .running, .verifying, .recovering, .replanning].contains(task.state) {
+                    let interruptedState = task.state.rawValue
+                    task.state = .cancelled
+                    task.error = "Process interrupted while task was \(interruptedState)"
+                    task.updatedAt = restoreDate
+                    task.completedAt = task.updatedAt
+                    for index in task.steps.indices where TaskContinuity.independentlyVerified(task.steps[index], task: task) {
+                        task.steps[index].state = .completed
+                        if task.steps[index].output == nil,
+                           let record = task.resolutionRecords.last(where: { $0.stepNumber == task.steps[index].stepNumber }) {
+                            task.steps[index].output = record.rawOutput
+                        }
+                    }
+                }
+                restored[task.id] = task
+                stateHistory[task.id] = [(.created, task.createdAt), (task.state, task.updatedAt)]
+                if !task.steps.isEmpty {
+                    stepsHistory[task.id] = [(cycle: 0, steps: task.steps, at: task.updatedAt)]
+                }
+            }
+            tasks = restored
+            persistentTaskIDs = Set(restored.keys)
+        } catch {
+            tasks.removeAll()
+            stateHistory.removeAll()
+            stepsHistory.removeAll()
+            persistentTaskIDs.removeAll()
+            persistenceHealthy = false
+            JarvisLogger.security.error("TaskState snapshot rejected; continuation is disabled: \(error.localizedDescription)")
+        }
+    }
+
+    var isPersistenceAvailable: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return persistenceHealthy
+    }
+
+    /// Persist only after the caller has validated the exact plan with PlanValidator.
+    @discardableResult
+    func enablePersistence(for taskId: UUID) throws -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !persistenceSuspended else { return false }
+        guard persistenceHealthy, let persistenceURL else {
+            throw JarvisError.actionFailed(action: "TaskState.persist", reason: "Durable TaskState is unavailable")
+        }
+        guard let task = tasks[taskId], Self.isValidPersistedTask(task) else {
+            throw JarvisError.actionFailed(action: "TaskState.persist", reason: "Task is not valid for persistence")
+        }
+        guard Self.isSafeToPersist(task) else { return false }
+        guard persistentTaskIDs.count < Self.maxPersistedTasks || persistentTaskIDs.contains(taskId) else {
+            throw JarvisError.actionFailed(action: "TaskState.persist", reason: "TaskState snapshot task limit reached")
+        }
+        let inserted = persistentTaskIDs.insert(taskId).inserted
+        do {
+            try writeSnapshotLocked(to: persistenceURL)
+            return true
+        } catch {
+            if inserted { persistentTaskIDs.remove(taskId) }
+            persistenceHealthy = false
+            throw error
+        }
+    }
+
+    /// Isolate the shared owner during SelfTest without reading or writing production task state.
+    func beginIsolatedTesting() -> () -> Void {
+        lock.lock()
+        let original = InMemoryState(tasks: tasks, stateHistory: stateHistory,
+                                     runAttribution: runAttribution, stepsHistory: stepsHistory,
+                                     persistentTaskIDs: persistentTaskIDs,
+                                     persistenceHealthy: persistenceHealthy,
+                                     persistenceSuspended: persistenceSuspended)
+        tasks = [:]
+        stateHistory = [:]
+        runAttribution = [:]
+        stepsHistory = [:]
+        persistentTaskIDs = []
+        persistenceSuspended = true
+        lock.unlock()
+
+        return { [weak self] in
+            guard let self else { return }
+            self.lock.lock()
+            self.tasks = original.tasks
+            self.stateHistory = original.stateHistory
+            self.runAttribution = original.runAttribution
+            self.stepsHistory = original.stepsHistory
+            self.persistentTaskIDs = original.persistentTaskIDs
+            self.persistenceHealthy = original.persistenceHealthy
+            self.persistenceSuspended = original.persistenceSuspended
+            self.lock.unlock()
+        }
+    }
+
+    private func persistIfEnabledLocked() {
+        guard !persistenceSuspended, persistenceHealthy, let persistenceURL else { return }
+        for taskID in Array(persistentTaskIDs) {
+            guard let task = tasks[taskID] else {
+                persistenceHealthy = false
+                return
+            }
+            if !Self.isSafeToPersist(task) {
+                persistentTaskIDs.remove(taskID)
+                JarvisLogger.security.warning("TaskState persistence disabled for highly sensitive task \(taskID.uuidString.prefix(8))")
+            } else if !Self.isValidPersistedTask(task) {
+                return
+            }
+        }
+        do {
+            try writeSnapshotLocked(to: persistenceURL)
+        } catch {
+            persistenceHealthy = false
+            JarvisLogger.security.error("TaskState checkpoint failed; restart continuation is disabled: \(error.localizedDescription)")
+        }
+    }
+
+    private func writeSnapshotLocked(to url: URL) throws {
+        let persistedTasks = persistentTaskIDs.compactMap { tasks[$0] }
+            .sorted { $0.createdAt < $1.createdAt }
+            .map(PersistedTask.init)
+                guard persistedTasks.count <= Self.maxPersistedTasks,
+                            persistedTasks.allSatisfy({ Self.isValidPersistedTask($0.task) && Self.isSafeToPersist($0.task) }) else {
+                        throw JarvisError.actionFailed(action: "TaskState.persist", reason: "TaskState snapshot contains invalid or sensitive task data")
+        }
+        let directory = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(
+            at: directory, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .millisecondsSince1970
+        let data = try encoder.encode(PersistenceSnapshot(schemaVersion: Self.persistenceSchemaVersion,
+                                                          tasks: persistedTasks))
+        guard data.count <= Self.maxSnapshotBytes else {
+            throw JarvisError.actionFailed(action: "TaskState.persist", reason: "TaskState snapshot exceeds size limit")
+        }
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    private static func isSafeToPersist(_ task: JarvisTask) -> Bool {
+        let highSensitivityMarkers = ["password", "api_key", "apikey", "api key", "api-key", "sk-",
+                                      "secret", "private_key", "bearer ", "token", "id_rsa", "ssn",
+                                      "credit card", "payment card", "sudo "]
+        let values = [task.title, task.goal, task.error ?? ""]
+            + task.steps.flatMap { step in
+                [step.description, step.output ?? "", step.error ?? ""]
+                    + step.arguments.flatMap { [$0.key, $0.value] }
+            }
+            + task.resolutionRecords.map(\.rawOutput)
+        let combined = values.joined(separator: "\n").lowercased()
+        return !highSensitivityMarkers.contains(where: { combined.contains($0) })
+    }
+
+    private static func isValidPersistedTask(_ task: JarvisTask) -> Bool {
+        guard !task.goal.isEmpty, !task.steps.isEmpty, task.steps.count <= 6,
+              task.maxRetries > 0, task.retryCount >= 0, task.retryCount <= task.maxRetries,
+              task.currentStepIndex >= 0, task.currentStepIndex <= task.steps.count else { return false }
+        guard task.steps.enumerated().allSatisfy({ index, step in
+            step.stepNumber == index + 1 && (step.toolName == nil || !step.toolName!.isEmpty)
+        }) else { return false }
+        guard task.resolutionRecords.allSatisfy({ record in
+            record.stepNumber > 0 && record.stepNumber <= task.steps.count
+                && task.steps[record.stepNumber - 1].toolName == record.toolName
+                && record.rawOutput.utf8.count <= 1_048_576
+        }) else { return false }
+        for step in task.steps {
+            let latestRecord = task.resolutionRecords.last(where: {
+                $0.stepNumber == step.stepNumber && $0.toolName == step.toolName
+            })
+            if step.toolName != nil && step.state == .completed {
+                guard step.verification == .passed, latestRecord?.verification == .passed else { return false }
+            }
+            if step.verification == .passed {
+                guard step.toolName != nil, latestRecord?.verification == .passed,
+                      step.state == .completed || step.state == .running || step.state == .cancelled else { return false }
+            }
+            if step.toolName == nil && step.state == .completed && step.verification != .notApplicable {
+                return false
+            }
+        }
+        if task.state == .completed {
+            guard task.steps.allSatisfy({ TaskContinuity.isResolved($0, task: task) }) else { return false }
+        }
+        return true
+    }
 
     // MARK: - Evidence attribution (instrumentation pass)
 
@@ -288,6 +565,7 @@ final class TaskStateMachine: @unchecked Sendable {
 
         tasks[taskId] = task
         stateHistory[taskId, default: []].append((newState, Date()))
+        persistIfEnabledLocked()
 
         JarvisLogger.actions.info("Task [\(taskId.uuidString.prefix(8))] transitioned: \(oldState.rawValue) -> \(newState.rawValue)")
         return task
@@ -330,6 +608,7 @@ final class TaskStateMachine: @unchecked Sendable {
             stateHistory[taskId, default: []].append((state, task.updatedAt))
         }
         tasks[taskId] = task
+        persistIfEnabledLocked()
         return task
     }
 
@@ -352,6 +631,7 @@ final class TaskStateMachine: @unchecked Sendable {
         task.steps[stepIndex].verification = nil
         task.updatedAt = Date()
         tasks[taskId] = task
+        persistIfEnabledLocked()
         return task
     }
 
@@ -372,6 +652,7 @@ final class TaskStateMachine: @unchecked Sendable {
         task.steps[stepIndex].verification = outcome
         task.updatedAt = Date()
         tasks[taskId] = task
+        persistIfEnabledLocked()
         return task
     }
 
@@ -389,6 +670,7 @@ final class TaskStateMachine: @unchecked Sendable {
         task.currentStepIndex = max(0, min(index, task.steps.count))
         task.updatedAt = Date()
         tasks[taskId] = task
+        persistIfEnabledLocked()
         return task
     }
 
@@ -405,6 +687,7 @@ final class TaskStateMachine: @unchecked Sendable {
         task.retryCount += 1
         task.updatedAt = Date()
         tasks[taskId] = task
+        persistIfEnabledLocked()
         return task
     }
 
@@ -431,6 +714,7 @@ final class TaskStateMachine: @unchecked Sendable {
         }
         task.updatedAt = Date()
         tasks[taskId] = task
+        persistIfEnabledLocked()
 
         return task
     }
@@ -453,6 +737,7 @@ final class TaskStateMachine: @unchecked Sendable {
 
         let cycle = stepsHistory[taskId]?.count ?? 0
         stepsHistory[taskId, default: []].append((cycle: cycle, steps: steps, at: Date()))
+        persistIfEnabledLocked()
 
         return task
     }
@@ -477,6 +762,7 @@ final class TaskStateMachine: @unchecked Sendable {
         task.resolutionRecords.append(record)
         task.updatedAt = Date()
         tasks[taskId] = task
+        persistIfEnabledLocked()
         return task
     }
 
@@ -506,6 +792,7 @@ final class TaskStateMachine: @unchecked Sendable {
         task.environmentContext = context
         task.updatedAt = Date()
         tasks[taskId] = task
+        persistIfEnabledLocked()
         return task
     }
 

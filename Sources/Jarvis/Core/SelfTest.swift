@@ -53,6 +53,8 @@ enum SelfTest {
     static func runAll() {
         let previousConversationStore = ConversationStore.beginIsolatedTesting()
         defer { ConversationStore.endIsolatedTesting(restoring: previousConversationStore) }
+        let restoreTaskState = TaskStateMachine.shared.beginIsolatedTesting()
+        defer { restoreTaskState() }
         let productionDBFingerprintBefore = productionDatabaseFingerprint()
 
         setbuf(stdout, nil)

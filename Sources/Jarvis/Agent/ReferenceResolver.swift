@@ -40,7 +40,7 @@ enum AmbientSlot: String, Sendable, Equatable, CaseIterable {
 }
 
 /// Structured record of a completed and verified step execution for reference resolution.
-struct StepResolutionRecord: Sendable, Equatable {
+struct StepResolutionRecord: Sendable, Equatable, Codable {
     let stepNumber: Int
     let toolName: String
     let rawOutput: String

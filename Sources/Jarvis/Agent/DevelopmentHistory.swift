@@ -48,16 +48,20 @@ enum DevelopmentHistory {
         return nil
     }
 
+    /// Safely runs a git subprocess with redirected stderr to avoid kernel pipe deadlocks.
     private static func runGit(in root: URL, arguments: [String]) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = ["-C", root.path] + arguments
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = Pipe()
+        
+        let outputPipe = Pipe()
+        process.standardOutput = outputPipe
+        // Redirect stderr to null device to prevent kernel pipe buffer deadlock when stderr exceeds 64KB
+        process.standardError = FileHandle.nullDevice
+
         do {
             try process.run()
-            let data = output.fileHandleForReading.readDataToEndOfFile()
+            let data = outputPipe.fileHandleForReading.readDataToEndOfFile()
             process.waitUntilExit()
             guard process.terminationStatus == 0 else { return nil }
             return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)

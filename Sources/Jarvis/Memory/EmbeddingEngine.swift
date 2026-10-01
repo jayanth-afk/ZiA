@@ -1,54 +1,29 @@
 import Foundation
 import Accelerate
 
-/// Local embedding generator utilizing Accelerate framework and vDSP SIMD on Apple Silicon M4.
-/// Produces normalized unit-length embedding vectors for semantic similarity matching.
-final class EmbeddingEngine: @unchecked Sendable {
-    static let shared = EmbeddingEngine()
+public final class EmbeddingEngine: @unchecked Sendable {
+    public static let shared = EmbeddingEngine()
 
-    /// Dimension of the embedding vectors.
-    let dimension: Int = 64
+    public init() {}
 
-    private init() {}
+    @inlinable
+    public static func normalizeInPlace(_ vector: inout [Float]) {
+        let count = vector.count
+        guard count > 0 else { return }
 
-    // MARK: - Public API
+        var sumSq: Float = 0.0
+        vDSP_svesq(vector, 1, &sumSq, vDSP_Length(count))
 
-    /// Generate a normalized embedding vector for a given text prompt.
-    func embed(_ text: String) -> [Float] {
-        var vector = [Float](repeating: 0.0, count: dimension)
-        let lower = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !lower.isEmpty else {
-            return vector
+        let magnitude = sqrt(sumSq)
+        if magnitude > 0.000001 {
+            var divisor = magnitude
+            vDSP_vsdiv(vector, 1, &divisor, &vector, 1, vDSP_Length(count))
         }
+    }
 
-        // Generate dense token feature projections
-        let words = lower.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }
-
-        for (wordIndex, word) in words.enumerated() {
-            var hash = 5381
-            for byte in word.utf8 {
-                hash = ((hash << 5) &+ hash) &+ Int(byte)
-            }
-
-            let primaryIndex = abs(hash) % dimension
-            let secondaryIndex = abs(hash >> 8) % dimension
-            let weight: Float = 1.0 / Float(wordIndex + 1)
-
-            vector[primaryIndex] += weight
-            vector[secondaryIndex] += weight * 0.5
-        }
-
-        // Normalize vector to unit length via Accelerate vDSP
-        var norm: Float = 0.0
-        vDSP_svesq(vector, 1, &norm, vDSP_Length(dimension))
-        let magnitude = sqrt(norm)
-
-        if magnitude > 0 {
-            var scale = 1.0 / magnitude
-            vDSP_vsmul(vector, 1, &scale, &vector, 1, vDSP_Length(dimension))
-        }
-
-        return vector
+    public static func normalize(_ vector: [Float]) -> [Float] {
+        var copy = vector
+        normalizeInPlace(&copy)
+        return copy
     }
 }

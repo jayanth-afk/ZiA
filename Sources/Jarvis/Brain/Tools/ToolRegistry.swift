@@ -1,76 +1,41 @@
 import Foundation
 
-/// Central registry of all executable tools available to JARVIS and LLM providers.
-@MainActor
-final class ToolRegistry {
-    static let shared = ToolRegistry()
+public protocol JarvisTool: Sendable {
+    var name: String { get }
+    var description: String { get }
+    func execute(parameters: [String: String]) async throws -> String
+}
 
-    private var tools: [String: any JarvisTool] = [:]
+public final class ToolRegistry: @unchecked Sendable {
+    public static let shared = ToolRegistry()
 
-    private init() {
-        registerBuiltins()
-    }
+    private var tools = [String: JarvisTool]()
+    private var cachedList: [JarvisTool]? = nil
+    private let lock = NSLock()
 
-    // MARK: - Public API
+    public init() {}
 
-    /// Register a tool.
-    func register(_ tool: any JarvisTool) {
+    public func register(_ tool: JarvisTool) {
+        lock.lock()
         tools[tool.name] = tool
-        JarvisLogger.actions.debug("Registered tool: '\(tool.name)'")
+        cachedList = nil
+        lock.unlock()
     }
 
-    /// Retrieve a tool by name.
-    func getTool(named name: String) -> (any JarvisTool)? {
+    public func tool(named name: String) -> JarvisTool? {
+        lock.lock()
+        defer { lock.unlock() }
         return tools[name]
     }
 
-    /// Returns all registered tools.
-    var allTools: [any JarvisTool] {
-        return Array(tools.values)
-    }
-
-    /// Generates ToolDefinitions formatted for LLM function calling schemas,
-    /// including a real JSON schema built from each tool's declared parameters.
-    func getToolDefinitions() -> [ToolDefinition] {
-        return allTools.map { tool in
-            ToolDefinition(
-                name: tool.name,
-                description: tool.description,
-                parametersJSON: Self.parametersJSON(for: tool)
-            )
+    public var allTools: [JarvisTool] {
+        lock.lock()
+        defer { lock.unlock() }
+        if let cached = cachedList {
+            return cached
         }
-    }
-
-    /// Compact JSON schema of a tool's declared parameters.
-    private nonisolated static func parametersJSON(for tool: any JarvisTool) -> String {
-        var properties: [String] = []
-        var required: [String] = []
-        for spec in tool.parameterSpec {
-            properties.append("\"\(spec.name)\":{\"type\":\"\(spec.kind.rawValue)\"}")
-            if spec.required { required.append("\"\(spec.name)\"") }
-        }
-        let props = properties.joined(separator: ",")
-        let req = required.joined(separator: ",")
-        return "{\"type\":\"object\",\"properties\":{\(props)},\"required\":[\(req)]}"
-    }
-
-    // MARK: - Private
-
-    private func registerBuiltins() {
-        register(OpenAppTool())
-        register(SetVolumeTool())
-        register(RunShellTool())
-        register(WriteFileTool())
-        register(ReadFileTool())
-        register(WebSearchTool())
-        register(FetchURLTool())
-        register(OpenBrowserTool())
-        register(InspectBrowserPageTool())
-        register(ExtractBrowserTextTool())
-        register(ClickBrowserLinkTool())
-        register(FillBrowserTextTool())
-        register(InspectUITool())
-        register(ClickElementTool())
-        register(SetTextTool())
+        let list = Array(tools.values)
+        cachedList = list
+        return list
     }
 }

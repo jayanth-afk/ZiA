@@ -1,65 +1,74 @@
 import Foundation
+import os
 
-/// Typed event bus for decoupled subsystem communication.
-///
-/// All events must conform to `JarvisEvent` (which requires `Sendable`).
-/// Publish/subscribe is synchronous on MainActor — events are delivered
-/// immediately to all registered handlers in registration order.
-///
-/// Usage:
-///   EventBus.shared.subscribe(StateChangedEvent.self) { event in
-///       print("State changed to \(event.to)")
-///   }
-///   EventBus.shared.publish(StateChangedEvent(from: .off, to: .sleep))
-@MainActor
-final class EventBus {
-    static let shared = EventBus()
-
-    /// Each handler is boxed as (Any) -> Void to allow heterogeneous storage.
-    /// The String key is the event type name for O(1) dispatch.
-    private var handlers: [String: [(id: UUID, handler: (Any) -> Void)]] = [:]
-
-    private init() {}
-
-    /// Subscribe to a specific event type. Returns a subscription ID for later removal.
+public final class EventBus: @unchecked Sendable {
+    public static let shared = EventBus()
+    
+    public typealias SubscriptionToken = UUID
+    private typealias EventHandler = (Any) -> Void
+    
+    private struct Subscription {
+        let eventType: ObjectIdentifier
+        let handler: EventHandler
+    }
+    
+    private var subscriptions = [SubscriptionToken: Subscription]()
+    private var typeToTokens = [ObjectIdentifier: Set<SubscriptionToken>]()
+    private let lock = OSAllocatedUnfairLock()
+    
+    public init() {}
+    
+    /// Subscribe to events with O(1) hash map registration.
     @discardableResult
-    func subscribe<E: JarvisEvent>(
-        _ eventType: E.Type,
-        handler: @escaping @MainActor (E) -> Void
-    ) -> UUID {
-        let key = String(describing: eventType)
-        let id = UUID()
-
-        handlers[key, default: []].append((id: id, handler: { event in
-            if let typed = event as? E {
-                handler(typed)
+    public func subscribe<T>(_ type: T.Type, handler: @escaping (T) -> Void) -> SubscriptionToken {
+        let token = UUID()
+        let eventTypeId = ObjectIdentifier(type)
+        
+        let wrappedHandler: EventHandler = { event in
+            if let typedEvent = event as? T {
+                handler(typedEvent)
             }
-        }))
-
-        return id
+        }
+        
+        let sub = Subscription(eventType: eventTypeId, handler: wrappedHandler)
+        
+        lock.withLock {
+            subscriptions[token] = sub
+            typeToTokens[eventTypeId, default: []].insert(token)
+        }
+        
+        return token
     }
-
-    /// Remove a specific subscription by ID.
-    func unsubscribe(_ subscriptionID: UUID) {
-        for key in handlers.keys {
-            handlers[key]?.removeAll { $0.id == subscriptionID }
+    
+    /// Unsubscribe with O(1) removal.
+    public func unsubscribe(_ token: SubscriptionToken) {
+        lock.withLock {
+            guard let sub = subscriptions.removeValue(forKey: token) else { return }
+            typeToTokens[sub.eventType]?.remove(token)
+            if typeToTokens[sub.eventType]?.isEmpty == true {
+                typeToTokens.removeValue(forKey: sub.eventType)
+            }
         }
     }
-
-    /// Publish an event to all subscribers of that event type.
-    func publish<E: JarvisEvent>(_ event: E) {
-        let key = String(describing: E.self)
-
-        JarvisLogger.events.debug("⚡ \(key)")
-
-        guard let subs = handlers[key] else { return }
-        for sub in subs {
-            sub.handler(event)
+    
+    /// Publish event with zero lock contention during handler invocation.
+    public func publish<T>(_ event: T) {
+        let eventTypeId = ObjectIdentifier(T.self)
+        
+        var handlersToCall: [EventHandler] = []
+        
+        lock.withLock {
+            guard let tokens = typeToTokens[eventTypeId] else { return }
+            handlersToCall.reserveCapacity(tokens.count)
+            for token in tokens {
+                if let sub = subscriptions[token] {
+                    handlersToCall.append(sub.handler)
+                }
+            }
         }
-    }
-
-    /// Remove all subscriptions (used in tests).
-    func removeAll() {
-        handlers.removeAll()
+        
+        for handler in handlersToCall {
+            handler(event)
+        }
     }
 }

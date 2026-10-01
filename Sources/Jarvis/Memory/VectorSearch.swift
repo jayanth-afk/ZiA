@@ -1,109 +1,82 @@
 import Foundation
 import Accelerate
 
-/// Search result scored by cosine similarity.
-struct VectorSearchResult: Identifiable, Sendable {
-    let id: UUID
-    let text: String
-    let score: Float
-    let metadata: [String: String]
-}
-
-/// In-memory vector store performing hardware-accelerated SIMD cosine similarity search.
-final class VectorSearch: @unchecked Sendable {
-    static let shared = VectorSearch()
-
-    struct StoredVector: Identifiable, Sendable {
-        let id: UUID
-        let text: String
-        let vector: [Float]
-        let metadata: [String: String]
+public enum VectorSearch {
+    
+    /// Computes cosine similarity between two Float vectors using Accelerate hardware acceleration (vDSP).
+    @inlinable
+    public static func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
+        let count = a.count
+        guard count > 0 && count == b.count else { return 0.0 }
+        
+        var dotProduct: Float = 0.0
+        vDSP_dotpr(a, 1, b, 1, &dotProduct, vDSP_Length(count))
+        
+        var sumSqA: Float = 0.0
+        vDSP_svesq(a, 1, &sumSqA, vDSP_Length(count))
+        
+        var sumSqB: Float = 0.0
+        vDSP_svesq(b, 1, &sumSqB, vDSP_Length(count))
+        
+        let denom = sqrt(sumSqA * sumSqB)
+        return denom > 0.000001 ? (dotProduct / denom) : 0.0
     }
-
-    private let lock = NSLock()
-    private var vectors: [StoredVector] = []
-
-    private init() {}
-
-    // MARK: - Public API
-
-    /// Index a text entry with its embedding.
-    @discardableResult
-    func add(text: String, metadata: [String: String] = [:]) -> UUID {
-        let id = UUID()
-        let embedding = EmbeddingEngine.shared.embed(text)
-
-        lock.lock()
-        defer { lock.unlock() }
-
-        vectors.append(StoredVector(id: id, text: text, vector: embedding, metadata: metadata))
-        return id
+    
+    /// Fast dot product for unit-normalized vectors.
+    @inlinable
+    public static func dotProduct(_ a: [Float], _ b: [Float]) -> Float {
+        let count = a.count
+        guard count > 0 && count == b.count else { return 0.0 }
+        
+        var result: Float = 0.0
+        vDSP_dotpr(a, 1, b, 1, &result, vDSP_Length(count))
+        return result
     }
-
-    /// Perform cosine similarity search for a query string.
-    func search(query: String, topK: Int = 3, threshold: Float = 0.1) -> [VectorSearchResult] {
-        let queryVector = EmbeddingEngine.shared.embed(query)
-        let dimension = EmbeddingEngine.shared.dimension
-
-        lock.lock()
-        let items = vectors
-        lock.unlock()
-
-        var results: [VectorSearchResult] = []
-
+    
+    /// Finds top-K items using a bounded binary insertion array in O(N log K) time without sorting entire dataset.
+    public static func searchTopK<T>(
+        queryVector: [Float],
+        items: [T],
+        vectorExtractor: (T) -> [Float],
+        topK: Int,
+        threshold: Float = -1.0
+    ) -> [(item: T, score: Float)] {
+        guard !items.isEmpty && topK > 0 else { return [] }
+        
+        var topResults: [(item: T, score: Float)] = []
+        topResults.reserveCapacity(topK + 1)
+        
         for item in items {
-            var score: Float = 0.0
-            vDSP_dotpr(queryVector, 1, item.vector, 1, &score, vDSP_Length(dimension))
-
-            if score >= threshold {
-                results.append(VectorSearchResult(
-                    id: item.id,
-                    text: item.text,
-                    score: score,
-                    metadata: item.metadata
-                ))
+            let vec = vectorExtractor(item)
+            let score = cosineSimilarity(queryVector, vec)
+            
+            if score < threshold { continue }
+            
+            if topResults.count < topK {
+                let idx = binarySearchInsertionIndex(in: topResults, score: score)
+                topResults.insert((item, score), at: idx)
+            } else if score > topResults.last!.score {
+                topResults.removeLast()
+                let idx = binarySearchInsertionIndex(in: topResults, score: score)
+                topResults.insert((item, score), at: idx)
             }
         }
-
-        // Sort descending by similarity score
-        results.sort { $0.score > $1.score }
-        return Array(results.prefix(topK))
+        
+        return topResults
     }
-
-    /// Remove a stored vector by ID.
-    @discardableResult
-    func remove(id: UUID) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        let initialCount = vectors.count
-        vectors.removeAll { $0.id == id }
-        return vectors.count < initialCount
-    }
-
-    /// Remove matching indexed text (optionally restricted to one record type).
-    /// Used to keep a forgotten user fact out of future semantic recall.
-    @discardableResult
-    func remove(text: String, metadataType: String? = nil) -> Int {
-        lock.lock()
-        defer { lock.unlock() }
-        let previousCount = vectors.count
-        vectors.removeAll {
-            $0.text == text && (metadataType == nil || $0.metadata["type"] == metadataType)
+    
+    @inlinable
+    private static func binarySearchInsertionIndex<T>(in results: [(item: T, score: Float)], score: Float) -> Int {
+        var low = 0
+        var high = results.count
+        while low < high {
+            let mid = (low + high) / 2
+            if results[mid].score < score {
+                high = mid
+            } else {
+                low = mid + 1
+            }
         }
-        return previousCount - vectors.count
-    }
-
-    /// Clear all stored vectors.
-    func clear() {
-        lock.lock()
-        defer { lock.unlock() }
-        vectors.removeAll()
-    }
-
-    /// Number of indexed vectors.
-    var count: Int {
-        lock.lock()
-        defer { lock.unlock() }
-        return vectors.count
+        return low
     }
 }

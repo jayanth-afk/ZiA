@@ -35,10 +35,10 @@ enum TaskContinuity {
             return .status
         case "what's left", "what is left", "what's left to do", "what remains":
             return .remaining
-           case "continue", "continue the task", "continue from where you stopped", "continue where you left off",
-               "finish it", "finish what you were doing", "finish that":
+        case "continue", "continue the task", "continue from where you stopped", "continue where you left off",
+             "finish it", "finish what you were doing", "finish that":
             return .continueTask
-           case "did that work", "did it work", "did it succeed":
+        case "did that work", "did it work", "did it succeed":
             return .verification
         default:
             return nil
@@ -169,9 +169,13 @@ enum TaskContinuity {
     static func independentlyVerified(_ step: TaskStep, task: JarvisTask) -> Bool {
         guard step.verification == .passed,
               step.state == .completed || step.state == .running || step.state == .cancelled else { return false }
-        return task.resolutionRecords.last(where: {
+        guard let record = task.resolutionRecords.last(where: {
             $0.stepNumber == step.stepNumber && $0.toolName == step.toolName
-        })?.verification == .passed
+        }), record.verification == .passed else { return false }
+        if step.output != nil || record.rawOutput != nil {
+            return step.output == record.rawOutput
+        }
+        return true
     }
 
     static func isResolved(_ step: TaskStep, task: JarvisTask) -> Bool {

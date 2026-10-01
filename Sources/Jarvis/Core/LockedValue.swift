@@ -1,16 +1,39 @@
 import Foundation
+import os
 
-/// A value guarded by a lock, readable from any isolation domain.
-final class LockedValue<Value>: @unchecked Sendable {
-    private let lock = NSLock()
+/// Thread-safe value wrapper using OSAllocatedUnfairLock for minimal latency synchronization.
+public final class LockedValue<Value>: @unchecked Sendable {
     private var _value: Value
+    private let lock = OSAllocatedUnfairLock()
 
-    init(_ value: Value) {
+    public init(_ value: Value) {
         self._value = value
     }
 
-    var value: Value {
-        get { lock.withLock { _value } }
-        set { lock.withLock { _value = newValue } }
+    /// Access or update value within a locked closure
+    @inlinable
+    public func withLock<T>(_ body: (inout Value) throws -> T) rethrows -> T {
+        try lock.withLock {
+            try body(&_value)
+        }
+    }
+
+    /// Read or write value atomically
+    @inlinable
+    public var value: Value {
+        get {
+            lock.withLock { _value }
+        }
+        set {
+            lock.withLock { _value = newValue }
+        }
+    }
+
+    /// Read and modify in-place
+    @inlinable
+    public func mutate(_ transform: (inout Value) -> Void) {
+        lock.withLock {
+            transform(&_value)
+        }
     }
 }

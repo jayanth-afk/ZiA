@@ -75,6 +75,15 @@ enum SelfTest {
             }
         }
 
+        print("\n─── Durable TaskState Restart Recovery ───")
+        TaskStatePersistenceSelfTests.run(check: check)
+        let processProbe = TaskStatePersistenceSelfTests.runProcessBoundaryProbe(
+            executableURL: Bundle.main.executableURL
+                ?? URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL)
+        print(processProbe.report)
+        check(processProbe.passed,
+              "TaskState process boundary: fresh child restores, continues original goal, skips verified step, resolves persisted reference, verifies terminal completion")
+
         print("\n─── Structured Execution Telemetry ───")
         ExecutionTelemetry.runSelfTests(check: check)
         let activityNow = Date()
@@ -154,9 +163,11 @@ enum SelfTest {
             id: UUID(), title: "FourStepContinuityProbe", goal: "process four report steps",
             state: .running, steps: [
                 TaskStep(stepNumber: 1, description: "read source", toolName: "read_file",
-                         arguments: ["path": "source.txt"], state: .completed, verification: .passed),
+                         arguments: ["path": "source.txt"], state: .completed,
+                         output: "source", verification: .passed),
                 TaskStep(stepNumber: 2, description: "write report", toolName: "write_file",
-                         arguments: ["path": "report.txt"], state: .completed, verification: .passed),
+                         arguments: ["path": "report.txt"], state: .completed,
+                         output: "report", verification: .passed),
                 TaskStep(stepNumber: 3, description: "inspect report", toolName: "read_file",
                          arguments: ["path": "report.txt"]),
                 TaskStep(stepNumber: 4, description: "verify summary", toolName: "read_file",
@@ -236,7 +247,7 @@ enum SelfTest {
             state: .completed,
             steps: [TaskStep(stepNumber: 1, description: "verify the report", toolName: "read_file",
                              arguments: ["path": "report.txt"], state: .completed,
-                             verification: .passed)],
+                             output: "verified", verification: .passed)],
             createdAt: activityNow.addingTimeInterval(-30), updatedAt: activityNow,
             completedAt: activityNow,
             resolutionRecords: [StepResolutionRecord(
@@ -765,15 +776,16 @@ enum SelfTest {
                 let markerOne = "continue_step_one_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
                 let markerTwo = "continue_step_two_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
                 let markerThree = "continue_step_three_\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased())"
+                let firstCommand = "echo 'echo \(markerOne) \(markerTwo)'"
                 let task = machine.createTask(
                     title: "Interrupted continuation E2E",
                     goal: "run the saved shell steps in order")
                 continuationTaskID = task.id
                 try machine.setSteps(taskId: task.id, steps: [
                     TaskStep(stepNumber: 1, description: "emit first marker", toolName: "run_shell",
-                             arguments: ["command": "echo \(markerOne)"]),
+                             arguments: ["command": firstCommand]),
                     TaskStep(stepNumber: 2, description: "emit second marker", toolName: "run_shell",
-                             arguments: ["command": "echo \(markerTwo)"]),
+                             arguments: ["command": "$step.1.output"]),
                     TaskStep(stepNumber: 3, description: "emit third marker", toolName: "run_shell",
                              arguments: ["command": "echo \(markerThree)"])
                 ])
@@ -783,7 +795,7 @@ enum SelfTest {
                 try machine.transition(taskId: task.id, to: .running)
                 try machine.beginStepAttempt(taskId: task.id, stepIndex: 0)
                 let firstResult = try await ToolExecutor.shared.execute(
-                    toolName: "run_shell", arguments: ["command": "echo \(markerOne)"])
+                    toolName: "run_shell", arguments: ["command": firstCommand])
                 guard firstResult.verification?.outcome == .passed else {
                     throw JarvisError.actionFailed(action: "SelfTest", reason: "Step 1 did not verify")
                 }
@@ -5831,7 +5843,7 @@ enum SelfTest {
         }
 
         print("\n══════════════════════════════════════════")
-        print("  Results: \(passed) passed, \(failures.count) failed")
+        print("  Results: \(passed) passed, \(failures.count) failed, 0 skipped")
         print("══════════════════════════════════════════\n")
 
         if failures.isEmpty {

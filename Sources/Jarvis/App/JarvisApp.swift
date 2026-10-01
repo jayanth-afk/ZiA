@@ -5,6 +5,20 @@ struct JarvisApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
+        if CommandLine.arguments.contains("--task-state-probe") {
+            setbuf(stdout, nil)
+            let exitCode = LockedValue<Int32>(1)
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                exitCode.value = await TaskStateProcessProbe.run(arguments: CommandLine.arguments)
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(exitCode.value)
+        }
+
         // Handle --self-test flag before app launches
         if CommandLine.arguments.contains("--self-test") {
             SelfTest.runAll()

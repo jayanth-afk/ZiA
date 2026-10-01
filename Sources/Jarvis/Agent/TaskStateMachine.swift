@@ -179,6 +179,42 @@ final class TaskStateMachine: @unchecked Sendable {
         var completedAt: Date?
         var error: String?
         var resolutionRecords: [StepResolutionRecord]
+        /// Schema v2: the task's ambient context snapshot. Volatile slots stay
+        /// age-checked at resolution time after restore, so persistence cannot
+        /// make stale ambient data authoritative.
+        let environmentContext: TaskEnvironmentContext?
+
+        init(
+            id: UUID,
+            title: String,
+            goal: String,
+            state: TaskState,
+            steps: [TaskStep],
+            currentStepIndex: Int,
+            maxRetries: Int,
+            retryCount: Int,
+            createdAt: Date,
+            updatedAt: Date,
+            completedAt: Date?,
+            error: String?,
+            resolutionRecords: [StepResolutionRecord],
+            environmentContext: TaskEnvironmentContext?
+        ) {
+            self.id = id
+            self.title = title
+            self.goal = goal
+            self.state = state
+            self.steps = steps
+            self.currentStepIndex = currentStepIndex
+            self.maxRetries = maxRetries
+            self.retryCount = retryCount
+            self.createdAt = createdAt
+            self.updatedAt = updatedAt
+            self.completedAt = completedAt
+            self.error = error
+            self.resolutionRecords = resolutionRecords
+            self.environmentContext = environmentContext
+        }
 
         init(_ task: JarvisTask) {
             id = task.id
@@ -194,13 +230,15 @@ final class TaskStateMachine: @unchecked Sendable {
             completedAt = task.completedAt
             error = task.error
             resolutionRecords = task.resolutionRecords
+            environmentContext = task.environmentContext
         }
 
         var task: JarvisTask {
             JarvisTask(id: id, title: title, goal: goal, state: state, steps: steps,
                        currentStepIndex: currentStepIndex, maxRetries: maxRetries,
                        retryCount: retryCount, createdAt: createdAt, updatedAt: updatedAt,
-                       completedAt: completedAt, error: error, resolutionRecords: resolutionRecords)
+                       completedAt: completedAt, error: error, resolutionRecords: resolutionRecords,
+                       environmentContext: environmentContext)
         }
     }
 
@@ -236,7 +274,7 @@ final class TaskStateMachine: @unchecked Sendable {
     private var persistenceHealthy = true
     private var persistenceSuspended = false
 
-    private static let persistenceSchemaVersion = 1
+    private static let persistenceSchemaVersion = 2
     private static let maxPersistedTasks = 64
     private static let maxSnapshotBytes = 8 * 1_024 * 1_024
 
@@ -257,17 +295,183 @@ final class TaskStateMachine: @unchecked Sendable {
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .millisecondsSince1970
             let snapshot = try decoder.decode(PersistenceSnapshot.self, from: data)
-            guard snapshot.schemaVersion == Self.persistenceSchemaVersion,
-                  snapshot.tasks.count <= Self.maxPersistedTasks else {
-                throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot schema or size is invalid")
+            guard snapshot.tasks.count <= Self.maxPersistedTasks else {
+                throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot task limit exceeded")
+            }
+
+            // Schema versioning: exactly one forward migration is defined.
+            //  v1 -> v2: environmentContext did not exist; it is deterministically
+            //            absent (nil) after migration — no state is invented.
+            // Anything else (newer, older, negative, corrupt) fails closed.
+            let migrated: [PersistedTask]
+            switch snapshot.schemaVersion {
+            case 1:
+                migrated = snapshot.tasks.map { persisted in
+                    PersistedTask(
+                        id: persisted.id, title: persisted.title, goal: persisted.goal,
+                        state: persisted.state, steps: persisted.steps,
+                        currentStepIndex: persisted.currentStepIndex,
+                        maxRetries: persisted.maxRetries, retryCount: persisted.retryCount,
+                        createdAt: persisted.createdAt, updatedAt: persisted.updatedAt,
+                        completedAt: persisted.completedAt, error: persisted.error,
+                        resolutionRecords: persisted.resolutionRecords, environmentContext: nil)
+                }
+            case Self.persistenceSchemaVersion:
+                migrated = snapshot.tasks
+            default:
+                throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot schema version \(snapshot.schemaVersion) is not supported")
             }
 
             var restored: [UUID: JarvisTask] = [:]
-                        let restoreDate = Date()
-            for persisted in snapshot.tasks {
+            let restoreDate = Date()
+            for persisted in migrated {
                 var task = persisted.task
-                guard restored[task.id] == nil, Self.isValidPersistedTask(task) else {
+                guard restored[task.id] == nil, Self.isValidPersistedTask(task), Self.isSafeToPersist(task) else {
                     throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot contains invalid or duplicate task evidence")
+                }
+                // Restart-safety audit: a snapshot's internal evidence must be
+                // CONSISTENT. Completed tool steps and any .passed verification
+                // must be backed by a matching passed resolution record — this
+                // is the invariant live execution guarantees before every
+                // checkpoint. A snapshot where a later attempt downgraded an
+                // earlier verification, or where completion lacks its record,
+                // is contradictory evidence and fails closed.
+                for step in task.steps {
+                    if TaskContinuity.independentlyVerified(step, task: task) {
+                        guard let record = task.resolutionRecords.last(where: {
+                            $0.stepNumber == step.stepNumber && $0.toolName == step.toolName
+                        }), record.verification == .passed, record.rawOutput == step.output else {
+                            throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot contains completed-step evidence without a matching verified resolution record")
+                        }
+                    }
+                }
+                // Validated completed evidence survives an interruption; an
+                // in-flight or never-started step must NOT silently become
+                // resumable-as-done. Genuinely unfinished work is parked in
+                // CANCELLED with the recorded interruption reason, and the
+                // user's "continue" is the only authorized resume path.
+                if [.created, .planning, .running, .verifying, .recovering, .replanning].contains(task.state) {
+                    let interruptedState = task.state.rawValue
+                    task.state = .cancelled
+                    task.error = "Process interrupted while task was \(interruptedState)"
+                    task.updatedAt = restoreDate
+                    task.completedAt = task.updatedAt
+                    for index in task.steps.indices where TaskContinuity.independentlyVerified(task.steps[index], task: task) {
+                        task.steps[index].state = .completed
+                        if task.steps[index].output == nil,
+                           let record = task.resolutionRecords.last(where: { $0.stepNumber == task.steps[index].stepNumber }) {
+                            task.steps[index].output = record.rawOutput
+                        }
+                    }
+                    for index in task.steps.indices where task.steps[index].state == .running
+                        && !TaskContinuity.independentlyVerified(task.steps[index], task: task) {
+                        task.steps[index].state = .cancelled
+                        task.steps[index].error = "Process interrupted during step execution"
+                    }
+                }
+                restored[task.id] = task
+                stateHistory[task.id] = [(.created, task.createdAt), (task.state, task.updatedAt)]
+                if !task.steps.isEmpty {
+                    stepsHistory[task.id] = [(cycle: 0, steps: task.steps, at: task.updatedAt)]
+                }
+            }
+            tasks = restored
+            persistentTaskIDs = Set(restored.keys)
+        } catch {
+            tasks.removeAll()
+            stateHistory.removeAll()
+            stepsHistory.removeAll()
+            persistentTaskIDs.removeAll()
+            persistenceHealthy = false
+            JarvisLogger.security.error("TaskState snapshot rejected; continuation is disabled: \(error.localizedDescription)")
+        }
+    }
+
+    var isPersistenceAvailable: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return persistenceHealthy
+    }
+
+    /// True when the task's exact authoritative state is durably checkpointed.
+    func isPersisted(taskId: UUID) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return persistentTaskIDs.contains(taskId)
+    }
+
+    /// FRESH-OWNER RELOAD (SelfTest restart seam): proves in-memory authoritative
+    /// state is gone and is reconstructed from durable storage by a new owner
+    /// — the same code path a real process restart executes. The previous
+    /// owner's volatile state (in-memory tasks, histories, attribution) is
+    /// discarded first; then the snapshot is re-read and validated exactly as
+    /// in init. Any failure fails closed with all state dropped.
+    func restoreFromDiskForTesting() throws {
+        lock.lock()
+        let previousPersistenceSuspended = persistenceSuspended
+        // Volatile authoritative state is gone with the old owner. (persistenceSuspended
+        // stays as-is: it belongs to the surrounding test harness scope, not to
+        // the restarted owner.)
+        tasks.removeAll()
+        stateHistory.removeAll()
+        runAttribution.removeAll()
+        stepsHistory.removeAll()
+        persistentTaskIDs.removeAll()
+        persistenceHealthy = true
+        defer { lock.unlock() }
+
+        guard let persistenceURL else {
+            // No durable storage configured: a fresh owner starts empty.
+            return
+        }
+        guard FileManager.default.fileExists(atPath: persistenceURL.path) else {
+            return
+        }
+        do {
+            let data = try Data(contentsOf: persistenceURL)
+            guard data.count <= Self.maxSnapshotBytes else {
+                throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot exceeds size limit")
+            }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .millisecondsSince1970
+            let snapshot = try decoder.decode(PersistenceSnapshot.self, from: data)
+            guard snapshot.tasks.count <= Self.maxPersistedTasks else {
+                throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot task limit exceeded")
+            }
+            let migrated: [PersistedTask]
+            switch snapshot.schemaVersion {
+            case 1:
+                migrated = snapshot.tasks.map { persisted in
+                    PersistedTask(
+                        id: persisted.id, title: persisted.title, goal: persisted.goal,
+                        state: persisted.state, steps: persisted.steps,
+                        currentStepIndex: persisted.currentStepIndex,
+                        maxRetries: persisted.maxRetries, retryCount: persisted.retryCount,
+                        createdAt: persisted.createdAt, updatedAt: persisted.updatedAt,
+                        completedAt: persisted.completedAt, error: persisted.error,
+                        resolutionRecords: persisted.resolutionRecords, environmentContext: nil)
+                }
+            case Self.persistenceSchemaVersion:
+                migrated = snapshot.tasks
+            default:
+                throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot schema version \(snapshot.schemaVersion) is not supported")
+            }
+
+            var restored: [UUID: JarvisTask] = [:]
+            let restoreDate = Date()
+            for persisted in migrated {
+                var task = persisted.task
+                guard restored[task.id] == nil, Self.isValidPersistedTask(task), Self.isSafeToPersist(task) else {
+                    throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot contains invalid or duplicate task evidence")
+                }
+                for step in task.steps {
+                    if TaskContinuity.independentlyVerified(step, task: task) {
+                        guard let record = task.resolutionRecords.last(where: {
+                            $0.stepNumber == step.stepNumber && $0.toolName == step.toolName
+                        }), record.verification == .passed, record.rawOutput == step.output else {
+                            throw JarvisError.actionFailed(action: "TaskState.restore", reason: "TaskState snapshot contains completed-step evidence without a matching verified resolution record")
+                        }
+                    }
                 }
                 if [.created, .planning, .running, .verifying, .recovering, .replanning].contains(task.state) {
                     let interruptedState = task.state.rawValue
@@ -297,14 +501,10 @@ final class TaskStateMachine: @unchecked Sendable {
             stepsHistory.removeAll()
             persistentTaskIDs.removeAll()
             persistenceHealthy = false
+            persistenceSuspended = previousPersistenceSuspended
             JarvisLogger.security.error("TaskState snapshot rejected; continuation is disabled: \(error.localizedDescription)")
+            throw error
         }
-    }
-
-    var isPersistenceAvailable: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return persistenceHealthy
     }
 
     /// Persist only after the caller has validated the exact plan with PlanValidator.
@@ -375,6 +575,8 @@ final class TaskStateMachine: @unchecked Sendable {
                 persistentTaskIDs.remove(taskID)
                 JarvisLogger.security.warning("TaskState persistence disabled for highly sensitive task \(taskID.uuidString.prefix(8))")
             } else if !Self.isValidPersistedTask(task) {
+                persistenceHealthy = false
+                JarvisLogger.security.error("TaskState persistence disabled after an invalid authoritative task snapshot")
                 return
             }
         }
@@ -414,12 +616,18 @@ final class TaskStateMachine: @unchecked Sendable {
         let highSensitivityMarkers = ["password", "api_key", "apikey", "api key", "api-key", "sk-",
                                       "secret", "private_key", "bearer ", "token", "id_rsa", "ssn",
                                       "credit card", "payment card", "sudo "]
-        let values = [task.title, task.goal, task.error ?? ""]
+        var values = [task.title, task.goal, task.error ?? ""]
             + task.steps.flatMap { step in
                 [step.description, step.output ?? "", step.error ?? ""]
                     + step.arguments.flatMap { [$0.key, $0.value] }
             }
             + task.resolutionRecords.map(\.rawOutput)
+        if let env = task.environmentContext {
+            values += [env.currentApp ?? "", env.currentFile ?? "", env.currentWebpage ?? "",
+                       env.currentSelection ?? "", env.lastArtifactPath ?? "",
+                       env.pendingConfirmation ?? ""]
+            values += env.lastSearchResults ?? []
+        }
         let combined = values.joined(separator: "\n").lowercased()
         return !highSensitivityMarkers.contains(where: { combined.contains($0) })
     }
@@ -441,7 +649,8 @@ final class TaskStateMachine: @unchecked Sendable {
                 $0.stepNumber == step.stepNumber && $0.toolName == step.toolName
             })
             if step.toolName != nil && step.state == .completed {
-                guard step.verification == .passed, latestRecord?.verification == .passed else { return false }
+                    guard step.verification == .passed, latestRecord?.verification == .passed,
+                        latestRecord?.rawOutput == step.output else { return false }
             }
             if step.verification == .passed {
                 guard step.toolName != nil, latestRecord?.verification == .passed,
@@ -554,6 +763,8 @@ final class TaskStateMachine: @unchecked Sendable {
             )
         }
 
+        let previousTask = task
+        let wasPersisted = persistentTaskIDs.contains(taskId)
         let oldState = task.state
         task.state = newState
         task.updatedAt = Date()
@@ -566,6 +777,13 @@ final class TaskStateMachine: @unchecked Sendable {
         tasks[taskId] = task
         stateHistory[taskId, default: []].append((newState, Date()))
         persistIfEnabledLocked()
+        if newState == .completed, wasPersisted, !persistenceHealthy {
+            tasks[taskId] = previousTask
+            stateHistory[taskId]?.removeLast()
+            throw JarvisError.actionFailed(
+                action: "TaskStateMachine.transition",
+                reason: "Task completion was not checkpointed; durable completion was refused")
+        }
 
         JarvisLogger.actions.info("Task [\(taskId.uuidString.prefix(8))] transitioned: \(oldState.rawValue) -> \(newState.rawValue)")
         return task
@@ -599,6 +817,11 @@ final class TaskStateMachine: @unchecked Sendable {
                 task.steps[index].output = record.rawOutput
             }
         }
+                for index in task.steps.indices where task.steps[index].state == .running
+                    && !TaskContinuity.independentlyVerified(task.steps[index], task: task) {
+                    task.steps[index].state = .cancelled
+                    task.steps[index].error = "Process interrupted during step execution"
+                }
         task.retryCount += 1
         task.error = nil
         task.completedAt = nil

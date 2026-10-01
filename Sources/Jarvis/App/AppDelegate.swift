@@ -9,6 +9,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // No Dock icon — menu bar accessory only
         NSApp.setActivationPolicy(.accessory)
 
+        // TaskState's initializer validates and restores the complete durable
+        // snapshot before any interaction path can resolve references or route
+        // a continuation. Rejection stays visible and disables continuation.
+        let taskStateMachine = TaskStateMachine.shared
+        if !taskStateMachine.isPersistenceAvailable {
+            JarvisLogger.security.error("Durable TaskState could not be restored; task continuation is disabled")
+        }
+
         // Initialize core services
         let appState = AppState.shared
         let eventBus = EventBus.shared

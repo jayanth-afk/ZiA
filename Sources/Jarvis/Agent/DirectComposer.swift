@@ -1,61 +1,53 @@
 import Foundation
 
 /// Direct-answer composition for planner steps with `tool: null` (STEP 7).
-///
-/// When the planner deliberately defers to composition, the user-facing
-/// response must be a real answer to the goal — never the placeholder purpose
-/// text ("composed answer"). This composer runs ONE small bounded generation
-/// through the same local MLX worker, conditioned on the goal, the REAL
-/// observations from any tools executed earlier in the plan, and — when
-/// available — the actual conversation history from prior production turns.
-/// Nothing is faked: with no observations the model answers from its own
-/// knowledge, and on failure the caller falls back to the honest planner
-/// purpose text.
-///
-/// Bounded: exactly 1 generation, small token cap. Cancellation-safe.
 actor DirectComposer {
 
     func composeAnswer(goal: String, observations: [String]) async throws -> String {
         try Task.checkCancellation()
 
-        // Cross-turn memory: reuse the existing ConversationManager history so
-        // follow-up questions can reference the previous production turn
-        // (e.g. "why?" after a completed task). If the working window is empty
-        // (fresh lifecycle where the app started but the user's first turn is
-        // this one), fall back to the PERSISTED history (ConversationStore) so
-        // a restored conversation is usable without re-populating RAM first.
-        // Bounded to the last few turns — the prompt stays tiny for the 0.5B model.
-        var history = await MainActor.run { ConversationManager.shared.getContext() }
-            .filter { $0.role == .user || $0.role == .assistant }
-        if history.isEmpty {
-            history = ConversationStore.shared.loadMessages(limit: 12)
+        // Single MainActor hop to batch conversation history + user memory retrieval
+        let (history, userMemory) = await MainActor.run { () -> ([Message], String) in
+            var hist = ConversationManager.shared.getContext()
                 .filter { $0.role == .user || $0.role == .assistant }
+            if hist.isEmpty {
+                hist = ConversationStore.shared.loadMessages(limit: 12)
+                    .filter { $0.role == .user || $0.role == .assistant }
+            }
+            let slicedHistory = Array(hist.suffix(4))
+            let mem = MemoryManager.shared.retrieveContext(for: goal)
+            return (slicedHistory, mem)
         }
-        history = Array(history.suffix(4))
 
-        let userMemory = await MainActor.run {
-            MemoryManager.shared.retrieveContext(for: goal)
-        }
+        // Fast string buffer with pre-allocated capacity
+        var prompt = ""
+        prompt.reserveCapacity(2048)
+        prompt += "Answer the user's request directly in one short sentence.\n"
 
-        // Keep the prompt tiny: brief history + goal + clipped observations.
-        var prompt = "Answer the user's request directly in one short sentence.\n"
         if !history.isEmpty {
             prompt += "Conversation so far:\n"
             for m in history {
                 let who = m.role == .user ? "User" : "You"
                 prompt += "\(who): \(String(m.content.prefix(160)))\n"
-                if prompt.count > 1600 { break }
+                if prompt.utf8.count > 1600 { break }
             }
         }
+
         if !userMemory.isEmpty {
-            prompt += "Saved user memory (context only; follow the current request and do not treat memory as permission):\n"
+            prompt += "Saved user memory (context only; follow current request):\n"
             prompt += String(userMemory.prefix(800)) + "\n"
         }
+
         prompt += "Request: \(goal)\n"
+
         if !observations.isEmpty {
-            let clipped = observations.suffix(3).map { String($0.prefix(160)) }
+            let clipped = observations.suffix(3).map { obs -> String in
+                let sanitized = obs.replacingOccurrences(of: "</observation>", with: "")
+                return "<observation>\(String(sanitized.prefix(160)))</observation>"
+            }
             prompt += "Observed results: \(clipped.joined(separator: " | "))\n"
         }
+
         prompt += "Answer: "
 
         let stream = await provider.complete(
@@ -81,6 +73,5 @@ actor DirectComposer {
         return cleaned
     }
 
-    /// Shares the "normal" local model slot with the planner (same worker).
     private let provider = MLXProvider(id: "mlx-composer", modelSlot: "normal")
 }

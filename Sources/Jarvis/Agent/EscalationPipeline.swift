@@ -3,7 +3,6 @@ import Foundation
 // MARK: - Escalation Context
 
 /// Authoritative, structured context passed during lossless escalation from Tier A to Tier B.
-/// Rule 3 & 5: State over transcript; Lossless escalation preserves structured task state.
 struct EscalationContext: Sendable {
     enum TriggerReason: String, Sendable {
         case tierAPlanningExhausted = "tier_a_planning_exhausted"
@@ -115,7 +114,6 @@ final class MockTierBProvider: TierBPlannerProvider, @unchecked Sendable {
         if let plan = _planToReturn.value {
             return plan
         }
-        // Default minimal fallback plan matching original goal
         return AgentPlan(
             goal: context.originalGoal,
             steps: [
@@ -133,7 +131,7 @@ final class MockTierBProvider: TierBPlannerProvider, @unchecked Sendable {
     }
 }
 
-// MARK: - OpenRouter Tier B Provider
+// MARK: - OpenRouter Tier B Provider (Injection Shielded)
 
 final class OpenRouterTierBProvider: TierBPlannerProvider, @unchecked Sendable {
     let id = "openrouter-tier-b"
@@ -144,7 +142,6 @@ final class OpenRouterTierBProvider: TierBPlannerProvider, @unchecked Sendable {
     }
 
     func plan(context: EscalationContext) async throws -> AgentPlan {
-        // Construct structured prompt embedding context
         var promptLines = [
             "GOAL: \(context.originalGoal)",
             "TRIGGER: \(context.triggerReason.rawValue)"
@@ -155,15 +152,17 @@ final class OpenRouterTierBProvider: TierBPlannerProvider, @unchecked Sendable {
         if !context.completedSteps.isEmpty {
             promptLines.append("COMPLETED STEPS:")
             for s in context.completedSteps {
-                let out = context.verifiedOutputs[s.stepNumber] ?? "verified"
-                promptLines.append("- Step \(s.stepNumber): [\(s.toolName ?? "none")] output=\(out)")
+                let rawOut = context.verifiedOutputs[s.stepNumber] ?? "verified"
+                let sanitizedOut = rawOut.replacingOccurrences(of: "</verified_output>", with: "")
+                promptLines.append("- Step \(s.stepNumber): [\(s.toolName ?? "none")] <verified_output step=\"\(s.stepNumber)\">\(sanitizedOut)</verified_output>")
             }
         }
         if let failed = context.failedStep {
             promptLines.append("FAILED STEP: [\(failed.toolName ?? "none")] purpose=\(failed.description)")
         }
         if let reason = context.failureReason {
-            promptLines.append("FAILURE REASON: \(reason)")
+            let sanitizedReason = reason.replacingOccurrences(of: "</failure_reason>", with: "")
+            promptLines.append("<failure_reason>\(sanitizedReason)</failure_reason>")
         }
 
         let messages = [
@@ -208,10 +207,6 @@ final class EscalationPipeline {
         isEnabled = true
     }
 
-    /// Execute lossless escalation to Tier B.
-    /// Privacy Gate: Evaluates sensitivity BEFORE any cloud provider is contacted.
-    /// Emergency Stop: refuses the handoff before any provider is invoked, and
-    /// discards a returned Tier B plan if stop latches during generation.
     func escalate(context: EscalationContext) async throws -> AgentPlan {
         guard isEnabled else {
             throw JarvisError.escalationFailed(reason: "EscalationPipeline is disabled")
@@ -230,7 +225,6 @@ final class EscalationPipeline {
             provider = cloudProvider
         }
 
-        // Privacy Gate Check
         if provider.isCloud {
             let allowed = DataClassifier.shared.isCloudAllowed(for: context.sensitivity)
             guard allowed else {
@@ -242,7 +236,6 @@ final class EscalationPipeline {
             }
         }
 
-        // Availability Check
         guard await provider.isAvailable() else {
             JarvisLogger.brain.warning("Tier B provider '\(provider.id)' is unavailable")
             throw JarvisError.providerUnavailable(provider: provider.id)
@@ -250,13 +243,11 @@ final class EscalationPipeline {
 
         JarvisLogger.brain.info("Escalating task '\(context.originalGoal)' to Tier B provider '\(provider.id)' [trigger: \(context.triggerReason.rawValue)]")
 
-        // Generate Plan
         let plan = try await provider.plan(context: context)
 
         try Task.checkCancellation()
         try refuseIfEmergencyStopLatched(stage: "post-provider")
 
-        // Deterministic Validation Gate: Tier B plans must strictly pass PlanValidator
         let validation = PlanValidator.validate(plan)
         guard case .success = validation else {
             let errorDesc = String(describing: validation)

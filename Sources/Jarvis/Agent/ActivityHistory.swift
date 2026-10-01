@@ -2,8 +2,7 @@ import Foundation
 
 /// A read-only, bounded bridge from observed execution telemetry to recent
 /// activity answers. TaskState supplies the task outcome; telemetry supplies
-/// evidence that the task/action actually ran. This service never feeds
-/// execution, permission, or reference resolution.
+/// evidence that the task/action actually ran.
 enum ActivityHistory {
     static func recentSummary(now: Date = .now) -> String {
         summary(
@@ -12,7 +11,7 @@ enum ActivityHistory {
             now: now)
     }
 
-    /// Pure rendering seam for deterministic SelfTest coverage.
+    /// Pure rendering seam for deterministic SelfTest coverage with O(1) task indexing.
     static func summary(
         tasks: [JarvisTask],
         events: [ExecutionTelemetryEvent],
@@ -20,12 +19,11 @@ enum ActivityHistory {
         window: TimeInterval = 15 * 60
     ) -> String {
         let cutoff = now.addingTimeInterval(-window)
+        let taskMap = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
         let grouped = Dictionary(grouping: events.filter { $0.timestamp >= cutoff }, by: \.taskID)
+
         let candidates = grouped.compactMap { id, taskEvents -> (UUID, [ExecutionTelemetryEvent], Date)? in
-            // Conversational/direct-answer AgentLoop runs have a taskStarted /
-            // taskCompleted envelope but no action and no TaskState. They are
-            // not activity and must not answer later activity questions.
-            let hasTaskState = tasks.contains { $0.id == id }
+            let hasTaskState = taskMap[id] != nil
             let hasActionEvent = taskEvents.contains {
                 $0.kind == .stepStarted || $0.kind == .stepCompleted || $0.kind == .stepFailed
             }
@@ -41,7 +39,7 @@ enum ActivityHistory {
             return "I don't have a recent recorded action to report yet."
         }
 
-        let task = tasks.first { $0.id == taskID }
+        let task = taskMap[taskID]
         let terminalKind = taskEvents.filter({
             $0.kind == .taskCompleted || $0.kind == .taskFailed || $0.kind == .stopped
         }).max { $0.timestamp < $1.timestamp }?.kind
@@ -82,8 +80,6 @@ enum ActivityHistory {
         case .cancelled:
             response = "I stopped the recent task before it completed."
         default:
-            // Deterministic AgentLoop actions have telemetry but no TaskState
-            // object. Only report what their terminal event and action field say.
             switch terminalKind {
             case .taskCompleted:
                 response = "I completed the recent action\(actionSummary.map { ": \($0)" } ?? "")."
@@ -99,9 +95,6 @@ enum ActivityHistory {
         return response
     }
 
-    /// Reports only a recent file-writing step whose task state AND independent
-    /// verifier both say passed, and whose path still exists. This is an
-    /// explanatory answer only; the result is never injected into execution.
     static func latestVerifiedArtifactSummary(
         tasks: [JarvisTask],
         events: [ExecutionTelemetryEvent],
@@ -142,9 +135,6 @@ enum ActivityHistory {
             now: now)
     }
 
-    /// Answers a present-tense artifact status only from the latest completed
-    /// write that passed both TaskState and verifier evidence. A missing file
-    /// is reported as missing, never as a verified current reference.
     static func latestVerifiedArtifactStatus(
         tasks: [JarvisTask],
         events: [ExecutionTelemetryEvent],

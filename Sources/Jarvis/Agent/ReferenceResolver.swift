@@ -6,7 +6,7 @@ public final class ReferenceResolver: @unchecked Sendable {
     public init() {}
 
     public func resolveReferences(_ text: String, context: [String: String]) -> String {
-        if context.isEmpty || (!text.contains("$") && !text.contains("{")) {
+        if context.isEmpty || !text.contains("$") {
             return text
         }
 
@@ -20,6 +20,7 @@ public final class ReferenceResolver: @unchecked Sendable {
             if result.contains(placeholder2) {
                 result = result.replacingOccurrences(of: placeholder2, with: val)
             }
+            if !result.contains("$") { break }
         }
 
         return result

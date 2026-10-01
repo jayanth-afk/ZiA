@@ -9,6 +9,7 @@ actor TaskWorkerPool {
     private var taskQueue: [JarvisTask] = []
     private var activeWorkerTasks: [UUID: Task<Void, Never>] = [:]
     private var isListeningToEmergencyStop: Bool = false
+    private var busyCount: Int = 0
 
     private init() {
         self.workers = (0..<4).map { _ in TaskWorker() }
@@ -46,15 +47,7 @@ actor TaskWorkerPool {
 
     /// Number of workers currently executing tasks.
     var busyWorkerCount: Int {
-        get async {
-            var count = 0
-            for worker in workers {
-                if await worker.isBusy {
-                    count += 1
-                }
-            }
-            return count
-        }
+        busyCount
     }
 
     // MARK: - Task Scheduling
@@ -63,10 +56,9 @@ actor TaskWorkerPool {
     func submit(task: JarvisTask) async {
         await registerEmergencyStopListener()
 
-        let busy = await busyWorkerCount
         let limit = await getMaxConcurrentWorkers()
 
-        if busy < limit, let availableWorker = await getAvailableWorker() {
+        if busyCount < limit, let availableWorker = await getAvailableWorker() {
             startTask(task, on: availableWorker)
         } else {
             taskQueue.append(task)
@@ -85,6 +77,7 @@ actor TaskWorkerPool {
 
     private func startTask(_ task: JarvisTask, on worker: TaskWorker) {
         let taskId = task.id
+        busyCount += 1
         let workerTask = Task {
             do {
                 try await worker.execute(task: task)
@@ -101,6 +94,9 @@ actor TaskWorkerPool {
 
     private func onWorkerFinished(taskId: UUID) async {
         activeWorkerTasks.removeValue(forKey: taskId)
+        if busyCount > 0 {
+            busyCount -= 1
+        }
 
         // Dequeue next task if available
         if !taskQueue.isEmpty {
@@ -150,6 +146,7 @@ actor TaskWorkerPool {
         for worker in workers {
             await worker.cancel()
         }
+        busyCount = 0
 
         let active = TaskStateMachine.shared.activeTasks
         for task in active {

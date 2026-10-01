@@ -22,33 +22,41 @@ actor DirectComposer {
         // Fast string buffer with pre-allocated capacity
         var prompt = ""
         prompt.reserveCapacity(2048)
-        prompt += "Answer the user's request directly in one short sentence.\n"
+        prompt.append("Answer the user's request directly in one short sentence.\n")
 
         if !history.isEmpty {
-            prompt += "Conversation so far:\n"
+            prompt.append("Conversation so far:\n")
             for m in history {
                 let who = m.role == .user ? "User" : "You"
-                prompt += "\(who): \(String(m.content.prefix(160)))\n"
-                if prompt.utf8.count > 1600 { break }
+                prompt.append(who)
+                prompt.append(": ")
+                prompt.append(contentsOf: m.content.prefix(160))
+                prompt.append("\n")
+                if prompt.count > 1600 { break }
             }
         }
 
         if !userMemory.isEmpty {
-            prompt += "Saved user memory (context only; follow current request):\n"
-            prompt += String(userMemory.prefix(800)) + "\n"
+            prompt.append("Saved user memory (context only; follow current request):\n")
+            prompt.append(contentsOf: userMemory.prefix(800))
+            prompt.append("\n")
         }
 
-        prompt += "Request: \(goal)\n"
+        prompt.append("Request: ")
+        prompt.append(goal)
+        prompt.append("\n")
 
         if !observations.isEmpty {
             let clipped = observations.suffix(3).map { obs -> String in
                 let sanitized = obs.replacingOccurrences(of: "</observation>", with: "")
                 return "<observation>\(String(sanitized.prefix(160)))</observation>"
             }
-            prompt += "Observed results: \(clipped.joined(separator: " | "))\n"
+            prompt.append("Observed results: ")
+            prompt.append(clipped.joined(separator: " | "))
+            prompt.append("\n")
         }
 
-        prompt += "Answer: "
+        prompt.append("Answer: ")
 
         let stream = await provider.complete(
             messages: [Message(role: .user, content: prompt)],
@@ -57,20 +65,20 @@ actor DirectComposer {
             options: ["max_tokens": 96])
 
         var text = ""
+        text.reserveCapacity(256)
         for try await chunk in stream {
             try Task.checkCancellation()
             switch chunk {
-            case .text(let t): text += t
+            case .text(let t): text.append(t)
             case .error(let e): throw JarvisError.providerError(provider: "direct-composer", message: e)
             case .done, .toolCall: continue
             }
         }
 
-        let cleaned = text
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return cleaned
+        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleaned.hasPrefix("\"") { cleaned.removeFirst() }
+        if cleaned.hasSuffix("\"") { cleaned.removeLast() }
+        return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private let provider = MLXProvider(id: "mlx-composer", modelSlot: "normal")

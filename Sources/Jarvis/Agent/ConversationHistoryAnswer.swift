@@ -5,19 +5,44 @@ import Foundation
 /// reference resolver or execution pipeline.
 enum ConversationHistoryAnswer {
     static func recentSummary(messages: [Message], limit: Int = 6) -> String {
-        let turns = Array(messages
-            .filter { $0.role == .user || $0.role == .assistant }
-            .suffix(max(1, limit)))
+        let maxLimit = max(1, limit)
+        var turns: [Message] = []
+        turns.reserveCapacity(maxLimit)
+
+        // Single backward pass to collect last 'limit' user/assistant messages without allocating full filtered array
+        for message in messages.reversed() {
+            if message.role == .user || message.role == .assistant {
+                turns.append(message)
+                if turns.count >= maxLimit { break }
+            }
+        }
+
         guard !turns.isEmpty else { return "We haven't discussed anything in this conversation yet." }
 
-        let rendered = turns.map { message -> String in
+        var result = "Recently, we discussed:\n"
+        result.reserveCapacity(128 + turns.count * 120)
+
+        // Iterate in chronological order
+        for message in turns.reversed() {
             let speaker = message.role == .user ? "You" : "I"
             let content = message.content
                 .replacingOccurrences(of: "\n", with: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            return "\(speaker): \(String(content.prefix(240)))"
+            result.append(speaker)
+            result.append(": ")
+            if content.count > 240 {
+                result.append(contentsOf: content.prefix(240))
+            } else {
+                result.append(content)
+            }
+            result.append("\n")
         }
-        return "Recently, we discussed:\n" + rendered.joined(separator: "\n")
+
+        if result.hasSuffix("\n") {
+            result.removeLast()
+        }
+
+        return result
     }
 
     @MainActor

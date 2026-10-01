@@ -19,21 +19,31 @@ enum ActivityHistory {
         window: TimeInterval = 15 * 60
     ) -> String {
         let cutoff = now.addingTimeInterval(-window)
-        let taskMap = Dictionary(uniqueKeysWithValues: tasks.map { ($0.id, $0) })
-        let grouped = Dictionary(grouping: events.filter { $0.timestamp >= cutoff }, by: \.taskID)
+        let taskMap = Dictionary(tasks.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
-        let candidates = grouped.compactMap { id, taskEvents -> (UUID, [ExecutionTelemetryEvent], Date)? in
+        var grouped: [UUID: [ExecutionTelemetryEvent]] = [:]
+        for event in events where event.timestamp >= cutoff {
+            grouped[event.taskID, default: []].append(event)
+        }
+
+        var candidates: [(UUID, [ExecutionTelemetryEvent], Date)] = []
+        candidates.reserveCapacity(grouped.count)
+
+        for (id, taskEvents) in grouped {
             let hasTaskState = taskMap[id] != nil
             let hasActionEvent = taskEvents.contains {
                 $0.kind == .stepStarted || $0.kind == .stepCompleted || $0.kind == .stepFailed
             }
-            guard hasTaskState || hasActionEvent else { return nil }
-            let terminal = taskEvents.filter {
+            guard hasTaskState || hasActionEvent else { continue }
+
+            if let terminal = taskEvents.filter({
                 $0.kind == .taskCompleted || $0.kind == .taskFailed || $0.kind == .stopped
-            }.max { $0.timestamp < $1.timestamp }
-            guard let terminal else { return nil }
-            return (id, taskEvents, terminal.timestamp)
-        }.sorted { $0.2 > $1.2 }
+            }).max(by: { $0.timestamp < $1.timestamp }) {
+                candidates.append((id, taskEvents, terminal.timestamp))
+            }
+        }
+
+        candidates.sort { $0.2 > $1.2 }
 
         guard let (taskID, taskEvents, _) = candidates.first else {
             return "I don't have a recent recorded action to report yet."
@@ -43,15 +53,16 @@ enum ActivityHistory {
         let terminalKind = taskEvents.filter({
             $0.kind == .taskCompleted || $0.kind == .taskFailed || $0.kind == .stopped
         }).max { $0.timestamp < $1.timestamp }?.kind
+
         let actions = Array(Set(taskEvents.compactMap(\.action))).sorted()
         let actionSummary = actions.isEmpty ? nil : actions.joined(separator: ", ")
-        let recoveryCount = taskEvents.filter { $0.kind == .recoveryAttempted }.count
+        let recoveryCount = taskEvents.reduce(0) { $1.kind == .recoveryAttempted ? $0 + 1 : $0 }
 
         var response: String
         switch task?.state {
         case .completed:
             let goal = String((task?.goal ?? "").prefix(240))
-            let verifiedCount = task?.steps.filter { $0.verification == .passed }.count ?? 0
+            let verifiedCount = task?.steps.reduce(0) { $1.verification == .passed ? $0 + 1 : $0 } ?? 0
             if !goal.isEmpty {
                 response = "I completed “\(goal)”."
             } else {
@@ -103,24 +114,27 @@ enum ActivityHistory {
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> String {
         let cutoff = now.addingTimeInterval(-window)
-        let recentTaskIDs = Set(events.filter { $0.timestamp >= cutoff && $0.kind == .taskCompleted }.map(\.taskID))
-        let artifacts = tasks
-            .filter { recentTaskIDs.contains($0.id) }
-            .flatMap { task in
-                task.steps.compactMap { step -> (Date, String)? in
-                    guard task.state == .completed,
-                          step.state == .completed,
-                          step.verification == .passed,
-                          step.toolName == "write_file",
-                          let path = step.arguments["path"], !path.isEmpty,
-                          task.resolutionRecords.contains(where: {
-                              $0.stepNumber == step.stepNumber && $0.verification == .passed
-                          }),
-                          fileExists(path) else { return nil }
-                    return (task.completedAt ?? task.updatedAt, path)
-                }
+        var recentTaskIDs = Set<UUID>()
+        for event in events where event.timestamp >= cutoff && event.kind == .taskCompleted {
+            recentTaskIDs.insert(event.taskID)
+        }
+
+        var artifacts: [(Date, String)] = []
+        for task in tasks where recentTaskIDs.contains(task.id) && task.state == .completed {
+            for step in task.steps {
+                guard step.state == .completed,
+                      step.verification == .passed,
+                      step.toolName == "write_file",
+                      let path = step.arguments["path"], !path.isEmpty,
+                      task.resolutionRecords.contains(where: {
+                          $0.stepNumber == step.stepNumber && $0.verification == .passed
+                      }),
+                      fileExists(path) else { continue }
+                artifacts.append((task.completedAt ?? task.updatedAt, path))
             }
-            .sorted { $0.0 > $1.0 }
+        }
+
+        artifacts.sort { $0.0 > $1.0 }
 
         guard let path = artifacts.first?.1 else {
             return "I don't have a recently verified file artifact to report."
@@ -143,24 +157,26 @@ enum ActivityHistory {
         fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> String {
         let cutoff = now.addingTimeInterval(-window)
-        let completedIDs = Set(events
-            .filter { $0.timestamp >= cutoff && $0.kind == .taskCompleted }
-            .map(\.taskID))
-        let records = tasks
-            .filter { completedIDs.contains($0.id) && $0.state == .completed }
-            .flatMap { task in
-                task.steps.compactMap { step -> (Date, String)? in
-                    guard step.state == .completed,
-                          step.verification == .passed,
-                          step.toolName == "write_file",
-                          let path = step.arguments["path"], !path.isEmpty,
-                          task.resolutionRecords.contains(where: {
-                              $0.stepNumber == step.stepNumber && $0.verification == .passed
-                          }) else { return nil }
-                    return (task.completedAt ?? task.updatedAt, path)
-                }
+        var completedIDs = Set<UUID>()
+        for event in events where event.timestamp >= cutoff && event.kind == .taskCompleted {
+            completedIDs.insert(event.taskID)
+        }
+
+        var records: [(Date, String)] = []
+        for task in tasks where completedIDs.contains(task.id) && task.state == .completed {
+            for step in task.steps {
+                guard step.state == .completed,
+                      step.verification == .passed,
+                      step.toolName == "write_file",
+                      let path = step.arguments["path"], !path.isEmpty,
+                      task.resolutionRecords.contains(where: {
+                          $0.stepNumber == step.stepNumber && $0.verification == .passed
+                      }) else { continue }
+                records.append((task.completedAt ?? task.updatedAt, path))
             }
-            .sorted { $0.0 > $1.0 }
+        }
+
+        records.sort { $0.0 > $1.0 }
 
         guard let path = records.first?.1 else {
             return "I don't have a recently verified file artifact to check."

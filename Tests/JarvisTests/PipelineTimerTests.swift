@@ -1,9 +1,11 @@
 @testable import Jarvis
-import XCTest
+import Testing
+import Foundation
 
-final class PipelineTimerTests: XCTestCase {
+@Suite struct PipelineTimerTests {
 
-    func testMarksStagesAndReportsDurations() {
+    @Test
+    func marksStagesAndReportsDurations() {
         let timer = PipelineTimer(id: "test-1")
 
         timer.mark(.wakeDetected)
@@ -17,17 +19,18 @@ final class PipelineTimerTests: XCTestCase {
 
         let report = timer.report()
 
-        XCTAssertEqual(report.id, "test-1")
-        XCTAssertEqual(report.stages.count, 3)
-        XCTAssertGreaterThan(report.totalMs, 0)
+        #expect(report.id == "test-1")
+        #expect(report.stages.count == 3)
+        #expect(report.totalMs > 0)
 
         // Each stage should have non-negative duration
         for stage in report.stages {
-            XCTAssertGreaterThanOrEqual(stage.durationMs, 0)
+            #expect(stage.durationMs >= 0)
         }
     }
 
-    func testElapsedBetweenStages() {
+    @Test
+    func elapsedBetweenStages() {
         let timer = PipelineTimer()
 
         timer.mark(.providerStart)
@@ -36,11 +39,14 @@ final class PipelineTimerTests: XCTestCase {
         timer.mark(.firstToken)
 
         let elapsed = timer.elapsed(from: .providerStart, to: .firstToken)
-        XCTAssertNotNil(elapsed)
-        XCTAssertGreaterThan(elapsed!, 0)
+        #expect(elapsed != nil)
+        if let elapsed {
+            #expect(elapsed > 0)
+        }
     }
 
-    func testElapsedSinceStage() {
+    @Test
+    func elapsedSinceStage() {
         let timer = PipelineTimer()
         timer.mark(.wakeDetected)
 
@@ -48,27 +54,32 @@ final class PipelineTimerTests: XCTestCase {
         while CFAbsoluteTimeGetCurrent() - start < 0.001 {}
 
         let elapsed = timer.elapsed(since: .wakeDetected)
-        XCTAssertNotNil(elapsed)
-        XCTAssertGreaterThan(elapsed!, 0)
+        #expect(elapsed != nil)
+        if let elapsed {
+            #expect(elapsed > 0)
+        }
     }
 
-    func testMissingStageReturnsNil() {
+    @Test
+    func missingStageReturnsNil() {
         let timer = PipelineTimer()
         timer.mark(.wakeDetected)
 
         let elapsed = timer.elapsed(from: .wakeDetected, to: .responseDelivered)
-        XCTAssertNil(elapsed, "responseDelivered was never marked")
+        #expect(elapsed == nil, "responseDelivered was never marked")
     }
 
-    func testEmptyReportHasZeroStages() {
+    @Test
+    func emptyReportHasZeroStages() {
         let timer = PipelineTimer()
         let report = timer.report()
 
-        XCTAssertTrue(report.stages.isEmpty)
-        XCTAssertEqual(report.totalMs, 0)
+        #expect(report.stages.isEmpty)
+        #expect(report.totalMs == 0)
     }
 
-    func testReportSummaryIsFormatted() {
+    @Test
+    func reportSummaryIsFormatted() {
         let timer = PipelineTimer(id: "format-test")
         timer.mark(.wakeDetected)
         timer.mark(.responseDelivered)
@@ -76,12 +87,13 @@ final class PipelineTimerTests: XCTestCase {
         let report = timer.report()
         let summary = report.summary
 
-        XCTAssertTrue(summary.contains("format-test"))
-        XCTAssertTrue(summary.contains("wakeDetected"))
-        XCTAssertTrue(summary.contains("responseDelivered"))
+        #expect(summary.contains("format-test"))
+        #expect(summary.contains("wakeDetected"))
+        #expect(summary.contains("responseDelivered"))
     }
 
-    func testTotalMsIncreasesOverTime() {
+    @Test
+    func totalMsIncreasesOverTime() {
         let timer = PipelineTimer()
 
         let t1 = timer.totalMs()
@@ -89,6 +101,6 @@ final class PipelineTimerTests: XCTestCase {
         while CFAbsoluteTimeGetCurrent() - start < 0.001 {}
         let t2 = timer.totalMs()
 
-        XCTAssertGreaterThan(t2, t1)
+        #expect(t2 > t1)
     }
 }

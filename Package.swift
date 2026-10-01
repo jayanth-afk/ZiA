@@ -25,7 +25,7 @@ let package = Package(
             ],
             path: "Sources/Jarvis",
             resources: [
-                // If any resources are needed in the future
+                .copy("Brain/Workers/mlx_worker.py")
             ],
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals"),

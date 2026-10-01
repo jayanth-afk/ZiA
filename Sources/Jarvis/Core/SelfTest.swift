@@ -589,12 +589,8 @@ enum SelfTest {
                 stepNumber: 1, description: "write verified artifact", toolName: "write_file",
                 arguments: ["path": artifactPath])])
             try machine.transition(taskId: e2eTaskID, to: .running)
-            try machine.markStepVerification(taskId: e2eTaskID, stepIndex: 0, outcome: .passed)
-            try machine.updateStep(taskId: e2eTaskID, stepIndex: 0, state: .completed,
-                                   output: "created and verified")
-            try machine.appendResolutionRecord(StepResolutionRecord(
-                stepNumber: 1, toolName: "write_file", rawOutput: "created and verified",
-                completedAt: activityNow, verification: .passed), for: e2eTaskID)
+            try machine.beginStepAttempt(taskId: e2eTaskID, stepIndex: 0)
+            try machine.completeVerifiedStep(taskId: e2eTaskID, stepIndex: 0, output: "created and verified")
             try machine.transition(taskId: e2eTaskID, to: .verifying)
             try machine.transition(taskId: e2eTaskID, to: .completed)
             ExecutionTelemetry.shared.record(ExecutionTelemetryEvent(
@@ -689,11 +685,8 @@ enum SelfTest {
                     TaskStep(stepNumber: 2, description: "inspect the report", toolName: "read_file",
                              arguments: ["path": "report.txt"])
                 ])
-                try machine.markStepVerification(taskId: task.id, stepIndex: 0, outcome: .passed)
-                try machine.updateStep(taskId: task.id, stepIndex: 0, state: .completed, output: "written")
-                try machine.appendResolutionRecord(StepResolutionRecord(
-                    stepNumber: 1, toolName: "write_file", rawOutput: "written",
-                    completedAt: Date(), verification: .passed), for: task.id)
+                try machine.beginStepAttempt(taskId: task.id, stepIndex: 0)
+                try machine.completeVerifiedStep(taskId: task.id, stepIndex: 0, output: "written")
                 try machine.updateStep(taskId: task.id, stepIndex: 1, state: .running)
                 try machine.setCurrentStepIndex(taskId: task.id, index: 1)
                 try machine.transition(taskId: task.id, to: .running)
@@ -799,11 +792,7 @@ enum SelfTest {
                 guard firstResult.verification?.outcome == .passed else {
                     throw JarvisError.actionFailed(action: "SelfTest", reason: "Step 1 did not verify")
                 }
-                try machine.markStepVerification(taskId: task.id, stepIndex: 0, outcome: .passed)
-                try machine.updateStep(taskId: task.id, stepIndex: 0, state: .completed, output: firstResult.output)
-                try machine.appendResolutionRecord(StepResolutionRecord(
-                    stepNumber: 1, toolName: "run_shell", rawOutput: firstResult.output,
-                    completedAt: Date(), verification: .passed), for: task.id)
+                try machine.completeVerifiedStep(taskId: task.id, stepIndex: 0, output: firstResult.output)
                 try machine.beginStepAttempt(taskId: task.id, stepIndex: 1)
                 try machine.setCurrentStepIndex(taskId: task.id, index: 1)
                 try machine.transition(taskId: task.id, to: .cancelled, error: "Emergency Stop")
@@ -979,17 +968,13 @@ enum SelfTest {
                     stepNumber: 1, description: command, toolName: "run_shell",
                     arguments: ["command": command])])
                 try machine.transition(taskId: priorTask.id, to: .running)
-                try machine.updateStep(taskId: priorTask.id, stepIndex: 0, state: .running)
+                try machine.beginStepAttempt(taskId: priorTask.id, stepIndex: 0)
                 let priorResult = try await ToolExecutor.shared.execute(
                     toolName: "run_shell", arguments: ["command": command])
                 guard priorResult.success, priorResult.verification?.outcome == .passed else {
                     throw JarvisError.actionFailed(action: "SelfTest", reason: "Prior shell command did not independently verify")
                 }
-                try machine.markStepVerification(taskId: priorTask.id, stepIndex: 0, outcome: .passed)
-                try machine.updateStep(taskId: priorTask.id, stepIndex: 0, state: .completed, output: priorResult.output)
-                try machine.appendResolutionRecord(StepResolutionRecord(
-                    stepNumber: 1, toolName: "run_shell", rawOutput: priorResult.output,
-                    completedAt: Date(), verification: .passed), for: priorTask.id)
+                try machine.completeVerifiedStep(taskId: priorTask.id, stepIndex: 0, output: priorResult.output)
                 try machine.transition(taskId: priorTask.id, to: .verifying)
                 try machine.transition(taskId: priorTask.id, to: .completed)
 
@@ -5390,8 +5375,9 @@ enum SelfTest {
                     TaskStep(stepNumber: 2, description: "write the word probe using run_shell", toolName: "run_shell", arguments: ["command": "cat build/does_not_exist_recovery_probe.txt"])
                 ])
             try smRecovery.transition(taskId: recTask.id, to: .running)
-            try smRecovery.updateStep(taskId: recTask.id, stepIndex: 0, state: .completed, output: "clipboard text")
-            try smRecovery.markStepVerification(taskId: recTask.id, stepIndex: 0, outcome: .passed)
+            try smRecovery.beginStepAttempt(taskId: recTask.id, stepIndex: 0)
+            try smRecovery.completeVerifiedStep(taskId: recTask.id, stepIndex: 0, output: "clipboard text")
+            try smRecovery.beginStepAttempt(taskId: recTask.id, stepIndex: 1)
             try smRecovery.updateStep(taskId: recTask.id, stepIndex: 1, state: .failed, error: "Verification failed for run_shell: expected meaningful output, got ''")
             try smRecovery.markStepVerification(taskId: recTask.id, stepIndex: 1, outcome: .failed)
             // Exact production recovery chain: RUNNING -> FAILED -> RECOVERING ->

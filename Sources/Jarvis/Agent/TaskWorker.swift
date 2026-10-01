@@ -3,14 +3,25 @@ import Foundation
 /// Asynchronous background worker that executes a single JarvisTask.
 /// Runs completely off the MainActor (Guardrail 1).
 /// Adheres to Guardrail 3 & 8: First-class cancellation and emergency stop propagation.
+///
+/// Restart-safety contract: when a task arrives with already-independently-
+/// verified steps (restored from durable TaskState after a process
+/// interruption), those steps are NOT re-executed. Verified work is marked
+/// completed from its recorded evidence exactly as
+/// `TaskStateMachine.beginContinuation` does, and execution resumes at the
+/// first unresolved step. Verified work is never re-run and never lost.
 actor TaskWorker: Identifiable {
     let id: UUID
     private(set) var currentTaskId: UUID?
     private(set) var isBusy: Bool = false
     private var executionTask: Task<Void, Error>?
+    /// Injectable authoritative owner (SelfTest restart seam). Production
+    /// always uses the shared TaskStateMachine singleton.
+    private let stateMachine: TaskStateMachine
 
-    init(id: UUID = UUID()) {
+    init(id: UUID = UUID(), stateMachine: TaskStateMachine = .shared) {
         self.id = id
+        self.stateMachine = stateMachine
     }
 
     // MARK: - Public API
@@ -21,22 +32,21 @@ actor TaskWorker: Identifiable {
             throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Worker \(id) is already busy")
         }
 
-        let stateMachine = TaskStateMachine.shared
-        guard let authoritativeTask = stateMachine.getTask(id: task.id) else {
-            throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Task \(task.id) is not in authoritative TaskState")
+        let stateMachine = self.stateMachine
+        guard let currentTask = stateMachine.getTask(id: task.id) else {
+            throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Task is not in authoritative TaskState")
         }
-        guard authoritativeTask.state == .created || authoritativeTask.state == .planning
-                || authoritativeTask.state == .failed || authoritativeTask.state == .cancelled else {
-            throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Task is already active or terminal (\(authoritativeTask.state.rawValue))")
-        }
-
         let claimedTask: JarvisTask
-        if authoritativeTask.state == .cancelled || authoritativeTask.state == .failed {
-            claimedTask = try stateMachine.beginContinuation(taskId: authoritativeTask.id)
-        } else {
-            claimedTask = try stateMachine.transition(taskId: authoritativeTask.id, to: .running)
+        switch currentTask.state {
+        case .created, .planning:
+            claimedTask = try stateMachine.transition(taskId: task.id, to: .running)
+        case .failed, .cancelled:
+            claimedTask = try stateMachine.beginContinuation(taskId: task.id)
+        default:
+            throw JarvisError.actionFailed(
+                action: "TaskWorker.execute",
+                reason: "Task is already active or terminal (\(currentTask.state.rawValue))")
         }
-
         self.isBusy = true
         self.currentTaskId = claimedTask.id
 
@@ -44,51 +54,54 @@ actor TaskWorker: Identifiable {
         do {
             try Task.checkCancellation()
 
-            let currentTask = stateMachine.getTask(id: authoritativeTask.id)
-            guard let currentTask else {
+            // Restart-safety: every step that carries independent verified
+            // evidence (step verification .passed AND a matching passed
+            // resolution record) is completed work — restore its completed
+            // state/output from evidence and SKIP it. Never re-execute
+            // verified work; resume at the first unresolved step.
+            guard let authoritativeTask = stateMachine.getTask(id: task.id) else {
                 throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Authoritative task disappeared")
             }
-
-            // The passed value may predate a restart or another worker's update.
-            // Only the current TaskState snapshot can authorize execution.
-            for (index, step) in currentTask.steps.enumerated() {
-                guard let latestTask = stateMachine.getTask(id: authoritativeTask.id),
+            for index in authoritativeTask.steps.indices {
+                guard let latestTask = stateMachine.getTask(id: task.id),
                       latestTask.steps.indices.contains(index) else {
                     throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Authoritative task changed during execution")
                 }
-                if TaskContinuity.isResolved(latestTask.steps[index], task: latestTask) {
-                    continue
-                }
-                guard latestTask.steps[index].state != .running else {
-                    throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Step \(index + 1) is already running and cannot be restarted blindly")
-                }
-
-                currentStepIndex = index
                 let step = latestTask.steps[index]
                 try Task.checkCancellation()
 
-                _ = try stateMachine.beginStepAttempt(taskId: authoritativeTask.id, stepIndex: index)
+                if TaskContinuity.isResolved(step, task: latestTask) {
+                    JarvisLogger.actions.info("Worker [\(self.id.uuidString.prefix(6))] skipping independently verified step \(step.stepNumber) (restart continuation)")
+                    continue
+                }
+                guard step.state != .running else {
+                    throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Step \(step.stepNumber) is still marked running without verified evidence")
+                }
+
+                currentStepIndex = index
+                _ = try stateMachine.beginStepAttempt(taskId: task.id, stepIndex: index)
 
                 // Execute tool if step has one
                 if let toolName = step.toolName {
                     JarvisLogger.actions.info("Worker [\(self.id.uuidString.prefix(6))] executing step \(step.stepNumber): \(toolName)")
 
-                    guard let tool = await MainActor.run(body: { ToolRegistry.shared.getTool(named: toolName) }) else {
+                    guard let tool = ToolRegistry.shared.getTool(named: toolName) else {
                         throw JarvisError.actionFailed(action: toolName, reason: "Tool '\(toolName)' is not registered")
+                    }
+                    var environment = stateMachine.environmentContext(for: task.id)
+                    if environment == nil {
+                        environment = TaskEnvironmentContext.captureLive()
+                        _ = try stateMachine.setEnvironmentContext(environment!, for: task.id)
                     }
                     let args = try ReferenceResolver.resolveStepArguments(
                         rawArguments: step.arguments,
                         currentStepNumber: step.stepNumber,
                         toolParameterSpecs: tool.parameterSpec,
-                        resolutionRecords: stateMachine.resolutionRecords(for: authoritativeTask.id),
-                        environmentContext: stateMachine.environmentContext(for: authoritativeTask.id))
-
-                    if toolName == "run_shell", let command = args["command"] as? String {
-                        guard await MainActor.run(body: { CommandSandbox.shared.isSafe(command) }) else {
-                            throw JarvisError.actionFailed(
-                                action: "run_shell",
-                                reason: "Resolved command rejected by CommandSandbox: \(command)")
-                        }
+                        resolutionRecords: stateMachine.resolutionRecords(for: task.id),
+                        environmentContext: environment)
+                    if toolName == "run_shell", let command = args["command"] as? String,
+                       !((await MainActor.run { CommandSandbox.shared.isSafe(command) })) {
+                        throw JarvisError.actionFailed(action: "run_shell", reason: "Resolved command rejected by CommandSandbox: \(command)")
                     }
 
                     // ToolExecutor is @MainActor, execute on MainActor
@@ -97,90 +110,55 @@ actor TaskWorker: Identifiable {
                     try Task.checkCancellation()
 
                     guard result.success, result.verification?.outcome == .passed else {
-                        let outcome = result.verification?.outcome ?? .unavailable
                         throw JarvisError.verificationFailed(
-                            action: toolName,
-                            expected: "passed verification",
-                            actual: outcome.rawValue)
+                            action: toolName, expected: "passed verification",
+                            actual: result.verification?.outcome.rawValue ?? "unavailable")
                     }
-
-                    _ = try stateMachine.appendResolutionRecord(StepResolutionRecord(
-                        stepNumber: step.stepNumber, toolName: toolName, rawOutput: result.output,
-                        completedAt: Date(), verification: .passed), for: authoritativeTask.id)
-                    _ = try stateMachine.markStepVerification(
-                        taskId: authoritativeTask.id, stepIndex: index, outcome: .passed)
-
-                    try stateMachine.updateStep(
-                        taskId: authoritativeTask.id,
-                        stepIndex: index,
-                        state: .completed,
-                        output: result.output
-                    )
+                    try stateMachine.completeVerifiedStep(taskId: task.id, stepIndex: index, output: result.output)
                     currentStepIndex = nil
                 } else {
-                    // Pure thinking / cognitive step
-                    try stateMachine.updateStep(
-                        taskId: authoritativeTask.id,
-                        stepIndex: index,
-                        state: .completed,
-                        output: "Step completed"
-                    )
-                    try stateMachine.markStepVerification(
-                        taskId: authoritativeTask.id, stepIndex: index, outcome: .notApplicable)
+                    try stateMachine.completeNonActionStep(taskId: task.id, stepIndex: index, output: "Step completed")
                     currentStepIndex = nil
                 }
             }
 
             try Task.checkCancellation()
 
-            guard let finalTask = stateMachine.getTask(id: authoritativeTask.id),
-                  !finalTask.steps.isEmpty,
-                  finalTask.steps.allSatisfy({ TaskContinuity.isResolved($0, task: finalTask) }) else {
-                throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Task steps are not all resolved by authoritative evidence")
-            }
+                        guard let finishedTask = stateMachine.getTask(id: task.id),
+                                    !finishedTask.steps.isEmpty,
+                                    finishedTask.steps.allSatisfy({ TaskContinuity.isResolved($0, task: finishedTask) }) else {
+                                throw JarvisError.actionFailed(action: "TaskWorker.execute", reason: "Not all task steps have authoritative verification evidence")
+                        }
+                        try stateMachine.transition(taskId: task.id, to: .verifying)
+            try stateMachine.transition(taskId: task.id, to: .completed)
 
-            // Verify overall task
-            if finalTask.state == .running {
-                try stateMachine.transition(taskId: authoritativeTask.id, to: .verifying)
-            }
-            if stateMachine.getTask(id: authoritativeTask.id)?.state == .verifying {
-                try stateMachine.transition(taskId: authoritativeTask.id, to: .completed)
-            }
-
-            JarvisLogger.actions.info("Worker [\(self.id.uuidString.prefix(6))] successfully completed task [\(authoritativeTask.id.uuidString.prefix(8))]")
+            JarvisLogger.actions.info("Worker [\(self.id.uuidString.prefix(6))] successfully completed task [\(task.id.uuidString.prefix(8))]")
             self.isBusy = false
             self.currentTaskId = nil
 
         } catch is CancellationError {
-            JarvisLogger.actions.warning("Worker [\(self.id.uuidString.prefix(6))] task cancelled: [\(authoritativeTask.id.uuidString.prefix(8))]")
-            if stateMachine.getTask(id: authoritativeTask.id)?.state != .cancelled {
-                _ = try? stateMachine.transition(taskId: authoritativeTask.id, to: .cancelled, error: "Task cancelled")
-            }
+            JarvisLogger.actions.warning("Worker [\(self.id.uuidString.prefix(6))] task cancelled: [\(task.id.uuidString.prefix(8))]")
+            _ = try? stateMachine.transition(taskId: task.id, to: .cancelled, error: "Task cancelled")
             self.isBusy = false
             self.currentTaskId = nil
             throw CancellationError()
 
         } catch {
             JarvisLogger.actions.error("Worker [\(self.id.uuidString.prefix(6))] task error: \(error.localizedDescription)")
-            if let index = currentStepIndex,
-               let latestTask = stateMachine.getTask(id: authoritativeTask.id),
-               latestTask.steps.indices.contains(index) {
-                let originalStep = latestTask.steps[index]
+            if let index = currentStepIndex, task.steps.indices.contains(index) {
+                let originalStep = task.steps[index]
                 let verificationOutcome = (error as? ToolVerificationFailure)?.outcome ?? .unavailable
                 _ = try? stateMachine.updateStep(
-                    taskId: authoritativeTask.id, stepIndex: index, state: .failed, error: error.localizedDescription)
+                    taskId: task.id, stepIndex: index, state: .failed, error: error.localizedDescription)
                 _ = try? stateMachine.markStepVerification(
-                    taskId: authoritativeTask.id, stepIndex: index, outcome: verificationOutcome)
+                    taskId: task.id, stepIndex: index, outcome: verificationOutcome)
                 if let toolName = originalStep.toolName, let verificationFailure = error as? ToolVerificationFailure {
                     _ = try? stateMachine.appendResolutionRecord(StepResolutionRecord(
                         stepNumber: index + 1, toolName: toolName, rawOutput: verificationFailure.observed,
-                        completedAt: Date(), verification: verificationOutcome), for: authoritativeTask.id)
+                        completedAt: Date(), verification: verificationOutcome), for: task.id)
                 }
             }
-            if let latestTask = stateMachine.getTask(id: authoritativeTask.id),
-               latestTask.state != .failed && latestTask.state.canTransition(to: .failed) {
-                _ = try? stateMachine.transition(taskId: authoritativeTask.id, to: .failed, error: error.localizedDescription)
-            }
+            _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
             self.isBusy = false
             self.currentTaskId = nil
             throw error

@@ -55,4 +55,23 @@ public final class ContextBuilder: @unchecked Sendable {
 
         return result
     }
+
+    func estimateTokens(messages: [Message]) -> Int {
+        messages.reduce(0) { $0 + max(1, ($1.content.count + 3) / 4) }
+    }
+
+    func buildContext(messages: [Message], tokenLimit: Int = 4000) -> [Message] {
+        let suppliedSystem = messages.first(where: { $0.role == .system })?.content ?? ""
+        let prompt = "You are JARVIS, a macOS assistant. Never claim an action succeeded without evidence.\n\(suppliedSystem)"
+        let budget = max(1, tokenLimit)
+        var selected: [Message] = []
+        var tokens = max(1, (prompt.count + 3) / 4)
+        for message in messages.filter({ $0.role != .system }).reversed() {
+            let cost = max(1, (message.content.count + 3) / 4)
+            guard tokens + cost <= budget else { break }
+            selected.append(message)
+            tokens += cost
+        }
+        return [Message(role: .system, content: prompt)] + selected.reversed()
+    }
 }

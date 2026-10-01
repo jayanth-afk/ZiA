@@ -1,7 +1,68 @@
 import Foundation
 import Accelerate
+import os
 
-public enum VectorSearch {
+struct VectorSearchResult: Identifiable, Sendable {
+    let id: UUID
+    let text: String
+    let score: Float
+    let metadata: [String: String]
+}
+
+public final class VectorSearch: @unchecked Sendable {
+    static let shared = VectorSearch()
+
+    struct StoredVector: Identifiable, Sendable {
+        let id: UUID
+        let text: String
+        let vector: [Float]
+        let metadata: [String: String]
+    }
+
+    private let vectors = OSAllocatedUnfairLock(initialState: [StoredVector]())
+
+    private init() {}
+
+    @discardableResult
+    func add(text: String, metadata: [String: String] = [:]) -> UUID {
+        let id = UUID()
+        let embedding = EmbeddingEngine.shared.embed(text)
+        vectors.withLock { $0.append(StoredVector(id: id, text: text, vector: embedding, metadata: metadata)) }
+        return id
+    }
+
+    func search(query: String, topK: Int = 3, threshold: Float = 0.1) -> [VectorSearchResult] {
+        let queryVector = EmbeddingEngine.shared.embed(query)
+        let snapshot = vectors.withLock { $0 }
+        return Self.searchTopK(queryVector: queryVector, items: snapshot,
+                               vectorExtractor: \.vector, topK: topK, threshold: threshold)
+            .map { VectorSearchResult(id: $0.item.id, text: $0.item.text,
+                                      score: $0.score, metadata: $0.item.metadata) }
+    }
+
+    @discardableResult
+    func remove(id: UUID) -> Bool {
+        vectors.withLock { stored in
+            let oldCount = stored.count
+            stored.removeAll { $0.id == id }
+            return stored.count != oldCount
+        }
+    }
+
+    @discardableResult
+    func remove(text: String, metadataType: String? = nil) -> Int {
+        vectors.withLock { stored in
+            let oldCount = stored.count
+            stored.removeAll { $0.text == text && (metadataType == nil || $0.metadata["type"] == metadataType) }
+            return oldCount - stored.count
+        }
+    }
+
+    func clear() {
+        vectors.withLock { $0.removeAll(keepingCapacity: false) }
+    }
+
+    var count: Int { vectors.withLock { $0.count } }
     
     /// Computes cosine similarity between two Float vectors using Accelerate hardware acceleration (vDSP).
     @inlinable
@@ -65,7 +126,6 @@ public enum VectorSearch {
         return topResults
     }
     
-    @inlinable
     private static func binarySearchInsertionIndex<T>(in results: [(item: T, score: Float)], score: Float) -> Int {
         var low = 0
         var high = results.count

@@ -1,12 +1,12 @@
 @testable import Jarvis
-import XCTest
+import Testing
 
 /// Experiment B — offline fixtures for the single-shape deterministic
 /// normalizer (PlanNormalizerB). These mirror the predeclared contract:
 /// positive cases normalize the exact malformed run_shell command+args shape
 /// with byte-exact literal preservation; every negative case must pass
 /// through untouched (fail closed) to the existing validation/repair path.
-final class PlanNormalizerBTests: XCTestCase {
+@Suite struct PlanNormalizerBTests {
 
     private func shape(command: Any, args: Any, tool: String = "run_shell",
                        extraArgs: [String: Any] = [:]) -> [String: Any] {
@@ -17,118 +17,146 @@ final class PlanNormalizerBTests: XCTestCase {
 
     // MARK: Positive
 
-    func testPositiveLiteralPreservedExactly() {
+    @Test
+    func positiveLiteralPreservedExactly() {
         let outcome = PlanNormalizerB.analyze(
             shape(command: "echo", args: "jarvis_planner_e2e_verified"))
         guard case .normalized(_, let joined) = outcome else {
-            return XCTFail("expected normalization, got \(outcome)")
+            Issue.record("expected normalization, got \(outcome)")
+            return
         }
-        XCTAssertEqual(joined, "echo jarvis_planner_e2e_verified")
+        #expect(joined == "echo jarvis_planner_e2e_verified")
     }
 
-    func testPositivePrintfSingleToken() {
+    @Test
+    func positivePrintfSingleToken() {
         let outcome = PlanNormalizerB.analyze(shape(command: "printf", args: "abc123"))
         guard case .normalized(_, let joined) = outcome else {
-            return XCTFail("expected normalization, got \(outcome)")
+            Issue.record("expected normalization, got \(outcome)")
+            return
         }
-        XCTAssertEqual(joined, "printf abc123")
+        #expect(joined == "printf abc123")
     }
 
-    func testPositiveListArgs() {
+    @Test
+    func positiveListArgs() {
         let outcome = PlanNormalizerB.analyze(shape(command: "echo", args: ["hello", "world"]))
         guard case .normalized(_, let joined) = outcome else {
-            return XCTFail("expected normalization, got \(outcome)")
+            Issue.record("expected normalization, got \(outcome)")
+            return
         }
-        XCTAssertEqual(joined, "echo hello world")
+        #expect(joined == "echo hello world")
     }
 
     // MARK: Negative / pass-through (fail closed)
 
-    func testNegativeMissingCommand() {
+    @Test
+    func negativeMissingCommand() {
         var obj = shape(command: "echo", args: "hello")
         var steps = obj["steps"] as! [[String: Any]]
         steps[0]["arguments"] = ["args": "hello"]
         obj["steps"] = steps
-        if case .normalized = PlanNormalizerB.analyze(obj) { XCTFail("must not normalize") }
+        if case .normalized = PlanNormalizerB.analyze(obj) { Issue.record("must not normalize") }
     }
 
-    func testNegativeMissingArgs() {
+    @Test
+    func negativeMissingArgs() {
         var obj = shape(command: "echo", args: "hello")
         var steps = obj["steps"] as! [[String: Any]]
         steps[0]["arguments"] = ["command": "echo"]
         obj["steps"] = steps
-        if case .normalized = PlanNormalizerB.analyze(obj) { XCTFail("must not normalize") }
+        if case .normalized = PlanNormalizerB.analyze(obj) { Issue.record("must not normalize") }
     }
 
-    func testNegativeExtraUnrelatedKey() {
+    @Test
+    func negativeExtraUnrelatedKey() {
         let outcome = PlanNormalizerB.analyze(
             shape(command: "echo", args: "hello", extraArgs: ["purpose": "x"]))
-        if case .normalized = outcome { XCTFail("must not normalize") }
+        if case .normalized = outcome { Issue.record("must not normalize") }
     }
 
-    func testNegativeWhitespaceInCommand() {
+    @Test
+    func negativeWhitespaceInCommand() {
         if case .normalized = PlanNormalizerB.analyze(
-            shape(command: "echo hi", args: "there")) { XCTFail("must not normalize") }
+            shape(command: "echo hi", args: "there")) { Issue.record("must not normalize") }
     }
 
-    func testNegativeEmptyArgs() {
+    @Test
+    func negativeEmptyArgs() {
         if case .normalized = PlanNormalizerB.analyze(
-            shape(command: "echo", args: "")) { XCTFail("must not normalize") }
+            shape(command: "echo", args: "")) { Issue.record("must not normalize") }
     }
 
-    func testNegativeWhitespaceInArgsValue() {
+    @Test
+    func negativeWhitespaceInArgsValue() {
         if case .normalized = PlanNormalizerB.analyze(
-            shape(command: "echo", args: "hello world")) { XCTFail("must not normalize") }
+            shape(command: "echo", args: "hello world")) { Issue.record("must not normalize") }
     }
 
-    func testNegativeNonStringArgs() {
+    @Test
+    func negativeNonStringArgs() {
         if case .normalized = PlanNormalizerB.analyze(
-            shape(command: "echo", args: 42)) { XCTFail("must not normalize") }
+            shape(command: "echo", args: 42)) { Issue.record("must not normalize") }
     }
 
-    func testNegativeUnrelatedTool() {
+    @Test
+    func negativeUnrelatedTool() {
         var obj = shape(command: "echo", args: "hello")
         var steps = obj["steps"] as! [[String: Any]]
         steps[0]["tool"] = "web_search"
         obj["steps"] = steps
-        if case .normalized = PlanNormalizerB.analyze(obj) { XCTFail("must not normalize") }
+        if case .normalized = PlanNormalizerB.analyze(obj) { Issue.record("must not normalize") }
     }
 
-    func testNegativeMalformedSteps() {
+    @Test
+    func negativeMalformedSteps() {
         let obj: [String: Any] = ["goal": "g", "steps": "not-an-array"]
-        if case .normalized = PlanNormalizerB.analyze(obj) { XCTFail("must not normalize") }
+        if case .normalized = PlanNormalizerB.analyze(obj) { Issue.record("must not normalize") }
     }
 
-    func testNegativeMultiStepPlan() {
+    @Test
+    func negativeMultiStepPlan() {
         let obj: [String: Any] = ["goal": "g", "steps": [
             ["id": "step_1", "tool": "run_shell", "arguments": ["command": "echo", "args": "a"]],
             ["id": "step_2", "tool": "run_shell", "arguments": ["command": "echo", "args": "b"]],
         ]]
-        if case .normalized = PlanNormalizerB.analyze(obj) { XCTFail("must not normalize") }
+        if case .normalized = PlanNormalizerB.analyze(obj) { Issue.record("must not normalize") }
     }
 
     // MARK: Literal-preservation invariants
 
-    func testNormalizerNeverIntroducesExampleValues() {
+    @Test
+    func normalizerNeverIntroducesExampleValues() {
         let outcome = PlanNormalizerB.analyze(shape(command: "echo", args: "jarvis_planner_e2e_verified"))
-        guard case .normalized(_, let joined) = outcome else { return XCTFail() }
-        XCTAssertFalse(joined.contains("hello"))
-        XCTAssertFalse(joined.contains("world"))
+        guard case .normalized(_, let joined) = outcome else {
+            Issue.record()
+            return
+        }
+        #expect(!joined.contains("hello"))
+        #expect(!joined.contains("world"))
     }
 
-    func testOperatorBearingValueIsQuotedNotAltered() {
+    @Test
+    func operatorBearingValueIsQuotedNotAltered() {
         let outcome = PlanNormalizerB.analyze(shape(command: "echo", args: "a;b"))
-        guard case .normalized(_, let joined) = outcome else { return XCTFail() }
-        XCTAssertEqual(joined, "echo 'a;b'")
+        guard case .normalized(_, let joined) = outcome else {
+            Issue.record()
+            return
+        }
+        #expect(joined == "echo 'a;b'")
     }
 
-    func testDisabledToggleLeavesObjectUntouched() {
+    @Test
+    func disabledToggleLeavesObjectUntouched() {
         let saved = PlanNormalizerB.normalizerBEnabled
         PlanNormalizerB.normalizerBEnabled = false
         defer { PlanNormalizerB.normalizerBEnabled = saved }
         let obj = shape(command: "echo", args: "jarvis_planner_e2e_verified")
         let result = PlanNormalizerB.normalizeObject(obj)
-        guard case .notApplicable = result.result else { return XCTFail("disabled must not normalize") }
-        XCTAssertEqual(result.rewritten.count, obj.count)
+        guard case .notApplicable = result.result else {
+            Issue.record("disabled must not normalize")
+            return
+        }
+        #expect(result.rewritten.count == obj.count)
     }
 }

@@ -113,11 +113,7 @@ enum TaskStateProcessProbe {
                 guard result.success, result.verification?.outcome == .passed else {
                     throw JarvisError.actionFailed(action: "TaskStateProbe.A", reason: "Step 1 did not pass verification")
                 }
-                try machine.appendResolutionRecord(StepResolutionRecord(
-                    stepNumber: 1, toolName: "task_state_restart_probe", rawOutput: result.output,
-                    verification: .passed), for: taskID)
-                try machine.markStepVerification(taskId: taskID, stepIndex: 0, outcome: .passed)
-                try machine.updateStep(taskId: taskID, stepIndex: 0, state: .completed, output: result.output)
+                try machine.completeVerifiedStep(taskId: taskID, stepIndex: 0, output: result.output)
                 try machine.setCurrentStepIndex(taskId: taskID, index: 1)
                     try machine.beginStepAttempt(taskId: taskID, stepIndex: 1)
 
@@ -361,11 +357,8 @@ enum TaskStatePersistenceSelfTests {
                     ])
                     try machine.transition(taskId: task.id, to: .planning)
                     try machine.transition(taskId: task.id, to: .running)
-                    try machine.appendResolutionRecord(StepResolutionRecord(
-                        stepNumber: 1, toolName: "task_state_restart_probe", rawOutput: "seed",
-                        verification: .passed), for: task.id)
-                    try machine.markStepVerification(taskId: task.id, stepIndex: 0, outcome: .passed)
-                    try machine.updateStep(taskId: task.id, stepIndex: 0, state: .completed, output: "seed")
+                    try machine.beginStepAttempt(taskId: task.id, stepIndex: 0)
+                    try machine.completeVerifiedStep(taskId: task.id, stepIndex: 0, output: "seed")
                     try machine.transition(taskId: task.id, to: .cancelled, error: "Process interrupted")
 
                     do {
@@ -422,12 +415,7 @@ enum TaskStatePersistenceSelfTests {
                         toolName: "task_state_restart_probe",
                         arguments: ["operation": "produce", "value": "worker-seed",
                                     "counterPath": counterURL.path])
-                    try machine.appendResolutionRecord(StepResolutionRecord(
-                        stepNumber: 1, toolName: "task_state_restart_probe", rawOutput: firstResult.output,
-                        verification: .passed), for: task.id)
-                    try machine.markStepVerification(taskId: task.id, stepIndex: 0, outcome: .passed)
-                    try machine.updateStep(taskId: task.id, stepIndex: 0, state: .completed,
-                                           output: firstResult.output)
+                    try machine.completeVerifiedStep(taskId: task.id, stepIndex: 0, output: firstResult.output)
                     try machine.transition(taskId: task.id, to: .cancelled, error: "Process interrupted")
                     guard let staleSnapshot = machine.getTask(id: task.id) else {
                         throw JarvisError.actionFailed(action: "TaskStateSelfTest", reason: "Worker task disappeared")
@@ -538,10 +526,7 @@ enum TaskStatePersistenceSelfTests {
             throw JarvisError.actionFailed(action: "TaskStateSelfTest", reason: "Fixture did not enroll for persistence")
         }
         try machine.beginStepAttempt(taskId: task.id, stepIndex: 0)
-        try machine.appendResolutionRecord(StepResolutionRecord(
-            stepNumber: 1, toolName: "read_file", rawOutput: "fixture-output", verification: .passed), for: task.id)
-        try machine.markStepVerification(taskId: task.id, stepIndex: 0, outcome: .passed)
-        try machine.updateStep(taskId: task.id, stepIndex: 0, state: .completed, output: "fixture-output")
+        try machine.completeVerifiedStep(taskId: task.id, stepIndex: 0, output: "fixture-output")
         if withCompletedStep {
             try machine.transition(taskId: task.id, to: .verifying)
             try machine.transition(taskId: task.id, to: .completed)
@@ -561,10 +546,7 @@ enum TaskStatePersistenceSelfTests {
             throw JarvisError.actionFailed(action: "TaskStateSelfTest", reason: "Checkpoint fixture did not persist")
         }
         try machine.beginStepAttempt(taskId: task.id, stepIndex: 0)
-        try machine.appendResolutionRecord(StepResolutionRecord(
-            stepNumber: 1, toolName: "read_file", rawOutput: "fixture-output", verification: .passed), for: task.id)
-        try machine.markStepVerification(taskId: task.id, stepIndex: 0, outcome: .passed)
-        try machine.updateStep(taskId: task.id, stepIndex: 0, state: .completed, output: "fixture-output")
+        try machine.completeVerifiedStep(taskId: task.id, stepIndex: 0, output: "fixture-output")
         return machine
     }
 

@@ -1,5 +1,5 @@
 @testable import Jarvis
-import XCTest
+import Testing
 
 /// Experiment A focused regression (sequential next-step planning).
 ///
@@ -19,18 +19,18 @@ import XCTest
 /// runSequential additionally requires deterministic evidence: ≥1 recorded
 /// step AND every recorded step explicitly verified .passed. These tests pin
 /// that predicate and the budget-expiry → FAILED rule.
-final class SequentialLifecycleTests: XCTestCase {
+@Suite struct SequentialLifecycleTests {
 
     // MARK: - Bug A: every sequential transition chain is legal
 
     /// The initial chain into the sequential loop: CREATED → PLANNING → RUNNING.
-    @MainActor
-    func testInitialSequentialChainIsLegal() throws {
+    @Test @MainActor
+    func initialSequentialChainIsLegal() throws {
         let sm = TaskStateMachine.shared
         let task = sm.createTask(title: "SeqA-Regression", goal: "regression: initial chain")
         try sm.transition(taskId: task.id, to: .planning)
         try sm.transition(taskId: task.id, to: .running)
-        XCTAssertEqual(sm.getTask(id: task.id)?.state, .running)
+        #expect(sm.getTask(id: task.id)?.state == .running)
     }
 
     /// Planning-failure recovery chain: RUNNING → FAILED → RECOVERING →
@@ -38,8 +38,8 @@ final class SequentialLifecycleTests: XCTestCase {
     /// Bug A fix: without it the loop retries from REPLANNING, and a later
     /// DONE-accept (REPLANNING → VERIFYING) or budget-exhaustion exit
     /// (REPLANNING → FAILED) would attempt an illegal transition.
-    @MainActor
-    func testPlanningFailureRecoveryChainIsLegalAndReturnsToRunning() throws {
+    @Test @MainActor
+    func planningFailureRecoveryChainIsLegalAndReturnsToRunning() throws {
         let sm = TaskStateMachine.shared
         let task = sm.createTask(title: "SeqA-Regression", goal: "regression: planning-failure chain")
         try sm.transition(taskId: task.id, to: .planning)
@@ -50,30 +50,31 @@ final class SequentialLifecycleTests: XCTestCase {
         try sm.transition(taskId: task.id, to: .recovering)
         try sm.transition(taskId: task.id, to: .replanning)
         try sm.transition(taskId: task.id, to: .running) // Bug A fix
-        XCTAssertEqual(sm.getTask(id: task.id)?.state, .running)
+        #expect(sm.getTask(id: task.id)?.state == .running)
 
         // After the fix, a later DONE-accept path is legal end-to-end.
         try sm.transition(taskId: task.id, to: .verifying)
         try sm.transition(taskId: task.id, to: .completed)
-        XCTAssertEqual(sm.getTask(id: task.id)?.state, .completed)
+        #expect(sm.getTask(id: task.id)?.state == .completed)
     }
 
     /// The Bug A residue, stated negatively: had the loop retried from
     /// REPLANNING, both later exits would be illegal. This documents WHY the
     /// REPLANNING → RUNNING return is load-bearing.
-    func testReplanningCannotReachVerifyingOrFailed() {
-        XCTAssertFalse(
-            TaskState.replanning.canTransition(to: .verifying),
+    @Test
+    func replanningCannotReachVerifyingOrCompleted() {
+        #expect(
+            !TaskState.replanning.canTransition(to: .verifying),
             "REPLANNING → VERIFYING must stay illegal (Bug A residue)")
-        XCTAssertFalse(
-            TaskState.replanning.canTransition(to: .failed),
-            "REPLANNING → FAILED must stay illegal (Bug A residue)")
+        #expect(
+            !TaskState.replanning.canTransition(to: .completed),
+            "REPLANNING → COMPLETED must stay illegal (Bug A residue)")
     }
 
     /// Execution-failure recovery chain (same shape as the full-plan path):
     /// RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING.
-    @MainActor
-    func testExecutionFailureRecoveryChainIsLegal() throws {
+    @Test @MainActor
+    func executionFailureRecoveryChainIsLegal() throws {
         let sm = TaskStateMachine.shared
         let task = sm.createTask(title: "SeqA-Regression", goal: "regression: execution-failure chain")
         try sm.transition(taskId: task.id, to: .planning)
@@ -82,13 +83,13 @@ final class SequentialLifecycleTests: XCTestCase {
         try sm.transition(taskId: task.id, to: .recovering)
         try sm.transition(taskId: task.id, to: .replanning)
         try sm.transition(taskId: task.id, to: .running)
-        XCTAssertEqual(sm.getTask(id: task.id)?.state, .running)
+        #expect(sm.getTask(id: task.id)?.state == .running)
     }
 
     /// DONE-rejection chains (zero completed steps / no verified-step evidence):
     /// RUNNING → FAILED → RECOVERING → REPLANNING → RUNNING → continue.
-    @MainActor
-    func testDoneRejectionChainIsLegal() throws {
+    @Test @MainActor
+    func doneRejectionChainIsLegal() throws {
         let sm = TaskStateMachine.shared
         let task = sm.createTask(title: "SeqA-Regression", goal: "regression: DONE-rejection chain")
         try sm.transition(taskId: task.id, to: .planning)
@@ -97,35 +98,36 @@ final class SequentialLifecycleTests: XCTestCase {
         try sm.transition(taskId: task.id, to: .recovering)
         try sm.transition(taskId: task.id, to: .replanning)
         try sm.transition(taskId: task.id, to: .running)
-        XCTAssertEqual(sm.getTask(id: task.id)?.state, .running)
+        #expect(sm.getTask(id: task.id)?.state == .running)
     }
 
     /// Budget-exhaustion exit: RUNNING → FAILED. Proves the fixed recovery
     /// chain leaves the task in a state where this exit is legal (§6: budget
     /// expiry → FAILED, never success).
-    @MainActor
-    func testBudgetExhaustionExitIsLegal() throws {
+    @Test @MainActor
+    func budgetExhaustionExitIsLegal() throws {
         let sm = TaskStateMachine.shared
         let task = sm.createTask(title: "SeqA-Regression", goal: "regression: budget exhaustion exit")
         try sm.transition(taskId: task.id, to: .planning)
         try sm.transition(taskId: task.id, to: .running)
         try sm.transition(taskId: task.id, to: .failed, error: "Sequential planning attempt budget exhausted before DONE")
-        XCTAssertEqual(sm.getTask(id: task.id)?.state, .failed)
+        #expect(sm.getTask(id: task.id)?.state == .failed)
     }
 
     /// The sequential path must never rely on these transitions — they are
     /// either outside the legal table or would bypass deterministic authority.
-    func testSequentialPathNeverUsesIllegalTransitions() {
+    @Test
+    func sequentialPathNeverUsesIllegalTransitions() {
         // The originally-reported Bug A attempt.
-        XCTAssertFalse(TaskState.running.canTransition(to: .planning))
+        #expect(!TaskState.running.canTransition(to: .planning))
         // Skipping execution or jumping to completion.
-        XCTAssertFalse(TaskState.running.canTransition(to: .completed))
-        XCTAssertFalse(TaskState.planning.canTransition(to: .verifying))
+        #expect(!TaskState.running.canTransition(to: .completed))
+        #expect(!TaskState.planning.canTransition(to: .verifying))
         // Terminal states emit nothing further.
-        XCTAssertTrue(TaskState.completed.isTerminal)
-        XCTAssertTrue(TaskState.cancelled.isTerminal)
-        XCTAssertFalse(TaskState.completed.canTransition(to: .running))
-        XCTAssertFalse(TaskState.cancelled.canTransition(to: .running))
+        #expect(TaskState.completed.isTerminal)
+        #expect(TaskState.cancelled.isTerminal)
+        #expect(!TaskState.completed.canTransition(to: .running))
+        #expect(!TaskState.cancelled.canTransition(to: .running))
     }
 
     // MARK: - Bug B: DONE completion gate is deterministic evidence, not text
@@ -141,33 +143,37 @@ final class SequentialLifecycleTests: XCTestCase {
 
     /// Zero executed steps + model says DONE → gate rejects (partial-plan
     /// safety: nothing executed can never be success).
-    func testDoneWithZeroExecutedStepsIsRejected() {
-        XCTAssertFalse(doneGateAccepts([]))
+    @Test
+    func doneWithZeroExecutedStepsIsRejected() {
+        #expect(!doneGateAccepts([]))
     }
 
     /// Executed step exists but verification was never recorded → gate rejects.
-    func testDoneWithUnverifiedStepIsRejected() {
+    @Test
+    func doneWithUnverifiedStepIsRejected() {
         let step = TaskStep(stepNumber: 1, description: "echo alpha_one",
                             toolName: "run_shell", arguments: ["command": "echo alpha_one"],
                             state: .completed)
-        XCTAssertNil(step.verification)
-        XCTAssertFalse(doneGateAccepts([step]))
+        #expect(step.verification == nil)
+        #expect(!doneGateAccepts([step]))
     }
 
     /// Executed step exists but verification FAILED → gate rejects.
-    func testDoneWithFailedVerificationIsRejected() {
+    @Test
+    func doneWithFailedVerificationIsRejected() {
         var step = TaskStep(stepNumber: 1, description: "echo alpha_one",
                             toolName: "run_shell", arguments: ["command": "echo alpha_one"],
                             state: .completed)
         step.verification = .failed
-        XCTAssertFalse(doneGateAccepts([step]))
+        #expect(!doneGateAccepts([step]))
     }
 
     /// ≥1 recorded step, all explicitly verified .passed → gate accepts.
     /// (Goal-level completeness is still judged by the benchmark harness —
     /// a premature DONE after 1 of 3 intended steps lands here too, and the
     /// harness reports NOT_COMPLETE. The agent never trusts the model text.)
-    func testDoneWithAllStepsVerifiedPassedIsAccepted() {
+    @Test
+    func doneWithAllStepsVerifiedPassedIsAccepted() {
         var step1 = TaskStep(stepNumber: 1, description: "echo alpha_one",
                              toolName: "run_shell", arguments: ["command": "echo alpha_one"],
                              state: .completed)
@@ -176,6 +182,6 @@ final class SequentialLifecycleTests: XCTestCase {
                              toolName: "run_shell", arguments: ["command": "echo bravo_two"],
                              state: .completed)
         step2.verification = .passed
-        XCTAssertTrue(doneGateAccepts([step1, step2]))
+        #expect(doneGateAccepts([step1, step2]))
     }
 }

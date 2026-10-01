@@ -1,7 +1,7 @@
 @testable import Jarvis
-import XCTest
+import Testing
 
-final class EventBusTests: XCTestCase {
+@Suite struct EventBusTests {
 
     /// A test event type.
     struct TestEvent: JarvisEvent {
@@ -13,13 +13,12 @@ final class EventBusTests: XCTestCase {
     }
 
     @MainActor
-    override func setUp() {
-        super.setUp()
+    init() {
         EventBus.shared.removeAll()
     }
 
-    @MainActor
-    func testPublishDeliversToSubscriber() {
+    @Test @MainActor
+    func publishDeliversToSubscriber() {
         let bus = EventBus.shared
         var received: Int?
 
@@ -29,11 +28,11 @@ final class EventBusTests: XCTestCase {
 
         bus.publish(TestEvent(value: 42))
 
-        XCTAssertEqual(received, 42)
+        #expect(received == 42)
     }
 
-    @MainActor
-    func testMultipleSubscribersReceiveSameEvent() {
+    @Test @MainActor
+    func multipleSubscribersReceiveSameEvent() {
         let bus = EventBus.shared
         var count = 0
 
@@ -43,11 +42,11 @@ final class EventBusTests: XCTestCase {
 
         bus.publish(TestEvent(value: 1))
 
-        XCTAssertEqual(count, 3)
+        #expect(count == 3)
     }
 
-    @MainActor
-    func testEventTypeIsolation() {
+    @Test @MainActor
+    func eventTypeIsolation() {
         let bus = EventBus.shared
         var testReceived = false
         var anotherReceived = false
@@ -57,28 +56,28 @@ final class EventBusTests: XCTestCase {
 
         bus.publish(TestEvent(value: 1))
 
-        XCTAssertTrue(testReceived)
-        XCTAssertFalse(anotherReceived)
+        #expect(testReceived)
+        #expect(!anotherReceived)
     }
 
-    @MainActor
-    func testUnsubscribeRemovesHandler() {
+    @Test @MainActor
+    func unsubscribeRemovesHandler() {
         let bus = EventBus.shared
         var count = 0
 
         let id = bus.subscribe(TestEvent.self) { _ in count += 1 }
 
         bus.publish(TestEvent(value: 1))
-        XCTAssertEqual(count, 1)
+        #expect(count == 1)
 
         bus.unsubscribe(id)
 
         bus.publish(TestEvent(value: 2))
-        XCTAssertEqual(count, 1, "Should not increment after unsubscribe")
+        #expect(count == 1, "Should not increment after unsubscribe")
     }
 
-    @MainActor
-    func testRemoveAllClearsEverything() {
+    @Test @MainActor
+    func removeAllClearsEverything() {
         let bus = EventBus.shared
         var received = false
 
@@ -87,11 +86,11 @@ final class EventBusTests: XCTestCase {
         bus.removeAll()
         bus.publish(TestEvent(value: 1))
 
-        XCTAssertFalse(received)
+        #expect(!received)
     }
 
-    @MainActor
-    func testNoSubscribersDoesNotCrash() {
+    @Test @MainActor
+    func noSubscribersDoesNotCrash() {
         let bus = EventBus.shared
 
         // Should not throw or crash

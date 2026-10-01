@@ -1,34 +1,34 @@
 import Foundation
 
-public protocol JarvisTool: Sendable {
-    var name: String { get }
-    var description: String { get }
-    func execute(parameters: [String: String]) async throws -> String
-}
-
-public final class ToolRegistry: @unchecked Sendable {
+final class ToolRegistry: @unchecked Sendable {
     public static let shared = ToolRegistry()
 
-    private var tools = [String: JarvisTool]()
-    private var cachedList: [JarvisTool]? = nil
+    private var tools = [String: any JarvisTool]()
+    private var cachedList: [any JarvisTool]? = nil
     private let lock = NSLock()
 
-    public init() {}
+    private init() {
+        registerBuiltins()
+    }
 
-    public func register(_ tool: JarvisTool) {
+    func register(_ tool: any JarvisTool) {
         lock.lock()
         tools[tool.name] = tool
         cachedList = nil
         lock.unlock()
     }
 
-    public func tool(named name: String) -> JarvisTool? {
+    func tool(named name: String) -> (any JarvisTool)? {
         lock.lock()
         defer { lock.unlock() }
         return tools[name]
     }
 
-    public var allTools: [JarvisTool] {
+    func getTool(named name: String) -> (any JarvisTool)? {
+        tool(named: name)
+    }
+
+    var allTools: [any JarvisTool] {
         lock.lock()
         defer { lock.unlock() }
         if let cached = cachedList {
@@ -37,5 +37,47 @@ public final class ToolRegistry: @unchecked Sendable {
         let list = Array(tools.values)
         cachedList = list
         return list
+    }
+
+    func getToolDefinitions() -> [ToolDefinition] {
+        allTools.map { tool in
+            ToolDefinition(name: tool.name, description: tool.description,
+                           parametersJSON: Self.parametersJSON(for: tool))
+        }
+    }
+
+    private static func parametersJSON(for tool: any JarvisTool) -> String {
+        var properties: [String] = []
+        var required: [String] = []
+        for spec in tool.parameterSpec {
+            properties.append("\"\(spec.name)\":{\"type\":\"\(spec.kind.rawValue)\"}")
+            if spec.required { required.append("\"\(spec.name)\"") }
+        }
+        return "{\"type\":\"object\",\"properties\":{\(properties.joined(separator: ","))},\"required\":[\(required.joined(separator: ","))]}"
+    }
+
+    private func registerBuiltins() {
+        register(OpenAppTool())
+        register(SetVolumeTool())
+        register(RunShellTool())
+        register(WriteFileTool())
+        register(ReadFileTool())
+        register(WebSearchTool())
+        register(FetchURLTool())
+        register(OpenBrowserTool())
+        register(InspectBrowserPageTool())
+        register(ExtractBrowserTextTool())
+        register(ClickBrowserLinkTool())
+        register(FillBrowserTextTool())
+        register(InspectUITool())
+        register(ClickElementTool())
+        register(SetTextTool())
+    }
+}
+
+extension JarvisTool {
+    func execute(parameters: [String: String]) async throws -> String {
+        let arguments = parameters.mapValues { $0 as any Sendable }
+        return try await ToolExecutor.shared.execute(toolName: name, arguments: arguments).output
     }
 }

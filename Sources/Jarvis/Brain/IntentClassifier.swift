@@ -24,6 +24,19 @@ public struct ClassifiedIntent: Sendable {
 }
 
 public final class IntentClassifier: @unchecked Sendable {
+    public enum IntentCategory: String, Sendable {
+        case coding
+        case deepReasoning
+        case webSearch
+        case conversation
+        case systemQuery
+    }
+
+    public struct Classification: Sendable, Equatable {
+        public let category: IntentCategory
+        public let suggestedProvider: String
+    }
+
     public static let shared = IntentClassifier()
 
     private static let appLaunchKeywords: Set<String> = ["open", "launch", "start", "run", "open app", "launch app"]
@@ -85,5 +98,34 @@ public final class IntentClassifier: @unchecked Sendable {
         }
 
         return ClassifiedIntent(type: .generalQuery, confidence: 0.5)
+    }
+
+    public func classifySync(_ text: String) -> Classification {
+        Self.classification(for: text)
+    }
+
+    public static func classification(for text: String) -> Classification {
+        let lower = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let words = Set(lower.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty })
+        let category: IntentCategory
+        if lower.contains("battery") || lower.contains("wi-fi") || lower.contains("wifi") || lower.contains("system status") {
+            category = .systemQuery
+        } else if lower.hasPrefix("search") || lower.hasPrefix("google") || lower.hasPrefix("find online") {
+            category = .webSearch
+        } else if ["write", "build", "implement", "code", "script"].contains(where: words.contains)
+                    || ["swift", "json", "python", "javascript"].contains(where: words.contains) {
+            category = .coding
+        } else if ["analyze", "analyse", "architecture", "reason", "compare"].contains(where: words.contains) {
+            category = .deepReasoning
+        } else {
+            category = .conversation
+        }
+        let provider: String
+        switch category {
+        case .coding, .deepReasoning: provider = "claude"
+        case .webSearch: provider = "groq"
+        case .conversation, .systemQuery: provider = "mlx-normal"
+        }
+        return Classification(category: category, suggestedProvider: provider)
     }
 }

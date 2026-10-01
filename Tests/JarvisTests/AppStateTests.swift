@@ -1,37 +1,37 @@
 @testable import Jarvis
-import XCTest
+import Testing
 
-final class AppStateTests: XCTestCase {
+@Suite struct AppStateTests {
 
-    @MainActor
-    func testValidTransitions() {
+    @Test @MainActor
+    func validTransitions() {
         let state = AppState.shared
 
         // Reset to OFF
         if state.state != .off {
             state.transition(to: .off)
         }
-        XCTAssertEqual(state.state, .off)
+        #expect(state.state == .off)
 
         // OFF → SLEEP
         state.transition(to: .sleep)
-        XCTAssertEqual(state.state, .sleep)
+        #expect(state.state == .sleep)
 
         // SLEEP → ACTIVE
         state.transition(to: .active)
-        XCTAssertEqual(state.state, .active)
+        #expect(state.state == .active)
 
         // ACTIVE → SLEEP
         state.transition(to: .sleep)
-        XCTAssertEqual(state.state, .sleep)
+        #expect(state.state == .sleep)
 
         // SLEEP → OFF
         state.transition(to: .off)
-        XCTAssertEqual(state.state, .off)
+        #expect(state.state == .off)
     }
 
-    @MainActor
-    func testInvalidTransitionRejected() {
+    @Test @MainActor
+    func invalidTransitionRejected() {
         let state = AppState.shared
 
         if state.state != .off {
@@ -40,11 +40,11 @@ final class AppStateTests: XCTestCase {
 
         // OFF → ACTIVE is invalid (must go through SLEEP)
         state.transition(to: .active)
-        XCTAssertEqual(state.state, .off, "OFF → ACTIVE should be rejected")
+        #expect(state.state == .off, "OFF → ACTIVE should be rejected")
     }
 
-    @MainActor
-    func testSameStateIsNoOp() {
+    @Test @MainActor
+    func sameStateIsNoOp() {
         let state = AppState.shared
 
         if state.state != .off {
@@ -53,28 +53,28 @@ final class AppStateTests: XCTestCase {
 
         let timeBefore = state.lastTransition
         state.transition(to: .off) // Same state
-        XCTAssertEqual(state.lastTransition, timeBefore, "Same-state transition should not update timestamp")
+        #expect(state.lastTransition == timeBefore, "Same-state transition should not update timestamp")
     }
 
-    @MainActor
-    func testNetworkStatusUpdates() {
+    @Test @MainActor
+    func networkStatusUpdates() {
         let state = AppState.shared
 
         state.updateNetworkStatus(false)
-        XCTAssertFalse(state.isOnline)
+        #expect(!state.isOnline)
 
         state.updateNetworkStatus(true)
-        XCTAssertTrue(state.isOnline)
+        #expect(state.isOnline)
     }
 
-    @MainActor
-    func testMemoryPressureUpdates() {
+    @Test @MainActor
+    func memoryPressureUpdates() {
         let state = AppState.shared
 
         state.updateMemoryPressure(.warning)
-        XCTAssertEqual(state.memoryPressure, .warning)
+        #expect(state.memoryPressure == .warning)
 
         state.updateMemoryPressure(.nominal)
-        XCTAssertEqual(state.memoryPressure, .nominal)
+        #expect(state.memoryPressure == .nominal)
     }
 }

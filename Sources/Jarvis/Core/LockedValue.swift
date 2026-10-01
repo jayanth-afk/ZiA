@@ -2,38 +2,26 @@ import Foundation
 import os
 
 /// Thread-safe value wrapper using OSAllocatedUnfairLock for minimal latency synchronization.
-public final class LockedValue<Value>: @unchecked Sendable {
-    private var _value: Value
-    private let lock = OSAllocatedUnfairLock()
+public final class LockedValue<Value: Sendable>: @unchecked Sendable {
+    private let lock: OSAllocatedUnfairLock<Value>
 
     public init(_ value: Value) {
-        self._value = value
+        self.lock = OSAllocatedUnfairLock(initialState: value)
     }
 
     /// Access or update value within a locked closure
-    @inlinable
-    public func withLock<T>(_ body: (inout Value) throws -> T) rethrows -> T {
-        try lock.withLock {
-            try body(&_value)
-        }
+    public func withLock<T: Sendable>(_ body: @Sendable (inout Value) throws -> T) rethrows -> T {
+        try lock.withLock(body)
     }
 
     /// Read or write value atomically
-    @inlinable
     public var value: Value {
-        get {
-            lock.withLock { _value }
-        }
-        set {
-            lock.withLock { _value = newValue }
-        }
+        get { lock.withLock { $0 } }
+        set { lock.withLock { $0 = newValue } }
     }
 
     /// Read and modify in-place
-    @inlinable
-    public func mutate(_ transform: (inout Value) -> Void) {
-        lock.withLock {
-            transform(&_value)
-        }
+    public func mutate(_ transform: @Sendable (inout Value) -> Void) {
+        lock.withLock(transform)
     }
 }

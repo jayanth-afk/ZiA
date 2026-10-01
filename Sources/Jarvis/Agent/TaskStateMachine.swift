@@ -666,6 +666,21 @@ final class TaskStateMachine: @unchecked Sendable {
         return true
     }
 
+    private static func hasMatchingPassedResolution(
+        for step: TaskStep,
+        output: String,
+        in task: JarvisTask
+    ) -> Bool {
+        guard let toolName = step.toolName, step.output == output,
+              let record = task.resolutionRecords.last(where: {
+                  $0.stepNumber == step.stepNumber && $0.toolName == toolName
+              }) else { return false }
+        return record.stepNumber == step.stepNumber
+            && record.toolName == toolName
+            && record.verification == .passed
+            && record.rawOutput == output
+    }
+
     // MARK: - Evidence attribution (instrumentation pass)
 
     /// Map a planner ledger runID to the task it belongs to. One agent run =
@@ -872,6 +887,17 @@ final class TaskStateMachine: @unchecked Sendable {
             throw JarvisError.actionFailed(action: "TaskStateMachine.markStepVerification", reason: "Invalid step index \(stepIndex)")
         }
 
+        if outcome == .passed {
+            let step = task.steps[stepIndex]
+            guard step.toolName != nil, step.state == .running,
+                  let output = step.output,
+                  Self.hasMatchingPassedResolution(for: step, output: output, in: task) else {
+                throw JarvisError.actionFailed(
+                    action: "TaskStateMachine.markStepVerification",
+                    reason: "Passed verification requires a matching resolution record and output before the step can be marked passed")
+            }
+        }
+
         task.steps[stepIndex].verification = outcome
         task.updatedAt = Date()
         tasks[taskId] = task
@@ -928,6 +954,17 @@ final class TaskStateMachine: @unchecked Sendable {
             throw JarvisError.actionFailed(action: "TaskStateMachine.updateStep", reason: "Invalid step index \(stepIndex)")
         }
 
+        if state == .completed, task.steps[stepIndex].toolName != nil {
+            let completedOutput = output ?? task.steps[stepIndex].output
+            guard task.steps[stepIndex].verification == .passed,
+                  let completedOutput,
+                  Self.hasMatchingPassedResolution(for: task.steps[stepIndex], output: completedOutput, in: task) else {
+                throw JarvisError.actionFailed(
+                    action: "TaskStateMachine.updateStep",
+                    reason: "Tool step completion requires passed verification and matching resolution evidence")
+            }
+        }
+
         task.steps[stepIndex].state = state
         if let output = output {
             task.steps[stepIndex].output = output
@@ -939,6 +976,82 @@ final class TaskStateMachine: @unchecked Sendable {
         tasks[taskId] = task
         persistIfEnabledLocked()
 
+        return task
+    }
+
+    /// Atomically records the verifier-approved output, resolution evidence, and
+    /// completed/passed step state as one authoritative checkpoint.
+    @discardableResult
+    func completeVerifiedStep(
+        taskId: UUID,
+        stepIndex: Int,
+        output: String,
+        structuredOutput: [String: String]? = nil
+    ) throws -> JarvisTask {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard var task = tasks[taskId], task.steps.indices.contains(stepIndex) else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.completeVerifiedStep", reason: "Task or step not found")
+        }
+        let step = task.steps[stepIndex]
+        guard step.state == .running, let toolName = step.toolName else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.completeVerifiedStep", reason: "Only a running tool step can be completed with verified evidence")
+        }
+        guard output.utf8.count <= 1_048_576 else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.completeVerifiedStep", reason: "Verified output exceeds the persistence limit")
+        }
+
+        let previousTask = task
+        let wasPersisted = persistentTaskIDs.contains(taskId)
+        let completedAt = Date()
+        task.steps[stepIndex].output = output
+        task.steps[stepIndex].error = nil
+        task.steps[stepIndex].verification = .passed
+        task.steps[stepIndex].state = .completed
+        task.resolutionRecords.append(StepResolutionRecord(
+            stepNumber: step.stepNumber,
+            toolName: toolName,
+            rawOutput: output,
+            structuredOutput: structuredOutput,
+            completedAt: completedAt,
+            verification: .passed))
+        task.updatedAt = completedAt
+        tasks[taskId] = task
+
+        guard Self.isValidPersistedTask(task) else {
+            tasks[taskId] = previousTask
+            throw JarvisError.actionFailed(action: "TaskStateMachine.completeVerifiedStep", reason: "Completion evidence failed TaskState validation")
+        }
+        persistIfEnabledLocked()
+        if wasPersisted && !persistenceHealthy {
+            tasks[taskId] = previousTask
+            throw JarvisError.actionFailed(action: "TaskStateMachine.completeVerifiedStep", reason: "Verified completion was not checkpointed")
+        }
+        return task
+    }
+
+    @discardableResult
+    func completeNonActionStep(taskId: UUID, stepIndex: Int, output: String) throws -> JarvisTask {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var task = tasks[taskId], task.steps.indices.contains(stepIndex),
+              task.steps[stepIndex].toolName == nil, task.steps[stepIndex].state == .running else {
+            throw JarvisError.actionFailed(action: "TaskStateMachine.completeNonActionStep", reason: "Only a running non-action step can be completed")
+        }
+        let previousTask = task
+        let wasPersisted = persistentTaskIDs.contains(taskId)
+        task.steps[stepIndex].output = output
+        task.steps[stepIndex].error = nil
+        task.steps[stepIndex].verification = .notApplicable
+        task.steps[stepIndex].state = .completed
+        task.updatedAt = Date()
+        tasks[taskId] = task
+        persistIfEnabledLocked()
+        if wasPersisted && !persistenceHealthy {
+            tasks[taskId] = previousTask
+            throw JarvisError.actionFailed(action: "TaskStateMachine.completeNonActionStep", reason: "Completion was not checkpointed")
+        }
         return task
     }
 
@@ -996,8 +1109,11 @@ final class TaskStateMachine: @unchecked Sendable {
 
         guard let task = tasks[taskId] else { return [:] }
         var map: [Int: StepResolutionRecord] = [:]
-        for record in task.resolutionRecords {
-            map[record.stepNumber] = record
+        for step in task.steps where TaskContinuity.independentlyVerified(step, task: task) {
+            guard let record = task.resolutionRecords.last(where: {
+                $0.stepNumber == step.stepNumber && $0.toolName == step.toolName
+            }) else { continue }
+            map[step.stepNumber] = record
         }
         return map
     }

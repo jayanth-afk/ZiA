@@ -1661,6 +1661,18 @@ enum SelfTest {
               "Control 5: 'dim screen' routes to system.brightness.down (.safeMutation)")
         check(brightGetMatch?.intent == "system.brightness.get" && brightGetMatch?.impact == .readOnly,
               "Control 5: 'what is the brightness' routes to system.brightness.get (.readOnly)")
+        let politeBrightMatch = router.match("please set the screen brightness to 40%")
+        let politeBrightCanYouMatch = router.match("can you set brightness to 25")
+        let malformedBrightMatch = router.match("can you set brightness to forty")
+        let compoundBrightMatch = router.match("can you set brightness to 40 and volume to 20")
+        check(politeBrightMatch?.intent == "system.brightness.set" && politeBrightMatch?.parameters["level"] == "40" && politeBrightMatch?.impact == .safeMutation,
+              "Control 5: polite screen-brightness request routes deterministically with exact level")
+        check(politeBrightCanYouMatch?.intent == "system.brightness.set" && politeBrightCanYouMatch?.parameters["level"] == "25",
+              "Control 5: 'can you set brightness to 25' preserves the numeric argument")
+        check(malformedBrightMatch == nil,
+              "Control 5: malformed brightness level fails closed to the planner path")
+        check(compoundBrightMatch == nil,
+              "Control 5: compound brightness request never steals the planner route")
         let initialBright = sc.getBrightness()
         check(initialBright >= 0 && initialBright <= 100, "Control 5: Reads physical display brightness: \(initialBright)%")
 
@@ -4212,6 +4224,14 @@ enum SelfTest {
         check(AgentLoop.classifyRouteSync(for: "open Safari") == .deterministic, "Route matrix: 'open Safari' → DETERMINISTIC (0 model calls)")
         check(AgentLoop.classifyRouteSync(for: "what time is it") == .deterministic, "Route matrix: 'what time is it' → DETERMINISTIC (0 model calls)")
         check(AgentLoop.classifyRouteSync(for: "echo hello world") == .deterministic, "Route matrix: 'echo hello world' → DETERMINISTIC fast path")
+        check(AgentLoop.classifyRouteSync(for: "please set the screen brightness to 40%") == .deterministic,
+              "Route matrix: polite brightness request → DETERMINISTIC (0 model calls)")
+        check(AgentLoop.classifyRouteSync(for: "can you set brightness to 25") == .deterministic,
+              "Route matrix: indirect brightness request → DETERMINISTIC (0 model calls)")
+        check(AgentLoop.classifyRouteSync(for: "can you set brightness to forty") == .planner,
+              "Route matrix: malformed brightness value does not become deterministic")
+        check(AgentLoop.classifyRouteSync(for: "can you set brightness to 40 and volume to 20") == .planner,
+              "Route matrix: compound brightness request remains planner-bound")
 
         // 20.6 Route attribution classification for the matrix cases.
         check(AgentLoop.classifyRouteSync(for: "What is the capital of France?") == .directAnswer, "Route matrix: CASE 1 → DIRECT-ANSWER route")

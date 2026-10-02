@@ -339,6 +339,42 @@ public final class DeterministicRouter: @unchecked Sendable {
                 }
             }
         }
+
+        // Bounded polite forms: these are unambiguous single-action variants of
+        // the existing brightness command. Keep the accepted prefixes explicit;
+        // compound/ambiguous requests remain outside the deterministic router
+        // and continue to the planner path.
+        let politeSetPrefixes = [
+            "please set brightness to ",
+            "please set screen brightness to ",
+            "please set the brightness to ",
+            "please set the screen brightness to ",
+            "can you set brightness to ",
+            "can you set screen brightness to ",
+            "can you set the brightness to ",
+            "can you set the screen brightness to ",
+            "could you set brightness to ",
+            "could you set screen brightness to ",
+            "could you set the brightness to ",
+            "could you set the screen brightness to "
+        ]
+        for prefix in politeSetPrefixes where text.hasPrefix(prefix) {
+            var levelText = String(text.dropFirst(prefix.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            while let last = levelText.last, ".?!,".contains(last) {
+                levelText.removeLast()
+                levelText = levelText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            if levelText.hasSuffix("%") {
+                levelText.removeLast()
+                levelText = levelText.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+            guard let level = Int(levelText), (0...100).contains(level) else { return nil }
+            return DeterministicMatch(intent: "system.brightness.set", parameters: ["level": String(level)], impact: .safeMutation) {
+                try await MainActor.run { try SystemControl.shared.setBrightness(level) }
+            }
+        }
+
         if ["what is the brightness", "what's the brightness", "what is screen brightness", "what's screen brightness", "current brightness", "check brightness", "brightness status"].contains(text) {
             return DeterministicMatch(intent: "system.brightness.get", impact: .readOnly) {
                 await MainActor.run { "The screen brightness is \(SystemControl.shared.getBrightness())%." }

@@ -124,6 +124,12 @@ enum PlannerRoutingBenchmark {
         RoutingCase(id: "vol-det-can-you", goal: "can you set volume to 25%", kind: .plannerTool, toolFamily: "volume", expectedLiteral: "25", repetitions: 3),
         RoutingCase(id: "vol-det-turn-to", goal: "turn the volume to 60", kind: .plannerTool, toolFamily: "volume", expectedLiteral: "60", repetitions: 3),
 
+        // ── polite brightness forms: bounded L0 deterministic routing ──
+        // These were previously sent to the planner, where a reproduced live
+        // probe misrouted brightness requests to set_volume.
+        RoutingCase(id: "bright-det-please-set", goal: "please set the screen brightness to 40%", kind: .deterministic, toolFamily: nil, expectedLiteral: nil, repetitions: 3),
+        RoutingCase(id: "bright-det-can-you", goal: "can you set brightness to 25", kind: .deterministic, toolFamily: nil, expectedLiteral: nil, repetitions: 3),
+
         // ── write_file extraction cases: new deterministic extractor (0 model calls) ──
         RoutingCase(id: "wf-det-write-text", goal: "write the text 'benchmark_literal_token_1' to build/bm_wf1.txt", kind: .plannerTool, toolFamily: "file", expectedLiteral: "benchmark_literal_token_1", repetitions: 3),
         RoutingCase(id: "wf-det-save-file", goal: "save 'benchmark_literal_token_2' to file build/bm_wf2.txt", kind: .plannerTool, toolFamily: "file", expectedLiteral: "benchmark_literal_token_2", repetitions: 3),

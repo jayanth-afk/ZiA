@@ -153,7 +153,7 @@ public final class DeterministicRouter: @unchecked Sendable {
         guard let result = route(transcript) else { return nil }
         switch result.actionName {
         case "system.openApp":
-            guard let app = result.parameters["appName"] else { return nil }
+            guard let app = result.parameters["appName"], !Self.isUnresolvedAppReference(app) else { return nil }
             return DeterministicMatch(intent: "app.open", parameters: result.parameters,
                                       impact: .safeMutation,
                                       action: { try await AppLauncher.shared.open(app) })
@@ -252,7 +252,7 @@ public final class DeterministicRouter: @unchecked Sendable {
                 }
             }
             app = app.trimmingCharacters(in: .punctuationCharacters.union(.whitespaces))
-            guard !app.isEmpty else { return nil }
+            guard !app.isEmpty, !Self.isUnresolvedAppReference(app) else { return nil }
             let target = app
             return DeterministicMatch(intent: intent, parameters: ["app": target], impact: .safeMutation) {
                 switch operation {
@@ -263,6 +263,24 @@ public final class DeterministicRouter: @unchecked Sendable {
             }
         }
         return nil
+    }
+
+    /// Fail closed on anaphoric/placeholder app names. "open that" / "open it"
+    /// / "open that file" must reach the clarification path, never launch a
+    /// fabricated application. Demonstratives are always unresolved; articles
+    /// only when followed by a reference noun (so real apps like "The
+    /// Unarchiver" or "App Store" still route).
+    private static func isUnresolvedAppReference(_ app: String) -> Bool {
+        let words = app.lowercased().split(separator: " ").map(String.init)
+        guard let first = words.first else { return true }
+        if ["that", "this", "it", "these", "those", "them"].contains(first) { return true }
+        if ["the", "a", "an", "some"].contains(first),
+           words.dropFirst().contains(where: { ["app", "application", "file", "folder", "directory",
+                                               "url", "link", "command", "document", "page", "webpage",
+                                               "website", "one", "thing", "task"].contains($0) }) {
+            return true
+        }
+        return false
     }
 
     private func volumeMatch(_ text: String) -> DeterministicMatch? {

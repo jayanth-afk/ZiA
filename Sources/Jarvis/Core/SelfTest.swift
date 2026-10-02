@@ -1473,6 +1473,19 @@ enum SelfTest {
         check(router.match("clean up my system") == nil, "Negative: 'clean up my system' falls through to LLM")
         check(router.match("can you switch to Safari") == nil, "Negative: 'can you switch to Safari' falls through to LLM")
 
+        // ── Deterministic Router Regression: Anaphoric app references ──
+        // A pronoun/determiner must never be turned into a fabricated app name;
+        // these fall through to the clarification path instead.
+        let anaphoricAppUtterances = ["open that", "open it", "launch that app", "switch to that",
+                                      "open that file", "open that folder", "open the app",
+                                      "launch that application", "switch to this app", "focus that window"]
+        check(anaphoricAppUtterances.allSatisfy { router.match($0) == nil },
+              "Anaphoric app references fail closed instead of fabricating an application (\(anaphoricAppUtterances.count) phrases)")
+        check(router.match("open App Store")?.intent == "app.open"
+              && router.match("open Terminal")?.intent == "app.open"
+              && router.match("open The Unarchiver")?.intent == "app.open",
+              "Explicit app launches (including article-like names) still route deterministically")
+
         // ── Deterministic Router Regression: Compound & Multi-Action Fall-Through ──
         check(router.match("open safari and search for cats") == nil, "Compound: 'open safari and search for cats' rejected from deterministic router")
         check(router.match("open safari and then open terminal") == nil, "Compound: 'open safari and then open terminal' rejected from deterministic router")
@@ -1522,6 +1535,15 @@ enum SelfTest {
         check(DirectAnswerRouter.refusalReason(for: "run that command") == .unresolvedCommandReference, "Unresolved reference 'run that command' → explicit unresolvedCommandReference refusal")
         check(DirectAnswerRouter.refusalReason(for: "increase it") == .unresolvedVolumeReference, "Unresolved reference 'increase it' → explicit unresolvedVolumeReference refusal")
         check(DirectAnswerRouter.refusalReason(for: "set it to that") == .unresolvedVolumeReference, "Unresolved reference 'set it to that' → explicit unresolvedVolumeReference refusal")
+        let pronounRefusals: [(String, DirectAnswerRouter.RefusalReason)] = [
+            ("open it", .unresolvedReference), ("launch this app", .unresolvedReference),
+            ("switch to it", .unresolvedReference), ("read this", .unresolvedFileReference),
+            ("read it", .unresolvedFileReference), ("write it", .unresolvedWriteReference),
+            ("fetch it", .unresolvedURLReference), ("run it", .unresolvedCommandReference),
+            ("search it", .unresolvedSearchReference), ("turn that up", .unresolvedVolumeReference)
+        ]
+        check(pronounRefusals.allSatisfy { DirectAnswerRouter.refusalReason(for: $0.0) == $0.1 },
+              "Unresolved pronouns ('it'/'this'/'that') clarify instead of reaching the planner (\(pronounRefusals.count) phrases)")
         check(DirectAnswerRouter.decide(goal: "what is the capital of France") == .directAnswer, "Knowledge question → direct answer")
         check(DirectAnswerRouter.decide(goal: "explain recursion") == .directAnswer, "Explanation request → direct answer")
         check(DirectAnswerRouter.decide(goal: "What is a search engine?") == .directAnswer, "Question about a search engine does not trigger web-action routing")
@@ -2759,6 +2781,88 @@ enum SelfTest {
             rejectedUnresolvedWrite = true
         }
         check(rejectedUnresolvedWrite, "Unresolved write content reference rejected by PlanValidator ('write that to the file' regression)")
+
+        // 13.7j SSRF guard: a server-side fetch_url must be rejected at plan time
+        // for loopback, private/link-local/CGNAT, metadata, internal-name,
+        // credential-bearing and numeric-obfuscated hosts — including plans the
+        // model (not the deterministic extractor) produced.
+        let ssrfBlockedURLs = [
+            "http://169.254.169.254/latest/meta-data",
+            "http://metadata.google.internal/computeMetadata/v1/",
+            "http://localhost:8080/",
+            "http://127.0.0.1/",
+            "http://0.0.0.0/",
+            "http://[::1]/",
+            "http://10.0.0.5/",
+            "http://192.168.1.1/",
+            "http://172.16.0.1/",
+            "http://169.254.1.1/",
+            "http://100.64.0.1/",
+            "http://printer.local/",
+            "http://service.internal/",
+            "http://host.lan/",
+            "http://user:pass@example.com/",
+            "http://2130706433/",
+            "http://0x7f000001/",
+            "ftp://example.com/",
+            "https://example.com.attacker.local/"
+        ]
+        let ssrfBlockedAtPlanTime = ssrfBlockedURLs.allSatisfy { url in
+            let plan = AgentPlan(goal: "fetch \(url)", steps: [PlanStep(id: "s1", toolName: "fetch_url", arguments: ["url": url], purpose: "fetch")])
+            if case .failure(.unsafeOperation(let tool, let reason)) = PlanValidator.validate(plan),
+               tool == "fetch_url", reason.contains("SSRF guard") {
+                return true
+            }
+            return false
+        }
+        check(ssrfBlockedAtPlanTime,
+              "SSRF guard rejects loopback/private/link-local/metadata/internal/credential/numeric fetch_url plans (\(ssrfBlockedURLs.count) hostile URLs)")
+
+        let publicFetchPlan = AgentPlan(goal: "fetch https://example.com/page", steps: [PlanStep(id: "s1", toolName: "fetch_url", arguments: ["url": "https://example.com/page"], purpose: "fetch")])
+        let publicFetchAllowed: Bool = {
+            if case .success = PlanValidator.validate(publicFetchPlan) { return true }
+            return false
+        }()
+        check(publicFetchAllowed, "SSRF guard still permits an ordinary public https fetch_url plan")
+
+        let urlSafetyClassifies = ["https://example.com", "http://api.github.com/x", "https://sub.example.co.uk"].allSatisfy {
+            URL(string: $0).map { URLSafety.blockedReason(for: $0) == nil } ?? false
+        } && ["http://169.254.169.254", "http://[fe80::1]", "http://[fd00::1]", "http://localhost", "ftp://example.com"].allSatisfy {
+            URL(string: $0).map { URLSafety.blockedReason(for: $0) != nil } ?? false
+        }
+        check(urlSafetyClassifies, "URLSafety deterministically classifies public vs hostile hosts without network I/O")
+
+        var ssrfFetchBlocked = false
+        let ssrfFetchSemaphore = DispatchSemaphore(value: 0)
+        Task { @MainActor in
+            do {
+                _ = try await URLFetcher.shared.fetch(url: URL(string: "http://169.254.169.254/latest/meta-data")!)
+                ssrfFetchBlocked = false
+            } catch {
+                ssrfFetchBlocked = true
+            }
+            ssrfFetchSemaphore.signal()
+        }
+        while ssrfFetchSemaphore.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+        check(ssrfFetchBlocked, "URLFetcher execution boundary blocks an SSRF URL before any network I/O")
+
+        // 13.7k Execution-boundary parity: writes/deletes into sensitive
+        // credential locations are refused even when the plan validator was
+        // bypassed by a direct caller.
+        let fileGuard = FileManagerJarvis.shared
+        let sensitiveWriteBlocked = ["~/.ssh/authorized_keys", "~/.aws/credentials", "~/.netrc", "~/.config/gcloud/credentials.db"].allSatisfy { path in
+            do {
+                _ = try fileGuard.writeFile(at: path, content: "probe")
+                return false
+            } catch JarvisError.commandBlocked {
+                return true
+            } catch {
+                return false
+            }
+        }
+        check(sensitiveWriteBlocked, "FileManagerJarvis blocks writes into sensitive credential subpaths at the execution boundary")
 
         // 13.8 Garbage (no JSON) fails with noJSONFound
         if case .failure(.noJSONFound) = AgentPlanParser.parse("I cannot do that, sorry!") {

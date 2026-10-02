@@ -135,6 +135,19 @@ final class FileManagerJarvis {
             let parent = standardized.deletingLastPathComponent().resolvingSymlinksInPath()
             canonical = parent.appendingPathComponent(standardized.lastPathComponent).standardizedFileURL.path
         }
+        // Sensitive credential locations must never be written or deleted, even
+        // via a symlink that resolves into them. Plan-time validation already
+        // forbids these paths; this is the execution-boundary parity check so a
+        // directly-invoked caller cannot bypass it.
+        let canonicalLower = canonical.lowercased()
+        if let sensitive = blockedReadSensitiveSubpaths.first(where: { canonicalLower.contains("/" + $0) }) {
+            JarvisLogger.security.fault("Blocked unsafe file operation \(operation) on sensitive path \(canonical)")
+            throw JarvisError.commandBlocked(
+                command: operation,
+                reason: "Modifying sensitive path '\(sensitive)' is forbidden"
+            )
+        }
+
         guard let protectedRoot = blockedSystemPrefixes.first(where: { root in
             canonical == root || canonical.hasPrefix(root.hasSuffix("/") ? root : root + "/")
         }) else { return }

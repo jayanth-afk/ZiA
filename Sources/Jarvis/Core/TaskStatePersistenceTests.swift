@@ -279,6 +279,35 @@ enum TaskStatePersistenceSelfTests {
                                       task["steps"] = steps
                                   }, check: check,
                                   description: "completed step whose rawOutput differs from step.output fails closed")
+            checkSnapshotMutation(v2Root, taskID: validTask.id, at: root,
+                                  name: "completed-with-unverified-step", mutate: { task in
+                                      task["state"] = TaskState.completed.rawValue
+                                  }, check: check,
+                                  description: "task marked COMPLETED while a required step is unverified fails closed")
+            checkSnapshotMutation(completedRoot, taskID: completedTask.id, at: root,
+                                  name: "passed-but-created", mutate: { task in
+                                      var steps = task["steps"] as! [[String: Any]]
+                                      steps[0]["state"] = TaskState.created.rawValue
+                                      task["steps"] = steps
+                                  }, check: check,
+                                  description: "step claiming passed verification in an impossible CREATED state fails closed")
+            checkSnapshotMutation(completedRoot, taskID: completedTask.id, at: root,
+                                  name: "record-wrong-step", mutate: { task in
+                                      var records = task["resolutionRecords"] as! [[String: Any]]
+                                      records[0]["stepNumber"] = 2
+                                      task["resolutionRecords"] = records
+                                  }, check: check,
+                                  description: "resolution record pointing at a missing step fails closed")
+            checkSnapshotMutation(v2Root, taskID: validTask.id, at: root,
+                                  name: "retry-over-budget", mutate: { task in
+                                      task["retryCount"] = 5
+                                  }, check: check,
+                                  description: "task with retryCount above its retry budget fails closed")
+            checkSnapshotMutation(v2Root, taskID: validTask.id, at: root,
+                                  name: "missing-goal", mutate: { task in
+                                      task.removeValue(forKey: "goal")
+                                  }, check: check,
+                                  description: "snapshot task missing its required goal field fails closed")
 
             let sensitiveURL = root.appendingPathComponent("sensitive.json")
             let sensitiveMachine = TaskStateMachine(storageURL: sensitiveURL)

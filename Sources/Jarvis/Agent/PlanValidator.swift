@@ -651,6 +651,14 @@ enum PlanValidator {
                     if lower.contains("example.com") && !plan.goal.lowercased().contains("example.com") {
                         return .failure(.unsafeOperation(tool: toolName, reason: "fabricated URL placeholder '\(url)' not present in goal (argument fabrication rejected)"))
                     }
+                    // SSRF guard: a planner-proposed server-side fetch must never
+                    // reach loopback, private/link-local/metadata, or internal
+                    // hosts. The deterministic extractor already enforces this;
+                    // the validator owns correctness for model-proposed plans.
+                    guard let parsed = URL(string: trimmed),
+                          URLSafety.blockedReason(for: parsed) == nil else {
+                        return .failure(.unsafeOperation(tool: toolName, reason: "URL rejected by SSRF guard: '\(url)'"))
+                    }
                 }
             }
 

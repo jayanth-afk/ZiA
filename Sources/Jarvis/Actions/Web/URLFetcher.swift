@@ -21,19 +21,53 @@ public struct FetchedContent: Sendable {
 
 /// Fetches web resources and extracts readable text and metadata.
 /// Runs off MainActor with cooperative cancellation support.
+/// Denies HTTP redirects whose target fails the SSRF gate, preventing a public
+/// URL from pivoting the fetch into loopback/private/metadata space. Safe
+/// redirects (e.g. http→https, canonical short links) are still followed.
+private final class URLSafetyRedirectGuard: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        if let url = request.url, URLSafety.blockedReason(for: url) != nil {
+            completionHandler(nil) // stop following; surface the 3xx status instead
+        } else {
+            completionHandler(request)
+        }
+    }
+}
+
 public actor URLFetcher {
     public static let shared = URLFetcher()
 
     private let session: URLSession
+    private let isGuardedRedirectSession: Bool
 
-    public init(session: URLSession = .shared) {
-        self.session = session
+    public init(session: URLSession? = nil) {
+        if let session {
+            self.session = session
+            self.isGuardedRedirectSession = false
+        } else {
+            // A dedicated ephemeral session with a redirect guard: `.shared`
+            // cannot carry a per-task delegate, and a redirect must re-pass the
+            // SSRF gate before it is followed.
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 20
+            self.session = URLSession(configuration: configuration, delegate: URLSafetyRedirectGuard(), delegateQueue: nil)
+            self.isGuardedRedirectSession = true
+        }
     }
 
     // MARK: - Public API
 
     /// Fetches the given URL and extracts readable text, truncated to `maxCharacters`.
+    /// Fails closed before any network I/O if the URL is not SSRF-safe.
     public func fetch(url: URL, maxCharacters: Int = 12_000) async throws -> FetchedContent {
+        if let reason = URLSafety.blockedReason(for: url) {
+            JarvisLogger.security.fault("Blocked SSRF fetch to '\(url.absoluteString)': \(reason)")
+            throw JarvisError.actionFailed(action: "URLFetcher.fetch", reason: "URL blocked by SSRF guard: \(reason)")
+        }
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.timeoutInterval = 15.0
@@ -44,6 +78,13 @@ public actor URLFetcher {
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw JarvisError.actionFailed(action: "URLFetcher.fetch", reason: "Invalid HTTP response")
+        }
+
+        // Defense in depth for injected sessions (and any redirect a session did
+        // follow): never consume content whose final URL failed the gate.
+        if !isGuardedRedirectSession, let finalURL = httpResponse.url,
+           let reason = URLSafety.blockedReason(for: finalURL) {
+            throw JarvisError.actionFailed(action: "URLFetcher.fetch", reason: "Final URL blocked by SSRF guard: \(reason)")
         }
 
         guard (200...299).contains(httpResponse.statusCode) else {

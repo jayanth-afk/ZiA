@@ -12,6 +12,7 @@ DerivedData/
 # Build / log output
 build.log
 *.log
+build/zia-cross-turn-*.txt
 
 # macOS
 .DS_Store

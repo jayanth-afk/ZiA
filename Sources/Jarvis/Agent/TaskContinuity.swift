@@ -172,7 +172,11 @@ enum TaskContinuity {
         guard let record = task.resolutionRecords.last(where: {
             $0.stepNumber == step.stepNumber && $0.toolName == step.toolName
         }), record.verification == .passed else { return false }
-        if step.output != nil || record.rawOutput != nil {
+        if let boundTaskID = record.taskID, boundTaskID != task.id { return false }
+        if let boundStepID = record.stepID, boundStepID != step.id { return false }
+        if let boundFingerprint = record.argumentsFingerprint,
+           boundFingerprint != StepResolutionRecord.fingerprint(arguments: step.arguments) { return false }
+        if step.output != nil || !record.rawOutput.isEmpty {
             return step.output == record.rawOutput
         }
         return true

@@ -232,13 +232,15 @@ enum TaskStatePersistenceSelfTests {
             let v1URL = root.appendingPathComponent("valid-v1.json")
             try write(v1Root, to: v1URL)
             let migrated = TaskStateMachine(storageURL: v1URL)
+            let migratedTask = migrated.getTask(id: validTask.id)
             check(migrated.isPersistenceAvailable
-                  && migrated.getTask(id: validTask.id)?.environmentContext == nil
-                  && migrated.getTask(id: validTask.id)?.steps.first?.verification == .passed,
-                  "TaskState persistence: v1 migrates to v2 without inventing environment context")
+                  && migratedTask?.environmentContext == nil
+                  && migratedTask?.steps.first?.verification != .passed
+                  && migratedTask?.steps.first.map { !TaskContinuity.isResolved($0, task: migratedTask!) } == true,
+                  "TaskState persistence: v1 migrates to v3 without inventing environment context or trusting legacy verification")
 
             var unsupportedRoot = v2Root
-            unsupportedRoot["schemaVersion"] = 3
+            unsupportedRoot["schemaVersion"] = 4
             check(rejected(try jsonData(unsupportedRoot), at: root.appendingPathComponent("unsupported.json")),
                   "TaskState persistence: unsupported schema version fails closed")
             check(rejected(Data("{malformed".utf8), at: root.appendingPathComponent("malformed.json")),

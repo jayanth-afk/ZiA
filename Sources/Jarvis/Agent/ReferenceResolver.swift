@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 #if canImport(AppKit)
 import AppKit
 #endif
@@ -36,16 +37,33 @@ struct StepResolutionRecord: Sendable, Equatable, Codable {
     let structuredOutput: [String: String]?
     let completedAt: Date
     let verification: VerificationOutcome
+    /// Bound evidence identity. Optional only for legacy/in-memory fixtures;
+    /// restored legacy records are explicitly invalidated before they can become authority.
+    let taskID: UUID?
+    let stepID: UUID?
+    let argumentsFingerprint: String?
 
     init(stepNumber: Int, toolName: String, rawOutput: String,
          structuredOutput: [String: String]? = nil, completedAt: Date = Date(),
-         verification: VerificationOutcome = .passed) {
+         verification: VerificationOutcome = .passed, taskID: UUID? = nil,
+         stepID: UUID? = nil, argumentsFingerprint: String? = nil) {
         self.stepNumber = stepNumber
         self.toolName = toolName
         self.rawOutput = rawOutput
         self.structuredOutput = structuredOutput
         self.completedAt = completedAt
         self.verification = verification
+        self.taskID = taskID
+        self.stepID = stepID
+        self.argumentsFingerprint = argumentsFingerprint
+    }
+
+    static func fingerprint(arguments: [String: String]) -> String {
+        let canonical = arguments.keys.sorted().map { key in
+            let value = arguments[key] ?? ""
+            return "\(key.utf8.count):\(key)\(value.utf8.count):\(value)"
+        }.joined()
+        return SHA256.hash(data: Data(canonical.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 }
 

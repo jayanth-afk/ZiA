@@ -274,7 +274,7 @@ final class TaskStateMachine: @unchecked Sendable {
     private var persistenceHealthy = true
     private var persistenceSuspended = false
 
-    private static let persistenceSchemaVersion = 2
+    private static let persistenceSchemaVersion = 3
     private static let maxPersistedTasks = 64
     private static let maxSnapshotBytes = 8 * 1_024 * 1_024
 
@@ -305,16 +305,20 @@ final class TaskStateMachine: @unchecked Sendable {
             // Anything else (newer, older, negative, corrupt) fails closed.
             let migrated: [PersistedTask]
             switch snapshot.schemaVersion {
-            case 1:
+            case 1, 2:
                 migrated = snapshot.tasks.map { persisted in
-                    PersistedTask(
-                        id: persisted.id, title: persisted.title, goal: persisted.goal,
-                        state: persisted.state, steps: persisted.steps,
-                        currentStepIndex: persisted.currentStepIndex,
-                        maxRetries: persisted.maxRetries, retryCount: persisted.retryCount,
-                        createdAt: persisted.createdAt, updatedAt: persisted.updatedAt,
-                        completedAt: persisted.completedAt, error: persisted.error,
-                        resolutionRecords: persisted.resolutionRecords, environmentContext: nil)
+                    var legacy = persisted
+                    if snapshot.schemaVersion == 1 {
+                        legacy = PersistedTask(
+                            id: persisted.id, title: persisted.title, goal: persisted.goal,
+                            state: persisted.state, steps: persisted.steps,
+                            currentStepIndex: persisted.currentStepIndex,
+                            maxRetries: persisted.maxRetries, retryCount: persisted.retryCount,
+                            createdAt: persisted.createdAt, updatedAt: persisted.updatedAt,
+                            completedAt: persisted.completedAt, error: persisted.error,
+                            resolutionRecords: persisted.resolutionRecords, environmentContext: nil)
+                    }
+                    return Self.invalidateLegacyEvidence(legacy)
                 }
             case Self.persistenceSchemaVersion:
                 migrated = snapshot.tasks
@@ -440,16 +444,20 @@ final class TaskStateMachine: @unchecked Sendable {
             }
             let migrated: [PersistedTask]
             switch snapshot.schemaVersion {
-            case 1:
+            case 1, 2:
                 migrated = snapshot.tasks.map { persisted in
-                    PersistedTask(
-                        id: persisted.id, title: persisted.title, goal: persisted.goal,
-                        state: persisted.state, steps: persisted.steps,
-                        currentStepIndex: persisted.currentStepIndex,
-                        maxRetries: persisted.maxRetries, retryCount: persisted.retryCount,
-                        createdAt: persisted.createdAt, updatedAt: persisted.updatedAt,
-                        completedAt: persisted.completedAt, error: persisted.error,
-                        resolutionRecords: persisted.resolutionRecords, environmentContext: nil)
+                    var legacy = persisted
+                    if snapshot.schemaVersion == 1 {
+                        legacy = PersistedTask(
+                            id: persisted.id, title: persisted.title, goal: persisted.goal,
+                            state: persisted.state, steps: persisted.steps,
+                            currentStepIndex: persisted.currentStepIndex,
+                            maxRetries: persisted.maxRetries, retryCount: persisted.retryCount,
+                            createdAt: persisted.createdAt, updatedAt: persisted.updatedAt,
+                            completedAt: persisted.completedAt, error: persisted.error,
+                            resolutionRecords: persisted.resolutionRecords, environmentContext: nil)
+                    }
+                    return Self.invalidateLegacyEvidence(legacy)
                 }
             case Self.persistenceSchemaVersion:
                 migrated = snapshot.tasks
@@ -632,6 +640,39 @@ final class TaskStateMachine: @unchecked Sendable {
         return !highSensitivityMarkers.contains(where: { combined.contains($0) })
     }
 
+    /// Schema v1/v2 records predate bound evidence identity. They may describe
+    /// real work, but they cannot safely prove which exact step/arguments produced
+    /// that work after a restart. Invalidate only that authority; continuation must
+    /// be explicitly requested and may then re-execute the unresolved step.
+    private static func invalidateLegacyEvidence(_ input: PersistedTask) -> PersistedTask {
+        var task = input
+        var invalidated = false
+        task.steps = task.steps.map { step in
+            guard step.toolName != nil, step.verification == .passed else { return step }
+            invalidated = true
+            var copy = step
+            copy.verification = .inconclusive
+            if copy.state == .completed || copy.state == .running || copy.state == .verifying {
+                copy.state = .cancelled
+            }
+            copy.error = "Legacy verification evidence was invalidated after restart"
+            return copy
+        }
+        task.resolutionRecords = task.resolutionRecords.map { record in
+            guard record.verification == .passed, record.taskID == nil, record.stepID == nil, record.argumentsFingerprint == nil else { return record }
+            invalidated = true
+            return StepResolutionRecord(stepNumber: record.stepNumber, toolName: record.toolName,
+                                        rawOutput: record.rawOutput, structuredOutput: record.structuredOutput,
+                                        completedAt: record.completedAt, verification: .inconclusive)
+        }
+        if invalidated && task.state == .completed {
+            task.state = .cancelled
+            task.completedAt = nil
+            task.error = "Legacy verification evidence was invalidated after restart"
+        }
+        return task
+    }
+
     private static func isValidPersistedTask(_ task: JarvisTask) -> Bool {
         guard !task.goal.isEmpty, !task.steps.isEmpty, task.steps.count <= 6,
               task.maxRetries > 0, task.retryCount >= 0, task.retryCount <= task.maxRetries,
@@ -650,10 +691,13 @@ final class TaskStateMachine: @unchecked Sendable {
             })
             if step.toolName != nil && step.state == .completed {
                     guard step.verification == .passed, latestRecord?.verification == .passed,
-                        latestRecord?.rawOutput == step.output else { return false }
+                        latestRecord?.rawOutput == step.output, latestRecord?.taskID == task.id, latestRecord?.stepID == step.id,
+                        latestRecord?.argumentsFingerprint == StepResolutionRecord.fingerprint(arguments: step.arguments) else { return false }
             }
             if step.verification == .passed {
                 guard step.toolName != nil, latestRecord?.verification == .passed,
+                      latestRecord?.taskID == task.id, latestRecord?.stepID == step.id,
+                      latestRecord?.argumentsFingerprint == StepResolutionRecord.fingerprint(arguments: step.arguments),
                       step.state == .completed || step.state == .running || step.state == .cancelled else { return false }
             }
             if step.toolName == nil && step.state == .completed && step.verification != .notApplicable {
@@ -678,6 +722,9 @@ final class TaskStateMachine: @unchecked Sendable {
         return record.stepNumber == step.stepNumber
             && record.toolName == toolName
             && record.verification == .passed
+            && record.taskID == task.id
+            && record.stepID == step.id
+            && record.argumentsFingerprint == StepResolutionRecord.fingerprint(arguments: step.arguments)
             && record.rawOutput == output
     }
 
@@ -1015,7 +1062,9 @@ final class TaskStateMachine: @unchecked Sendable {
             rawOutput: output,
             structuredOutput: structuredOutput,
             completedAt: completedAt,
-            verification: .passed))
+            verification: .passed,
+            taskID: taskId, stepID: step.id,
+            argumentsFingerprint: StepResolutionRecord.fingerprint(arguments: step.arguments)))
         task.updatedAt = completedAt
         tasks[taskId] = task
 

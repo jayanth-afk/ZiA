@@ -305,7 +305,8 @@ actor TaskExecutionCoordinator {
                 if let failure = error as? ToolVerificationFailure, let toolName = planStep.toolName {
                     _ = try? stateMachine.appendResolutionRecord(StepResolutionRecord(
                         stepNumber: step.stepNumber, toolName: toolName, rawOutput: failure.observed,
-                        verification: failure.outcome), for: task.id)
+                        verification: failure.outcome, taskID: task.id, stepID: step.id,
+                        argumentsFingerprint: StepResolutionRecord.fingerprint(arguments: step.arguments)), for: task.id)
                 }
                 // The verifier actually ran and returned a non-passed outcome
                 // (inconclusive/unavailable/failed): record that completed

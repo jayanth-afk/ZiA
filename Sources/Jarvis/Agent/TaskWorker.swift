@@ -155,7 +155,8 @@ actor TaskWorker: Identifiable {
                 if let toolName = originalStep.toolName, let verificationFailure = error as? ToolVerificationFailure {
                     _ = try? stateMachine.appendResolutionRecord(StepResolutionRecord(
                         stepNumber: index + 1, toolName: toolName, rawOutput: verificationFailure.observed,
-                        completedAt: Date(), verification: verificationOutcome), for: task.id)
+                        completedAt: Date(), verification: verificationOutcome, taskID: task.id, stepID: originalStep.id,
+                        argumentsFingerprint: StepResolutionRecord.fingerprint(arguments: originalStep.arguments)), for: task.id)
                 }
             }
             _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)

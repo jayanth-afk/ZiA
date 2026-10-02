@@ -147,6 +147,27 @@ final class CommandSandbox {
         "env", "nice", "nohup", "time", "stdbuf", "setsid", "command", "builtin", "xargs"
     ]
 
+    /// Per-wrapper options that consume the FOLLOWING token as a value. The
+    /// unwrapper skips leading option flags to find the launched program, so a
+    /// non-numeric option value (e.g. `stdbuf -o L`, `xargs -I @`, `env -u FOO`)
+    /// must also be skipped or it is mistaken for the program and hides the real
+    /// executable (`stdbuf -o L sh -c …`, `xargs -I @ rm`). Kept per-wrapper so
+    /// an option that is boolean for one wrapper (`env -i`) is not wrongly
+    /// treated as value-taking. Attached forms (`-oL`, `--output=L`) are a single
+    /// token and need no extra skip; options that only take numeric values are
+    /// omitted (the numeric skip covers them).
+    private let wrapperValueOptions: [String: Set<String>] = [
+        "stdbuf": ["-i", "-o", "-e", "--input", "--output", "--error"],
+        "env": ["-u", "-s", "-c", "--unset", "--split-string", "--chdir"],
+        "nice": ["--adjustment"],
+        "time": ["-f", "--format"],
+        "xargs": [
+            "-i", "-n", "-l", "-s", "-e", "-d", "-a",
+            "--max-args", "--max-chars", "--max-lines", "--delimiter",
+            "--arg-file", "--replace", "--eof"
+        ]
+    ]
+
     /// Flags that introduce a program launched by the current program
     /// (e.g. `find . -exec rm {} +`, `find . -execdir rm {} +`).
     private let execIntroducerFlags: Set<String> = ["-exec", "-execdir", "-ok", "-okdir"]
@@ -392,7 +413,7 @@ final class CommandSandbox {
         let tokens = segment.split(separator: " ").map(String.init)
         var programs: [String] = []
 
-        if let index = primaryExecutableIndex(in: tokens) {
+        for index in programCandidateIndices(in: tokens) {
             programs.append(executableName(of: tokens[index]))
         }
 
@@ -411,19 +432,89 @@ final class CommandSandbox {
     /// used by `executingPrograms`.
     private func primaryExecutableIndex(in tokens: [String]) -> Int? {
         var index = 0
+        var activeWrapper: String?
+        var valueForOption = false
         while index < tokens.count {
             let token = tokens[index]
-            if isEnvironmentAssignment(token) || token.hasPrefix("-") || token.allSatisfy(\.isNumber) {
+            if valueForOption {
+                // Consume the value of a preceding value-taking wrapper option.
+                valueForOption = false
                 index += 1
                 continue
             }
-            if wrapperPrograms.contains(executableName(of: token)) {
+            if isEnvironmentAssignment(token) {
+                index += 1
+                continue
+            }
+            if token.hasPrefix("-") {
+                if let wrapper = activeWrapper,
+                   wrapperValueOptions[wrapper]?.contains(token) == true {
+                    valueForOption = true
+                }
+                index += 1
+                continue
+            }
+            if token.allSatisfy(\.isNumber) {
+                index += 1
+                continue
+            }
+            let name = executableName(of: token)
+            if wrapperPrograms.contains(name) {
+                activeWrapper = name
                 index += 1
                 continue
             }
             return index
         }
         return nil
+    }
+
+    /// Token indices that can name a program the segment launches, in order.
+    /// Unlike `primaryExecutableIndex`, this ALSO yields the value of a
+    /// value-taking wrapper option, because that value can itself be the
+    /// launched program (`env -S 'sh -c …'`) or the placeholder preceding it
+    /// (`xargs -i rm`, where `-i` may omit its argument). Fail-closed: a value
+    /// that happens to name an execution program is rejected rather than guessed
+    /// away.
+    private func programCandidateIndices(in tokens: [String]) -> [Int] {
+        var indices: [Int] = []
+        var index = 0
+        var activeWrapper: String?
+        var isOptionValue = false
+        while index < tokens.count {
+            let token = tokens[index]
+            if isOptionValue {
+                indices.append(index)
+                isOptionValue = false
+                index += 1
+                continue
+            }
+            if isEnvironmentAssignment(token) {
+                index += 1
+                continue
+            }
+            if token.hasPrefix("-") {
+                if let wrapper = activeWrapper,
+                   wrapperValueOptions[wrapper]?.contains(token) == true {
+                    isOptionValue = true
+                }
+                index += 1
+                continue
+            }
+            if token.allSatisfy(\.isNumber) {
+                index += 1
+                continue
+            }
+            let name = executableName(of: token)
+            if wrapperPrograms.contains(name) {
+                activeWrapper = name
+                index += 1
+                continue
+            }
+            indices.append(index)
+            break
+        }
+        return indices
     }
 
     /// Deterministic recognition of `git` forms that LAUNCH another program.

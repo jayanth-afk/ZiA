@@ -321,7 +321,7 @@ enum SelfTest {
             id: artifactTaskID, title: "ArtifactProbe", goal: "create test artifact", state: .completed,
             steps: [TaskStep(stepNumber: 1, description: "write file", toolName: "write_file",
                              arguments: ["path": artifactPath], state: .completed,
-                             verification: .passed)],
+                             output: "created", verification: .passed)],
             completedAt: activityNow, resolutionRecords: [StepResolutionRecord(
                 stepNumber: 1, toolName: "write_file", rawOutput: "created", completedAt: activityNow,
                 verification: .passed)])
@@ -506,7 +506,8 @@ enum SelfTest {
         var multiArtifactTask = artifactTask
         multiArtifactTask.steps.append(TaskStep(
             stepNumber: 2, description: "write second file", toolName: "write_file",
-            arguments: ["path": artifactPath + ".second"], state: .completed, verification: .passed))
+            arguments: ["path": artifactPath + ".second"], state: .completed,
+            output: "created", verification: .passed))
         multiArtifactTask.resolutionRecords.append(StepResolutionRecord(
             stepNumber: 2, toolName: "write_file", rawOutput: "created", completedAt: activityNow,
             verification: .passed))
@@ -2234,7 +2235,12 @@ enum SelfTest {
         let running = try? sm.transition(taskId: testTask.id, to: .running)
         check(running?.state == .running, "Transition to RUNNING successful")
 
-        let step1Updated = try? sm.updateStep(taskId: testTask.id, stepIndex: 0, state: .completed, output: "Scanned 12 files")
+        // Production completion contract: a TOOL step is completed through the
+        // verified-evidence checkpoint (running attempt → verified output),
+        // which atomically records the resolution evidence. A bare state write
+        // on a tool step is refused by the state machine by design.
+        _ = try? sm.beginStepAttempt(taskId: testTask.id, stepIndex: 0)
+        let step1Updated = try? sm.completeVerifiedStep(taskId: testTask.id, stepIndex: 0, output: "Scanned 12 files")
         check(step1Updated?.steps[0].state == .completed, "Step 1 marked completed")
         check(step1Updated?.progress == 0.5, "Task progress accurately calculated as 50%")
 
@@ -3200,6 +3206,13 @@ enum SelfTest {
         var e2eDataflowSuccess = false
         Task {
             let task = TaskStateMachine.shared.createTask(title: "E2E Ref", goal: "echo reference test")
+            // Production evidence contract: a resolvable step requires the real
+            // TaskStep (completed + passed verification + matching output) AND
+            // the matching ResolutionRecord — not a bare record alone.
+            let step1 = TaskStep(stepNumber: 1, description: "produce reference payload", toolName: "run_shell",
+                                 arguments: ["command": "echo ref_data_42"], state: .completed,
+                                 output: "ref_data_42", verification: .passed)
+            _ = try? TaskStateMachine.shared.setSteps(taskId: task.id, steps: [step1])
             let record1 = StepResolutionRecord(
                 stepNumber: 1,
                 toolName: "run_shell",
@@ -3670,10 +3683,17 @@ enum SelfTest {
 
             // 18.12 TEST 12: REFERENCE CONTINUITY POST-ESCALATION
             let refTask = TaskStateMachine.shared.createTask(title: "Escalation Ref Task", goal: "Ref continuity across escalation")
+            // Production evidence contract: the referenced step must exist as a
+            // completed TaskStep whose output matches the record's rawOutput.
+            let sessionOutput = "{\"session_token\":\"xyz_auth_token_999\"}"
+            let refStep1 = TaskStep(stepNumber: 1, description: "run session probe", toolName: "run_shell",
+                                    arguments: ["command": "echo session"], state: .completed,
+                                    output: sessionOutput, verification: .passed)
+            _ = try? TaskStateMachine.shared.setSteps(taskId: refTask.id, steps: [refStep1])
             let verifiedRecord = StepResolutionRecord(
                 stepNumber: 1,
                 toolName: "run_shell",
-                rawOutput: "{\"session_token\":\"xyz_auth_token_999\"}",
+                rawOutput: sessionOutput,
                 verification: .passed
             )
             _ = try? TaskStateMachine.shared.appendResolutionRecord(verifiedRecord, for: refTask.id)
@@ -3924,6 +3944,12 @@ enum SelfTest {
         // 19.9 TEST I: ReferenceResolver blocks consumption of inconclusive or unavailable outputs
         let sm4 = TaskStateMachine.shared
         let inconclusiveTask = sm4.createTask(title: "InconclusiveTask", goal: "selftest: unverified downstream block")
+        // The step exists but its verification was inconclusive: the strict
+        // evidence gate must keep it out of the resolvable-records map.
+        let inconclusiveStep = TaskStep(stepNumber: 1, description: "click submit", toolName: "click_element",
+                                        arguments: ["elementLabel": "Submit"], state: .completed,
+                                        output: "Clicked Submit", verification: .inconclusive)
+        _ = try? sm4.setSteps(taskId: inconclusiveTask.id, steps: [inconclusiveStep])
         let incRecord = StepResolutionRecord(
             stepNumber: 1,
             toolName: "click_element",
@@ -4973,6 +4999,12 @@ enum SelfTest {
             if let result1 = try? await ToolExecutor.shared.execute(toolName: "run_shell", arguments: ["command": "echo \(token)"]),
                result1.success, result1.verification?.outcome == .passed {
                 let trimmedOutput = result1.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Record the verified state exactly as the production coordinator
+                // does: completed TaskStep + matching resolution record.
+                _ = try? sm.setSteps(taskId: task.id, steps: [TaskStep(
+                    stepNumber: 1, description: "establish verified output", toolName: "run_shell",
+                    arguments: ["command": "echo \(token)"], state: .completed,
+                    output: trimmedOutput, verification: .passed)])
                 let record1 = StepResolutionRecord(
                     stepNumber: 1,
                     toolName: "run_shell",
@@ -5049,6 +5081,12 @@ enum SelfTest {
             if let writeResult = try? await ToolExecutor.shared.execute(toolName: "write_file", arguments: ["path": testFilePath, "content": filePayload]),
                writeResult.success, writeResult.verification?.outcome == .passed {
 
+                // Record the verified write exactly as the production coordinator
+                // does: completed TaskStep + matching resolution record.
+                _ = try? sm.setSteps(taskId: task.id, steps: [TaskStep(
+                    stepNumber: 1, description: "write the payload file", toolName: "write_file",
+                    arguments: ["path": testFilePath, "content": filePayload], state: .completed,
+                    output: testFilePath, verification: .passed)])
                 let record1 = StepResolutionRecord(
                     stepNumber: 1,
                     toolName: "write_file",
@@ -5245,6 +5283,13 @@ enum SelfTest {
         // 20.161: ReferenceResolver blocks reference resolution when dependency verification failed
         let smFail = TaskStateMachine.shared
         let failTask = smFail.createTask(title: "FailDepTask", goal: "test failed dep block")
+        // The failed step is recorded exactly as production records it
+        // (failed state + failed verification + matching resolution record);
+        // the strict evidence gate must keep it unresolvable.
+        let failedDepStep = TaskStep(stepNumber: 1, description: "run failing command", toolName: "run_shell",
+                                     arguments: ["command": "false"], state: .failed,
+                                     error: "error exit code 1", verification: .failed)
+        _ = try? smFail.setSteps(taskId: failTask.id, steps: [failedDepStep])
         let failedDepRecord = StepResolutionRecord(
             stepNumber: 1,
             toolName: "run_shell",

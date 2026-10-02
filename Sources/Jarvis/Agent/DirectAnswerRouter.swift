@@ -120,7 +120,9 @@ public final class DirectAnswerRouter: @unchecked Sendable {
 
         let unresolved: [(Set<String>, RefusalReason)] = [
             (["open that app", "launch that app", "switch to that app", "open the app", "launch the app",
-              "switch to the app", "open that", "launch that", "switch to that", "open that application"], .unresolvedReference),
+              "switch to the app", "open that", "launch that", "switch to that", "open that application",
+              "list that folder", "open that folder", "show that folder", "list the folder",
+              "list that directory", "open that directory", "show that directory"], .unresolvedReference),
             (["read that file", "read that", "read the file", "read the file i mentioned", "read this file",
               "read that document", "read the document", "view that file", "show that file", "cat that file",
               "open that file", "open the file you created", "open the file you just created",

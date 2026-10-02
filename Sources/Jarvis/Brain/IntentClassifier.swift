@@ -105,17 +105,20 @@ public final class IntentClassifier: @unchecked Sendable {
     }
 
     public static func classification(for text: String) -> Classification {
-        let lower = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        let words = Set(lower.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty })
+        // Token-boundary routing avoids substring false positives (for example,
+        // "research" is not automatically interpreted as a web-search request
+        // and "know" must not trigger recency-style signal matching).
+        let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            .replacingOccurrences(of: "wi-fi", with: "wifi")
+        let tokens = Set(normalized.split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init))
         let category: IntentCategory
-        if lower.contains("battery") || lower.contains("wi-fi") || lower.contains("wifi") || lower.contains("system status") {
+        if !tokens.isDisjoint(with: Self.systemQueryTokens) {
             category = .systemQuery
-        } else if lower.hasPrefix("search") || lower.hasPrefix("google") || lower.hasPrefix("find online") {
+        } else if !tokens.isDisjoint(with: Self.webSearchTokens) {
             category = .webSearch
-        } else if ["write", "build", "implement", "code", "script"].contains(where: words.contains)
-                    || ["swift", "json", "python", "javascript"].contains(where: words.contains) {
+        } else if !tokens.isDisjoint(with: Self.codingTokens) {
             category = .coding
-        } else if ["analyze", "analyse", "architecture", "reason", "compare"].contains(where: words.contains) {
+        } else if !tokens.isDisjoint(with: Self.deepReasoningTokens) {
             category = .deepReasoning
         } else {
             category = .conversation
@@ -128,4 +131,11 @@ public final class IntentClassifier: @unchecked Sendable {
         }
         return Classification(category: category, suggestedProvider: provider)
     }
+
+    private static let codingTokens: Set<String> = ["write", "build", "implement", "code", "script",
+                                                    "swift", "json", "python", "javascript"]
+    private static let deepReasoningTokens: Set<String> = ["analyze", "analyse", "architecture", "reason",
+                                                           "compare", "research"]
+    private static let webSearchTokens: Set<String> = ["search", "google", "find", "online"]
+    private static let systemQueryTokens: Set<String> = ["battery", "wifi", "system"]
 }

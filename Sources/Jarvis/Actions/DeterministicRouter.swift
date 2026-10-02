@@ -395,6 +395,18 @@ public final class DeterministicRouter: @unchecked Sendable {
                 try await DestructiveActionManager.shared.commit(intent: "system.emptyTrash")
             }
         }
+        // Generic confirmation: a bare "confirm"/"commit" may commit whatever
+        // destructive action is CURRENTLY staged, routed through the same
+        // DestructiveActionManager authority (never duplicated here). With no
+        // pending action this does not match, so the utterance falls through to
+        // the safe clarification/refusal path instead of a phantom commit.
+        if ["confirm", "commit", "confirm action", "commit action", "confirm the action", "commit the action"].contains(text),
+           let pending = DestructiveActionManager.shared.pendingAction {
+            let intent = pending.intent
+            return DeterministicMatch(intent: "\(intent).commit", parameters: ["intent": intent], impact: .destructive) {
+                try await DestructiveActionManager.shared.commit(intent: intent)
+            }
+        }
         if ["cancel pending action", "cancel action", "abort action", "cancel", "abort"].contains(text) {
             return DeterministicMatch(intent: "system.action.cancel", impact: .readOnly) {
                 await MainActor.run { DestructiveActionManager.shared.cancel() }

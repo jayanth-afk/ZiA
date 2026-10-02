@@ -42,7 +42,6 @@ actor TaskExecutionCoordinator {
             route = .directAnswer
             return TaskContinuity.summary(query: continuity, tasks: stateMachine.allTasks)
         }
-
         let fileReference = ReferenceResolver.resolveCrossTurnFileReference(goal: normalized, tasks: stateMachine.allTasks)
         let commandReference = ReferenceResolver.resolveCrossTurnCommandReference(goal: normalized, tasks: stateMachine.allTasks)
         let urlReference = ReferenceResolver.resolveCrossTurnURLReference(goal: normalized, tasks: stateMachine.allTasks)
@@ -110,6 +109,10 @@ actor TaskExecutionCoordinator {
             throw JarvisError.actionFailed(action: "AgentLoop.continue", reason: "Authoritative task disappeared")
         }
         let task = try stateMachine.beginContinuation(taskId: taskID)
+        ExecutionTelemetry.shared.record(ExecutionTelemetryEvent(
+            taskID: task.id, kind: .recoveryAttempted, phase: .thinking,
+            status: "task_continuation", attemptCount: task.retryCount))
+        await reportInteractionPhase(.thinking, taskID: task.id)
         let savedPlan = AgentPlan(goal: task.goal, steps: task.steps.map {
             PlanStep(id: $0.id.uuidString, toolName: $0.toolName, arguments: $0.arguments, purpose: $0.description)
         })
@@ -135,6 +138,8 @@ actor TaskExecutionCoordinator {
         route = .planner
         let task = stateMachine.createTask(title: "Autonomous Goal", goal: goal,
                                            environmentContext: TaskEnvironmentContext.captureLive())
+        telemetry(taskID: task.id, step: nil, kind: .taskStarted, status: "started")
+        await reportInteractionPhase(.thinking, taskID: task.id)
         try stateMachine.transition(taskId: task.id, to: .planning)
         do {
             let proposed: AgentPlan
@@ -189,21 +194,27 @@ actor TaskExecutionCoordinator {
     ) async throws -> String {
         var observations: [String] = []
         var outputs: [String] = []
-        for (index, planStep) in plan.steps.enumerated() {
+        var replanCount = 0
+        var lastFailure: (stepNumber: Int, purpose: String, tool: String?, error: String)?
+        var stepIndex = 0
+        while stepIndex < plan.steps.count {
+            let planStep = plan.steps[stepIndex]
             try checkCancellation()
-            guard let currentTask = stateMachine.getTask(id: task.id), currentTask.steps.indices.contains(index) else {
+            guard let currentTask = stateMachine.getTask(id: task.id), currentTask.steps.indices.contains(stepIndex) else {
                 throw JarvisError.actionFailed(action: "AgentLoop.execute", reason: "Authoritative task changed during execution")
             }
-            let step = currentTask.steps[index]
+            let step = currentTask.steps[stepIndex]
             if TaskContinuity.isResolved(step, task: currentTask) {
                 outputs.append(step.output ?? currentTask.resolutionRecords.last(where: { $0.stepNumber == step.stepNumber })?.rawOutput ?? "")
+                stepIndex += 1
                 continue
             }
 
-            currentTaskStep(task.id, index)
+            currentTaskStep(task.id, stepIndex)
+            await reportInteractionPhase(.executing, taskID: task.id)
             telemetry(taskID: task.id, step: step, kind: .stepStarted, status: "started")
             do {
-                _ = try stateMachine.beginStepAttempt(taskId: task.id, stepIndex: index)
+                _ = try stateMachine.beginStepAttempt(taskId: task.id, stepIndex: stepIndex)
                 if let toolName = planStep.toolName {
                     guard let tool = ToolRegistry.shared.getTool(named: toolName) else {
                         throw JarvisError.actionFailed(action: toolName, reason: "Tool is not registered")
@@ -221,7 +232,7 @@ actor TaskExecutionCoordinator {
                     guard AgentStepOutcomePolicy.accepts(result) else {
                         throw JarvisError.verificationFailed(action: toolName, expected: "passed verification", actual: result.output)
                     }
-                    try stateMachine.completeVerifiedStep(taskId: task.id, stepIndex: index, output: result.output)
+                    try stateMachine.completeVerifiedStep(taskId: task.id, stepIndex: stepIndex, output: result.output)
                     observations.append("[\(toolName)] \(result.output)")
                     outputs.append(result.output)
                     telemetry(taskID: task.id, step: step, kind: .verificationCompleted,
@@ -231,31 +242,90 @@ actor TaskExecutionCoordinator {
                               verification: .passed)
                 } else {
                     let composed = try await DirectComposer().composeAnswer(goal: recoveryGoal, observations: observations)
-                    try stateMachine.completeNonActionStep(taskId: task.id, stepIndex: index, output: composed)
+                    try stateMachine.completeNonActionStep(taskId: task.id, stepIndex: stepIndex, output: composed)
                     outputs.append(composed)
                     telemetry(taskID: task.id, step: step, kind: .stepCompleted, status: "completed",
                               verification: .notApplicable)
                 }
                 try checkCancellation()
+                stepIndex += 1
             } catch is CancellationError {
                 cancel(taskID: task.id, stateMachine: stateMachine, reason: "Emergency Stop")
+                telemetry(taskID: task.id, step: nil, kind: .stopped, status: "cancelled",
+                          failureCategory: .cancellation)
                 throw CancellationError()
             } catch {
                 let outcome = (error as? ToolVerificationFailure)?.outcome ?? .unavailable
-                _ = try? stateMachine.updateStep(taskId: task.id, stepIndex: index, state: .failed,
+                _ = try? stateMachine.updateStep(taskId: task.id, stepIndex: stepIndex, state: .failed,
                                                  error: error.localizedDescription)
-                _ = try? stateMachine.markStepVerification(taskId: task.id, stepIndex: index, outcome: outcome)
+                _ = try? stateMachine.markStepVerification(taskId: task.id, stepIndex: stepIndex, outcome: outcome)
                 if let failure = error as? ToolVerificationFailure, let toolName = planStep.toolName {
                     _ = try? stateMachine.appendResolutionRecord(StepResolutionRecord(
                         stepNumber: step.stepNumber, toolName: toolName, rawOutput: failure.observed,
                         verification: failure.outcome), for: task.id)
                 }
-                _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
+                let failureCategory = ExecutionFailureCategory.classify(error)
                 telemetry(taskID: task.id, step: step, kind: .stepFailed, status: error.localizedDescription,
-                          verification: outcome, failureCategory: ExecutionFailureCategory.classify(error))
-                telemetry(taskID: task.id, step: step, kind: .taskFailed, status: "failed")
-                recordConversationTurn(goal: originalRequest, response: nil)
-                throw error
+                          verification: outcome, failureCategory: failureCategory)
+                lastFailure = (stepNumber: step.stepNumber, purpose: planStep.purpose,
+                               tool: planStep.toolName, error: error.localizedDescription)
+
+                // RECOVER: the bounded, real recovery chain — FAILED → RECOVERING →
+                // REPLANNING → replan → RUNNING. The telemetry event records the
+                // attempt; it never authorizes the retry (TaskState transitions do).
+                replanCount += 1
+                _ = try? stateMachine.transition(taskId: task.id, to: .recovering)
+                _ = try? stateMachine.transition(taskId: task.id, to: .replanning)
+                try? stateMachine.incrementRetryCount(taskId: task.id)
+                telemetry(taskID: task.id, step: step, kind: .recoveryAttempted,
+                          status: "replanning", failureCategory: failureCategory,
+                          attemptCount: replanCount)
+                await reportInteractionPhase(.thinking, taskID: task.id)
+
+                do {
+                    if stopRecoveryAfterAttempt {
+                        throw PlanValidationError.noJSONFound
+                    }
+                    var plannerContext = PlannerContext.initial(goal: recoveryGoal)
+                    plannerContext = plannerContext.with(
+                        failure: error.localizedDescription, observations: observations)
+                    let replanned = try await MLXPlanner.shared.plan(
+                        goal: recoveryGoal, context: plannerContext, taskID: task.id)
+                    let validatedResult = await MainActor.run { PlanValidator.validate(replanned, originalGoal: recoveryGoal) }
+                    guard case .success(let validatedPlan) = validatedResult else {
+                        if case .failure(let validationError) = validatedResult { throw validationError }
+                        throw PlanValidationError.noJSONFound
+                    }
+                    // A replan preserves completed steps and continues execution;
+                    // never reset backwards into already-completed steps.
+                    let existingSteps = stateMachine.getTask(id: task.id)?.steps ?? []
+                    try stateMachine.setSteps(taskId: task.id, steps: Self.makeTaskSteps(validatedPlan, preservingCompletedFrom: existingSteps))
+                    let completedCount = existingSteps.filter { $0.state == .completed }.count
+                    if stepIndex >= validatedPlan.steps.count { stepIndex = max(stepIndex, completedCount) }
+                    try stateMachine.transition(taskId: task.id, to: .running)
+                } catch is CancellationError {
+                    cancel(taskID: task.id, stateMachine: stateMachine, reason: "Emergency Stop")
+                    telemetry(taskID: task.id, step: nil, kind: .stopped, status: "cancelled",
+                              failureCategory: .cancellation)
+                    throw CancellationError()
+                } catch {
+                    // RECOVERY-FAILED REPORTING (final-response accuracy): the replan
+                    // itself failed, so the run cannot continue. Report the PARTIAL
+                    // completion — completed-and-verified step count plus the actual
+                    // failed step — from the TaskState recorded before the replan,
+                    // and close the task out as FAILED (legal from REPLANNING).
+                    let completedStepCount = stateMachine.getTask(id: task.id)?.steps.filter {
+                        $0.state == .completed && ($0.verification?.isVerified == true || $0.verification == .notApplicable)
+                    }.count ?? 0
+                    let reason = AgentLoop.partialCompletionReport(
+                        completedStepCount: completedStepCount, lastFailure: lastFailure)
+                    telemetry(taskID: task.id, step: nil, kind: .taskFailed, status: reason,
+                              failureCategory: ExecutionFailureCategory.classify(error))
+                    try stateMachine.transition(taskId: task.id, to: .failed, error: reason)
+                    recordConversationTurn(goal: originalRequest, response: nil)
+                    throw JarvisError.actionFailed(
+                        action: lastFailure?.tool ?? "AgentLoop.run", reason: reason)
+                }
             }
         }
 
@@ -348,14 +418,28 @@ actor TaskExecutionCoordinator {
     }
 
     private func makeTaskSteps(_ plan: AgentPlan) -> [TaskStep] {
+        Self.makeTaskSteps(plan)
+    }
+
+    /// Convert validated plan steps into state-machine TaskSteps, preserving
+    /// any already-completed step states and verified outputs.
+    private static func makeTaskSteps(_ plan: AgentPlan, preservingCompletedFrom existingSteps: [TaskStep] = []) -> [TaskStep] {
         plan.steps.enumerated().map { index, step in
-            TaskStep(id: UUID(uuidString: step.id) ?? UUID(), stepNumber: index + 1,
-                     description: step.purpose, toolName: step.toolName, arguments: step.arguments)
+            if index < existingSteps.count && existingSteps[index].state == .completed {
+                return existingSteps[index]
+            }
+            return TaskStep(id: UUID(uuidString: step.id) ?? UUID(), stepNumber: index + 1,
+                            description: step.purpose, toolName: step.toolName, arguments: step.arguments)
         }
     }
 
     private func currentTaskStep(_ taskID: UUID, _ index: Int) {
         _ = try? TaskStateMachine.shared.setCurrentStepIndex(taskId: taskID, index: index)
+    }
+
+    @MainActor
+    private func reportInteractionPhase(_ phase: InteractionPhase, taskID: UUID? = nil) {
+        InteractionPhaseCenter.report(phase, taskID: taskID?.uuidString)
     }
 
     private func checkCancellation() throws {
@@ -371,10 +455,13 @@ actor TaskExecutionCoordinator {
 
     private func telemetry(taskID: UUID, step: TaskStep?, kind: ExecutionTelemetryKind, status: String,
                            verification: VerificationOutcome? = nil,
-                           failureCategory: ExecutionFailureCategory? = nil) {
+                           failureCategory: ExecutionFailureCategory? = nil,
+                           attemptCount: Int? = nil) {
         ExecutionTelemetry.shared.record(ExecutionTelemetryEvent(
-            taskID: taskID, stepID: step?.id, kind: kind, phase: kind == .taskCompleted ? .success : .executing,
-            action: step?.toolName, status: status, verification: verification, failureCategory: failureCategory))
+            taskID: taskID, stepID: step?.id, kind: kind,
+            phase: kind == .taskCompleted ? .success : (kind == .recoveryAttempted ? .thinking : .executing),
+            action: step?.toolName, status: status, verification: verification,
+            failureCategory: failureCategory, attemptCount: attemptCount))
     }
 
     private func recordConversationTurn(goal: String, response: String?) {

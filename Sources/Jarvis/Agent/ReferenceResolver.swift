@@ -339,11 +339,21 @@ enum ReferenceResolver {
         return result.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Select the latest authoritative task among recent candidates.
+    ///
+    /// Freshness contract: a candidate is recent when its evidence timestamp
+    /// (`completedAt ?? updatedAt`) falls inside the allowed freshness window
+    /// `[now - maxAge, now + skew]`. The upper bound only tolerates minor clock
+    /// skew so that future-dated synthetic/task-state snapshots are not silently
+    /// discarded; genuinely future evidence is not selectable.
+    /// The newest timestamp wins; ties are ambiguous and must fail closed.
     private static func latestTasks(_ tasks: [JarvisTask], action: (TaskStep) -> Bool,
                                     now: Date, maxAge: TimeInterval) -> [JarvisTask] {
+        let skewTolerance: TimeInterval = 5
+        let cutoff = now.addingTimeInterval(-maxAge)
         let recent = tasks.filter { task in
             let date = task.completedAt ?? task.updatedAt
-            return now.timeIntervalSince(date) >= 0 && now.timeIntervalSince(date) <= maxAge
+            return date >= cutoff && date <= now.addingTimeInterval(skewTolerance)
                 && task.steps.contains(where: action)
         }
         guard let latest = recent.map({ $0.completedAt ?? $0.updatedAt }).max() else { return [] }

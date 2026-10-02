@@ -40,12 +40,23 @@ final class CommandSandbox {
     // MARK: - Layer 3: Dangerous programs (checked per chain/pipeline segment)
 
     private let dangerousPrograms: Set<String> = [
-        "rm", "sudo", "mkfs", "dd", "diskutil", "osascript",
+        "rm", "sudo", "doas", "pkexec", "mkfs", "dd", "diskutil", "osascript",
         "sh", "bash", "zsh", "dash", "csh", "tcsh", "ksh",
         "eval", "exec", "source", "curl", "wget", "nc", "ncat", "telnet",
         "killall", "kill", "launchctl", "csrutil", "nvram", "pmset",
         "security", "defaults", "tccutil", "spctl", "xattr"
     ]
+
+    /// Wrapper/trampoline programs that forward execution to a LATER program.
+    /// A leading wrapper must never hide the real executable from layer 3
+    /// (e.g. `env rm …`, `nohup rm …`, `xargs rm`, `nice -n 10 rm …`).
+    private let wrapperPrograms: Set<String> = [
+        "env", "nice", "nohup", "time", "stdbuf", "setsid", "command", "builtin", "xargs"
+    ]
+
+    /// Flags that introduce a program launched by the current program
+    /// (e.g. `find . -exec rm {} +`, `find . -execdir rm {} +`).
+    private let execIntroducerFlags: Set<String> = ["-exec", "-execdir", "-ok", "-okdir"]
 
     /// Read-only programs allowed to run unsupervised. Anything NOT in this set
     /// and NOT obviously benign is treated as requiring confirmation upstream.
@@ -98,10 +109,14 @@ final class CommandSandbox {
             throw JarvisError.commandBlocked(command: command, reason: "Command obfuscates a blacklisted pattern")
         }
 
-        // Layer 3: program analysis on every pipeline/chain segment
+        // Layer 3: program analysis on every pipeline/chain segment. EVERY
+        // program a segment can actually launch is checked, not merely its
+        // leading token: wrapper/trampoline programs (`env`, `nohup`, `xargs`,
+        // `command`, `nice`, …) and `find -exec`/`-execdir` actions forward
+        // execution to another program, and that program is the one the
+        // dangerous-program list must see.
         for segment in segments(of: normalized) {
-            guard let program = executable(of: segment) else { continue }
-            if dangerousPrograms.contains(program) {
+            for program in executingPrograms(of: segment) where dangerousPrograms.contains(program) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 program): '\(command)' runs dangerous program '\(program)'")
                 throw JarvisError.commandBlocked(command: command, reason: "Program '\(program)' is not permitted")
             }
@@ -227,13 +242,62 @@ final class CommandSandbox {
 
     /// Extract the leading executable of a segment (skipping env assignments).
     private func executable(of segment: String) -> String? {
-        let tokens = segment.split(separator: " ").map(String.init)
-        for token in tokens {
-            if token.contains("=") && token.first?.isLetter == true { continue } // env assignment
-            let name = token.split(separator: "/").last.map(String.init) ?? token
-            return name
+        for token in segment.split(separator: " ").map(String.init) {
+            if isEnvironmentAssignment(token) { continue }
+            return executableName(of: token)
         }
         return nil
+    }
+
+    /// Every program a single segment can cause to execute.
+    ///
+    /// - The primary executable: the first token that is not an environment
+    ///   assignment, an option flag, a numeric option value, or a wrapper
+    ///   program. Wrappers (and their option/numeric arguments) are skipped so
+    ///   `nice -n 10 rm …` resolves to `rm`, not `10`.
+    /// - Any program introduced by an `-exec`/`-execdir`/`-ok` action.
+    private func executingPrograms(of segment: String) -> [String] {
+        let tokens = segment.split(separator: " ").map(String.init)
+        var programs: [String] = []
+
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            // Environment assignments, option flags, and numeric option values
+            // are never the executed program.
+            if isEnvironmentAssignment(token) || token.hasPrefix("-") || token.allSatisfy(\.isNumber) {
+                index += 1
+                continue
+            }
+            let program = executableName(of: token)
+            if wrapperPrograms.contains(program) {
+                // A wrapper forwards to the next program; keep scanning.
+                index += 1
+                continue
+            }
+            programs.append(program)
+            break
+        }
+
+        for (offset, token) in tokens.enumerated() where execIntroducerFlags.contains(token) {
+            guard offset + 1 < tokens.count else { continue }
+            let candidate = tokens[offset + 1]
+            guard !candidate.hasPrefix("-") else { continue }
+            programs.append(executableName(of: candidate))
+        }
+
+        return programs
+    }
+
+    /// True for `NAME=value` environment assignments (leading letter or `_`).
+    private func isEnvironmentAssignment(_ token: String) -> Bool {
+        guard let first = token.first, first.isLetter || first == "_" else { return false }
+        return token.dropFirst().contains("=")
+    }
+
+    /// Basename of a command token (strips a leading path).
+    private func executableName(of token: String) -> String {
+        token.split(separator: "/").last.map(String.init) ?? token
     }
 
     // MARK: - Layer 4 helpers

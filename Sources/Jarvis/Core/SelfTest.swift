@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import CoreGraphics
 import AVFoundation
 import SwiftUI
 import CryptoKit
@@ -63,6 +64,7 @@ enum SelfTest {
         print("╚══════════════════════════════════════════╝\n")
 
         var passed = 0
+        var skipped = 0
         var failures: [String] = []
 
         func check(_ condition: Bool, _ message: String) {
@@ -73,6 +75,11 @@ enum SelfTest {
                 failures.append(message)
                 print("  ✗ FAIL: \(message)")
             }
+        }
+
+        func skip(_ message: String) {
+            skipped += 1
+            print("  ⏭ SKIP: \(message)")
         }
 
         print("\n─── Durable TaskState Restart Recovery ───")
@@ -1711,13 +1718,20 @@ enum SelfTest {
               "Control 9: 'take a screenshot' routes to system.screenshot (.readOnly)")
         check(capScreenMatch?.intent == "system.screenshot" && capScreenMatch?.impact == .readOnly,
               "Control 9: 'capture screen' routes to system.screenshot (.readOnly)")
-        let tempScreenshotURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("test_screenshot_\(UUID().uuidString).png")
-        var screenshotCreated = false
-        if let res = try? sc.takeScreenshot(destination: tempScreenshotURL) {
-            screenshotCreated = FileManager.default.fileExists(atPath: tempScreenshotURL.path) && res.contains("verified")
-            try? FileManager.default.removeItem(at: tempScreenshotURL)
+        if CGPreflightScreenCaptureAccess() {
+            let tempScreenshotURL = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("test_screenshot_\(UUID().uuidString).png")
+            var screenshotCreated = false
+            if let res = try? sc.takeScreenshot(destination: tempScreenshotURL) {
+                screenshotCreated = FileManager.default.fileExists(atPath: tempScreenshotURL.path) && res.contains("verified")
+                try? FileManager.default.removeItem(at: tempScreenshotURL)
+            }
+            check(screenshotCreated, "Control 9: Physical screenshot execution & artifact size verification verified")
+        } else {
+            // Screen Recording permission is an external macOS TCC prerequisite.
+            // Do not request it from the self-test or convert an unavailable
+            // observation into a fabricated pass.
+            skip("Control 9: physical screenshot execution unavailable because Screen Recording access is not granted to this process")
         }
-        check(screenshotCreated, "Control 9: Physical screenshot execution & artifact size verification verified")
 
         // Control 10: Lock Mac
         let lockMacMatch = router.match("lock mac")
@@ -6102,13 +6116,15 @@ enum SelfTest {
         }
 
         print("\n══════════════════════════════════════════")
-        print("  Results: \(passed) passed, \(failures.count) failed, 0 skipped")
+        print("  Results: \(passed) passed, \(failures.count) failed, \(skipped) skipped")
         print("══════════════════════════════════════════\n")
 
-        if failures.isEmpty {
+        if failures.isEmpty && skipped == 0 {
             print("✅ ALL TESTS PASSED")
+        } else if failures.isEmpty {
+            print("⚠️ ALL ASSERTABLE TESTS PASSED (\(skipped) SKIPPED)")
         } else {
-            print("❌ SOME TESTS FAILED (\(failures.count))")
+            print("❌ SOME TESTS FAILED (\(failures.count), \(skipped) skipped)")
         }
     }
 

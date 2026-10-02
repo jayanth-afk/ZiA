@@ -86,12 +86,12 @@ final class CommandSandbox {
     /// analysis cannot see, so a denylist cannot reason about them:
     /// command substitution (`$(…)`, backticks), parameter/brace expansion
     /// (`${…}`), ANSI-C/locale quoting (`$'…'`, `$"…"`), process substitution
-    /// (`<(…)`, `>(…)`), and inline code-execution primitives (`system(…)`,
-    /// `popen(…)`) usable from text processors such as awk. These are invalid
-    /// or unnecessary in Zia's legitimate `run_shell` commands
-    /// (echo/pwd/cat/ls/git/sed/awk field access …), so they are rejected
-    /// outright (fail-closed).
-    private let unsafeShellConstructs: [String] = ["$(", "`", "${", "$'", "$\"", "<(", ">(", "system(", "popen("]
+    /// (`<(…)`, `>(…)`), and inline code-execution primitives usable from text
+    /// processors such as awk (`system(…)`, `popen(…)`, `"cmd" | getline`).
+    /// These are invalid or unnecessary in Zia's legitimate `run_shell`
+    /// commands (echo/pwd/cat/ls/git/sed/awk field access …), so they are
+    /// rejected outright (fail-closed).
+    private let unsafeShellConstructs: [String] = ["$(", "`", "${", "$'", "$\"", "<(", ">(", "system(", "popen(", "| getline", "|getline"]
 
     /// Read-only programs allowed to run unsupervised. Anything NOT in this set
     /// and NOT obviously benign is treated as requiring confirmation upstream.
@@ -166,6 +166,10 @@ final class CommandSandbox {
             where dangerousPrograms.contains(program) || codeExecutionInterpreters.contains(program) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 program): '\(command)' runs dangerous program '\(program)'")
                 throw JarvisError.commandBlocked(command: command, reason: "Program '\(program)' is not permitted")
+            }
+            if let gitRisk = gitExecutionRisk(of: segment) {
+                JarvisLogger.security.fault("BLOCKED (layer 3 git trampoline): '\(command)': \(gitRisk)")
+                throw JarvisError.commandBlocked(command: command, reason: gitRisk)
             }
         }
 
@@ -307,23 +311,8 @@ final class CommandSandbox {
         let tokens = segment.split(separator: " ").map(String.init)
         var programs: [String] = []
 
-        var index = 0
-        while index < tokens.count {
-            let token = tokens[index]
-            // Environment assignments, option flags, and numeric option values
-            // are never the executed program.
-            if isEnvironmentAssignment(token) || token.hasPrefix("-") || token.allSatisfy(\.isNumber) {
-                index += 1
-                continue
-            }
-            let program = executableName(of: token)
-            if wrapperPrograms.contains(program) {
-                // A wrapper forwards to the next program; keep scanning.
-                index += 1
-                continue
-            }
-            programs.append(program)
-            break
+        if let index = primaryExecutableIndex(in: tokens) {
+            programs.append(executableName(of: tokens[index]))
         }
 
         for (offset, token) in tokens.enumerated() where execIntroducerFlags.contains(token) {
@@ -334,6 +323,80 @@ final class CommandSandbox {
         }
 
         return programs
+    }
+
+    /// Index of the token that is the segment's primary executable, applying
+    /// the same environment-assignment / option / numeric / wrapper skipping
+    /// used by `executingPrograms`.
+    private func primaryExecutableIndex(in tokens: [String]) -> Int? {
+        var index = 0
+        while index < tokens.count {
+            let token = tokens[index]
+            if isEnvironmentAssignment(token) || token.hasPrefix("-") || token.allSatisfy(\.isNumber) {
+                index += 1
+                continue
+            }
+            if wrapperPrograms.contains(executableName(of: token)) {
+                index += 1
+                continue
+            }
+            return index
+        }
+        return nil
+    }
+
+    /// Deterministic recognition of `git` forms that LAUNCH another program.
+    /// `git` itself stays allowed (`status`/`log`/`diff`/… are legitimate
+    /// reads), but config overrides and the execution subcommands grant the same
+    /// arbitrary-process authority as the already-blocked interpreters and are
+    /// the missing piece of the layer-3 program analysis. Bounded and O(tokens):
+    /// no language parsing, no process spawning.
+    private func gitExecutionRisk(of segment: String) -> String? {
+        let tokens = segment.split(separator: " ").map(String.init)
+        guard let gitIndex = primaryExecutableIndex(in: tokens),
+              executableName(of: tokens[gitIndex]) == "git",
+              gitIndex + 1 < tokens.count else { return nil }
+        let args = Array(tokens[(gitIndex + 1)...])
+
+        // Global config overrides can define alias/pager/editor/fsmonitor/
+        // sshCommand/credential.helper programs. Matched precisely: `--config*`
+        // is always the global override, while a bare `-c` is a config override
+        // only when followed by a `key=value` token — this avoids false
+        // positives on subcommand flags that merely share the token
+        // (e.g. `git diff -c`, `git show -c`, `git commit -c HEAD`).
+        if args.contains(where: {
+            $0 == "--config" || $0 == "--config-env"
+                || $0.hasPrefix("--config=") || $0.hasPrefix("--config-env=")
+        }) {
+            return "git config override can launch an arbitrary program"
+        }
+        for (i, arg) in args.enumerated() where arg == "-c" {
+            if i + 1 < args.count, !args[i + 1].hasPrefix("-"), args[i + 1].contains("=") {
+                return "git config override can launch an arbitrary program"
+            }
+        }
+        if args.contains(where: { $0 == "--exec" || $0.hasPrefix("--exec=") }) {
+            return "git --exec runs a command"
+        }
+        if args.contains(where: { ["filter-branch", "filter-repo", "difftool", "mergetool"].contains($0) }) {
+            return "git filter-branch/filter-repo/difftool/mergetool launches another program"
+        }
+        if let idx = args.firstIndex(of: "bisect"), args[(idx + 1)...].contains("run") {
+            return "git bisect run executes a command"
+        }
+        if let idx = args.firstIndex(of: "submodule"), args[(idx + 1)...].contains("foreach") {
+            return "git submodule foreach executes a command"
+        }
+        if let idx = args.firstIndex(of: "config") {
+            let rest = Array(args[(idx + 1)...])
+            let writeFlags = ["--add", "--unset", "--unset-all", "--replace-all",
+                              "--rename-section", "--remove-section", "--edit"]
+            if rest.contains(where: { writeFlags.contains($0) })
+                || rest.filter({ !$0.hasPrefix("-") }).count >= 2 {
+                return "git config write can persist an execution program"
+            }
+        }
+        return nil
     }
 
     /// True for `NAME=value` environment assignments (leading letter or `_`).

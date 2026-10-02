@@ -27,7 +27,13 @@ final class ToolExecutor {
             throw JarvisError.actionFailed(action: toolName, reason: "Tool '\(toolName)' is not registered")
         }
 
-        // 1. Permission check
+        // 1. Validate the concrete execution arguments at the final tool choke point.
+        // Callers normally arrive here through PlanValidator/ReferenceResolver, but
+        // ToolExecutor is also a public internal boundary. Never trust an upstream
+        // planner, continuation, or direct caller to have performed schema checks.
+        try validateArguments(arguments, against: tool)
+
+        // 2. Permission check
         _ = try PermissionGate.shared.isAuthorized(actionName: tool.name, impact: tool.impact)
 
         let timer = PipelineTimer()
@@ -60,5 +66,40 @@ final class ToolExecutor {
         JarvisLogger.actions.info("Tool '\(toolName)' executed and verified [\(verification.outcome.rawValue)] in \(String(format: "%.1f", elapsed))ms")
 
         return expected
+    }
+
+    private func validateArguments(_ arguments: [String: any Sendable], against tool: any JarvisTool) throws {
+        let specs = Dictionary(uniqueKeysWithValues: tool.parameterSpec.map { ($0.name, $0) })
+
+        for (name, value) in arguments {
+            guard let spec = specs[name] else {
+                throw JarvisError.actionFailed(
+                    action: tool.name,
+                    reason: "Unknown argument '\(name)' rejected at execution boundary")
+            }
+
+            switch spec.kind {
+            case .string:
+                guard value is String else {
+                    throw JarvisError.actionFailed(
+                        action: tool.name,
+                        reason: "Argument '\(name)' must be a string")
+                }
+            case .int:
+                guard value is Int else {
+                    throw JarvisError.actionFailed(
+                        action: tool.name,
+                        reason: "Argument '\(name)' must be an integer")
+                }
+            }
+        }
+
+        for spec in tool.parameterSpec where spec.required {
+            guard arguments[spec.name] != nil else {
+                throw JarvisError.actionFailed(
+                    action: tool.name,
+                    reason: "Missing required argument '\(spec.name)' at execution boundary")
+            }
+        }
     }
 }

@@ -129,7 +129,10 @@ final class CommandSandbox {
         "GIT_EXTERNAL_DIFF", "GIT_SEQUENCE_EDITOR", "GIT_PROXY_COMMAND",
         // Pager/config redirection gaps: `man`'s pager and git's config source.
         "MANPAGER", "MORE",
-        "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT"
+        "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT",
+        // tar reads extra options from the environment, including the
+        // external-command options handled by tarExecutionRisk(of:).
+        "TAR_OPTIONS"
     ]
 
     /// Environment-variable name prefixes that also redirect execution: git's
@@ -240,6 +243,10 @@ final class CommandSandbox {
             if let gitRisk = gitExecutionRisk(of: segment) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 git trampoline): '\(command)': \(gitRisk)")
                 throw JarvisError.commandBlocked(command: command, reason: gitRisk)
+            }
+            if let tarRisk = tarExecutionRisk(of: segment) {
+                JarvisLogger.security.fault("BLOCKED (layer 3 tar trampoline): '\(command)': \(tarRisk)")
+                throw JarvisError.commandBlocked(command: command, reason: tarRisk)
             }
             if let injectionRisk = environmentInjectionRisk(of: segment) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 env injection): '\(command)': \(injectionRisk)")
@@ -468,6 +475,35 @@ final class CommandSandbox {
             if rest.contains(where: { writeFlags.contains($0) })
                 || rest.filter({ !$0.hasPrefix("-") }).count >= 2 {
                 return "git config write can persist an execution program"
+            }
+        }
+        return nil
+    }
+
+    /// Rejects archive-tool options that launch an external program. bsdtar
+    /// (`/usr/bin/tar`) spawns the program named by `--use-compress-program`/`-I`
+    /// as a subprocess (observed: it attempts to run the supplied command), and
+    /// GNU tar adds `--to-command`/`--to-program` (per-member program) and
+    /// `--checkpoint-action=exec=…`. Each is the same arbitrary-process
+    /// authority as the already-blocked interpreters. Scoped to `tar` so
+    /// ordinary `-i`/`--to-*` flags on other tools are unaffected. O(tokens).
+    private func tarExecutionRisk(of segment: String) -> String? {
+        let tokens = segment.split(separator: " ").map(String.init)
+        guard let tarIndex = primaryExecutableIndex(in: tokens),
+              executableName(of: tokens[tarIndex]) == "tar",
+              tarIndex + 1 < tokens.count else { return nil }
+        for token in tokens[(tarIndex + 1)...] {
+            // `-I` (normalized to lowercase `i`), an attached `-Iprog`, or a
+            // bundled short-option cluster containing it (`-cIf`). macOS
+            // bsdtar has no ordinary `-i` option, so any `i` in a single-dash
+            // cluster means `-I` (fail-closed, scoped to tar).
+            if token.count > 1, token.hasPrefix("-"), !token.hasPrefix("--"), token.contains("i") {
+                return "tar -I/--use-compress-program launches an external program"
+            }
+            if token.hasPrefix("--use-compress") // covers abbreviations
+                || token.hasPrefix("--to-command") || token.hasPrefix("--to-program")
+                || token.hasPrefix("--checkpoint") {
+                return "tar option launches an external program"
             }
         }
         return nil

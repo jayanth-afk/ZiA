@@ -280,7 +280,11 @@ enum ReferenceResolver {
         guard phrases.contains(normalize(goal)) else { return .notApplicable }
           let latest = latestTasks(tasks, action: { $0.toolName == "run_shell" }, now: now, maxAge: maxAge)
           guard !latest.isEmpty else { return .unavailable }
-          guard latest.count == 1, let task = latest.first else { return .ambiguous }
+          // Equal-timestamp independent tasks have no deterministic "latest"
+          // task, so fail closed (unavailable) rather than expose an arbitrary
+          // collection-order winner. Per-task multiple-step ambiguity is handled
+          // below and still surfaces as .ambiguous.
+          guard latest.count == 1, let task = latest.first else { return .unavailable }
           guard task.state == .completed else { return .unavailable }
         let steps = task.steps.filter { $0.toolName == "run_shell" }
         guard steps.count == 1 else { return steps.isEmpty ? .unavailable : .ambiguous }
@@ -301,7 +305,7 @@ enum ReferenceResolver {
         let latest = latestTasks(tasks, action: { $0.toolName == "fetch_url" || $0.toolName == "open_browser" },
                      now: now, maxAge: maxAge)
         guard !latest.isEmpty else { return .unavailable }
-        guard latest.count == 1, let task = latest.first else { return .ambiguous }
+        guard latest.count == 1, let task = latest.first else { return .unavailable }
         guard task.state == .completed else { return .unavailable }
         let steps = task.steps.filter { $0.toolName == "fetch_url" || $0.toolName == "open_browser" }
         guard steps.count == 1 else { return steps.isEmpty ? .unavailable : .ambiguous }
@@ -321,7 +325,7 @@ enum ReferenceResolver {
         guard phrases.contains(normalize(goal)) else { return .notApplicable }
           let latest = latestTasks(tasks, action: { $0.toolName == "write_file" }, now: now, maxAge: maxAge)
           guard !latest.isEmpty else { return .unavailable }
-          guard latest.count == 1, let task = latest.first else { return .ambiguous }
+          guard latest.count == 1, let task = latest.first else { return .unavailable }
           guard task.state == .completed else { return .unavailable }
         var paths = Set<String>()
         for step in task.steps where step.toolName == "write_file" && TaskContinuity.independentlyVerified(step, task: task) {

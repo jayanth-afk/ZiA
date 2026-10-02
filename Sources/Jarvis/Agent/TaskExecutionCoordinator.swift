@@ -50,11 +50,30 @@ actor TaskExecutionCoordinator {
 
         if referencePlan == nil, let deterministic = await MainActor.run(body: { DeterministicRouter.shared.match(normalized) }) {
             route = .deterministic
+            // A deterministic action is still a real production interaction, so
+            // it publishes the same one-task/one-step lifecycle and semantic
+            // phases as the planner path. Telemetry is observational only; the
+            // action is still authorized by PermissionGate inside ActionEngine.
+            let telemetryTaskID = UUID()
+            let telemetryStepID = UUID()
+            await reportInteractionPhase(.understanding)
+            ExecutionTelemetry.shared.record(ExecutionTelemetryEvent(
+                taskID: telemetryTaskID, kind: .taskStarted, phase: .understanding, status: "started"))
+            await reportInteractionPhase(.executing)
+            ExecutionTelemetry.shared.record(ExecutionTelemetryEvent(
+                taskID: telemetryTaskID, stepID: telemetryStepID, kind: .stepStarted,
+                phase: .executing, action: deterministic.intent, status: "started"))
             let result = try await ActionEngine.shared.execute(
                 intent: deterministic.intent,
                 isDeterministic: true,
                 impact: deterministic.impact,
                 action: deterministic.action)
+            ExecutionTelemetry.shared.record(ExecutionTelemetryEvent(
+                taskID: telemetryTaskID, stepID: telemetryStepID, kind: .stepCompleted,
+                phase: .executing, action: deterministic.intent, status: "completed"))
+            ExecutionTelemetry.shared.record(ExecutionTelemetryEvent(
+                taskID: telemetryTaskID, kind: .taskCompleted, phase: .success, status: "completed"))
+            await reportInteractionPhase(.success)
             recordConversationTurn(goal: normalized, response: result)
             return result
         }
@@ -264,16 +283,41 @@ actor TaskExecutionCoordinator {
                         stepNumber: step.stepNumber, toolName: toolName, rawOutput: failure.observed,
                         verification: failure.outcome), for: task.id)
                 }
+                // The verifier actually ran and returned a non-passed outcome
+                // (inconclusive/unavailable/failed): record that completed
+                // verification truthfully instead of collapsing it into only a
+                // generic step failure.
+                if let failure = error as? ToolVerificationFailure {
+                    telemetry(taskID: task.id, step: step, kind: .verificationCompleted,
+                              status: failure.outcome.rawValue, verification: failure.outcome)
+                }
                 let failureCategory = ExecutionFailureCategory.classify(error)
                 telemetry(taskID: task.id, step: step, kind: .stepFailed, status: error.localizedDescription,
                           verification: outcome, failureCategory: failureCategory)
                 lastFailure = (stepNumber: step.stepNumber, purpose: planStep.purpose,
                                tool: planStep.toolName, error: error.localizedDescription)
 
-                // RECOVER: the bounded, real recovery chain — FAILED → RECOVERING →
-                // REPLANNING → replan → RUNNING. The telemetry event records the
-                // attempt; it never authorizes the retry (TaskState transitions do).
+                // Permission denial is a terminal authorization outcome, never a
+                // recoverable step failure: replanning cannot grant authority and
+                // would silently convert the gate's error into a vague task
+                // failure. Close the task FAILED with the real reason and rethrow
+                // the original gate error so the caller can surface/approve it.
+                if case JarvisError.permissionDenied = error {
+                    telemetry(taskID: task.id, step: nil, kind: .taskFailed, status: error.localizedDescription,
+                              failureCategory: failureCategory)
+                    _ = try? stateMachine.transition(taskId: task.id, to: .failed,
+                                                     error: error.localizedDescription)
+                    recordConversationTurn(goal: originalRequest, response: nil)
+                    throw error
+                }
+
+                // RECOVER: the bounded, real recovery chain — RUNNING → FAILED →
+                // RECOVERING → REPLANNING → replan → RUNNING. The telemetry event
+                // records the attempt; it never authorizes the retry (TaskState
+                // transitions do).
                 replanCount += 1
+                _ = try? stateMachine.transition(taskId: task.id, to: .failed,
+                                                 error: error.localizedDescription)
                 _ = try? stateMachine.transition(taskId: task.id, to: .recovering)
                 _ = try? stateMachine.transition(taskId: task.id, to: .replanning)
                 try? stateMachine.incrementRetryCount(taskId: task.id)
@@ -283,7 +327,12 @@ actor TaskExecutionCoordinator {
                 await reportInteractionPhase(.thinking, taskID: task.id)
 
                 do {
-                    if stopRecoveryAfterAttempt {
+                    // Recovery is bounded by the task's persisted retry budget:
+                    // once exhausted, the recorded evidence stands and the task
+                    // closes FAILED rather than replanning without limit.
+                    let retryBudget = stateMachine.getTask(id: task.id)?.retryCount ?? task.retryCount
+                    let retryLimit = stateMachine.getTask(id: task.id)?.maxRetries ?? task.maxRetries
+                    if stopRecoveryAfterAttempt || retryBudget > retryLimit {
                         throw PlanValidationError.noJSONFound
                     }
                     var plannerContext = PlannerContext.initial(goal: recoveryGoal)

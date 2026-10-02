@@ -40,7 +40,11 @@ public final class DeterministicRouter: @unchecked Sendable {
     private let exactMatches: [String: (String, [String: String])]
 
     public init() {
-        let appLaunchRegex = "^(?:open|launch|start|run)\\s+(.+)$"
+        // "run <x>" is intentionally excluded: it is far too ambiguous (e.g.
+        // "run that command again") to authorize an app launch. Explicit
+        // open/launch/start prefixes still route deterministically; everything
+        // else fails closed and reaches the planner/answer path.
+        let appLaunchRegex = "^(?:open|launch|start)\\s+(.+)$"
         let webSearchRegex = "^(?:search|google|find online)\\s+(?:for\\s+)?(.+)$"
         let volUpRegex = "^volume\\s+(?:up|increase)$"
         let volDownRegex = "^volume\\s+(?:down|decrease)$"
@@ -182,12 +186,11 @@ public final class DeterministicRouter: @unchecked Sendable {
                 Date().formatted(date: .long, time: .omitted)
             })
         case "web.search":
-            guard let query = result.parameters["query"] else { return nil }
-            return DeterministicMatch(intent: "web.search", parameters: result.parameters,
-                                      impact: .readOnly, action: {
-                let results = try await WebSearch.shared.search(query: query)
-                return results.map(\.title).joined(separator: "\n")
-            })
+            // Web search is a natural-language research request: it must reach
+            // the planner/web tool path (which owns query shape, citations, and
+            // verification), never be stolen by the deterministic fast path.
+            // Only the planner's bounded explicit-extraction path may answer it.
+            return nil
         default:
             return nil
         }

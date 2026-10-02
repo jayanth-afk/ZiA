@@ -636,19 +636,23 @@ enum SelfTest {
                 _ = try await AgentLoop.shared.runUsingFixedPlanForTesting(
                     goal: crossTurnWriteGoal, plan: crossTurnPlan)
                 let readResponse = try await AgentLoop.shared.run(goal: "open that file")
+                // reading is L0 read-only, so the same resolved follow-up must
+                // still execute normally at L0 (the gate is consulted on the
+                // concrete resolved path, not on the bare anaphor).
                 Config.shared.autonomyLevel = 0
-                var deniedByPermissionGate = false
+                var readOnlyFollowUpSucceeded = false
                 do {
-                    _ = try await AgentLoop.shared.run(goal: "open that file")
+                    let l0Response = try await AgentLoop.shared.run(goal: "open that file")
+                    readOnlyFollowUpSucceeded = l0Response.contains(crossTurnPayload)
                 } catch {
-                    deniedByPermissionGate = true
+                    readOnlyFollowUpSucceeded = false
                 }
                 Config.shared.autonomyLevel = 1
+                let resolvedReference = ReferenceResolver.resolveCrossTurnFileReference(
+                    goal: "open that file", tasks: TaskStateMachine.shared.allTasks)
                 crossTurnReferenceE2E = readResponse.contains(crossTurnPayload)
-                    && deniedByPermissionGate
-                    && ReferenceResolver.resolveCrossTurnFileReference(
-                        goal: "open that file", tasks: TaskStateMachine.shared.allTasks)
-                        == .resolved(path: crossTurnPath)
+                    && readOnlyFollowUpSucceeded
+                    && resolvedReference == .resolved(path: crossTurnPath)
             } catch {
                 print("  ✗ Cross-turn file reference E2E failed: \(error.localizedDescription)")
                 crossTurnReferenceE2E = false
@@ -1194,12 +1198,16 @@ enum SelfTest {
         let rm = ResourceManager.shared
         check(rm.totalMemoryMB > 0, "Total memory detected: \(rm.totalMemoryMB)MB")
 
+        // The registry is a shared singleton: earlier production-path E2E runs
+        // may legitimately have loaded the on-device planner model, so assert
+        // the observable delta rather than an absolute empty-registry total.
+        let modelMemoryBaseline = rm.totalModelMemoryMB
         rm.registerModelLoaded("test-model", estimatedMB: 100)
         check(rm.loadedModels["test-model"] != nil, "Model registered")
-        check(rm.totalModelMemoryMB == 100, "Model memory tracked")
+        check(rm.totalModelMemoryMB == modelMemoryBaseline + 100, "Model memory tracked")
         rm.registerModelUnloaded("test-model")
         check(rm.loadedModels["test-model"] == nil, "Model unregistered")
-        check(rm.totalModelMemoryMB == 0, "Model memory freed")
+        check(rm.totalModelMemoryMB == modelMemoryBaseline, "Model memory freed")
 
         // ── Phase 2: Voice Subsystem Tests ──
         print("\n─── Phase 2: Audio Permissions & Capture ───")
@@ -3961,7 +3969,11 @@ enum SelfTest {
         _ = try? sm4.appendResolutionRecord(incRecord, for: inconclusiveTask.id)
         var blockedResolution = false
         do {
-            let records = sm4.resolutionRecords(for: inconclusiveTask.id)
+            // Exercise the resolver's own evidence gate directly: the state
+            // machine only surfaces independently-verified records, so the
+            // synthetic unverified record is supplied here to prove the
+            // resolver still rejects it deterministically.
+            let records: [Int: StepResolutionRecord] = [inconclusiveStep.stepNumber: incRecord]
             _ = try ReferenceResolver.resolveTarget(
                 target: .stepOutput(stepNumber: 1, field: nil),
                 currentStepNumber: 2,
@@ -5301,7 +5313,9 @@ enum SelfTest {
         _ = try? smFail.appendResolutionRecord(failedDepRecord, for: failTask.id)
         var failedDepBlocked = false
         do {
-            let records = smFail.resolutionRecords(for: failTask.id)
+            // Exercise the resolver's own evidence gate directly (see TEST I):
+            // the state machine only surfaces independently-verified records.
+            let records: [Int: StepResolutionRecord] = [failedDepStep.stepNumber: failedDepRecord]
             _ = try ReferenceResolver.resolveTarget(
                 target: .stepOutput(stepNumber: 1, field: nil),
                 currentStepNumber: 2,

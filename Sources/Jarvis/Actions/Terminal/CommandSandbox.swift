@@ -12,8 +12,10 @@ import Foundation
 ///   3. Program analysis — EVERY program a pipeline/chain segment can launch is
 ///      checked against a dangerous-program list, unwrapping wrapper/trampoline
 ///      programs (env/nohup/xargs/nice/…) and `find -exec`, and rejecting
-///      code-evaluation interpreters (python/node/ruby/swift/…) as the same
-///      class as the already-blocked sh/bash/eval/osascript
+///      code-evaluation interpreters (python/node/ruby/swift/…), build/package
+///      runners, interactive programs (vim/less/gdb/…), and remote-execution
+///      launchers (ssh/scp/rsync/ftp/…) as the same class as the
+///      already-blocked sh/bash/eval/osascript
 ///   4. Protected-target scan — destructive verbs aimed at protected paths
 ///      (/, /System, ~/.ssh, etc.) are always blocked
 ///   5. Exfiltration heuristics — local credential files piped/posted to network
@@ -87,6 +89,31 @@ final class CommandSandbox {
         "brew", "docker", "podman", "fastlane"
     ]
 
+    /// Interactive programs with a documented child-process escape: editors
+    /// (`:!cmd`, `--eval`, `-c`), pagers (`!cmd`), `man` (`-P`, MANPAGER),
+    /// debuggers (`shell`), and database CLIs (`.shell`/`system`). Zia runs
+    /// `run_shell` non-interactively and has no production or test use of any
+    /// of them, so they are the same execution-capability class as the
+    /// interpreters and build runners.
+    private let interactiveEscapePrograms: Set<String> = [
+        "vim", "vi", "nvim", "ex", "ed", "emacs", "nano", "pico", "joe", "micro",
+        "less", "more", "most", "pg",
+        "man",
+        "gdb", "lldb",
+        "sqlite3", "mysql", "psql", "mongo", "mongosh", "redis-cli"
+    ]
+
+    /// Remote-execution / network-launcher programs. Each can launch another
+    /// program (or ship data to an arbitrary host): `ssh [host] <command>` runs
+    /// an arbitrary remote command and `ssh -o ProxyCommand=`/`LocalCommand` run
+    /// a LOCAL one; `rsync -e`/`--rsh` runs an arbitrary local transport; `ftp`
+    /// exposes a local `!command` escape; `scp`/`sftp`/`rcp` target arbitrary
+    /// hosts. Zia has no production or test use of any of them, so they are the
+    /// same execution-capability class as the interpreters and build runners.
+    private let remoteExecutionPrograms: Set<String> = [
+        "ssh", "scp", "sftp", "rsync", "rcp", "rlogin", "rexec", "ftp"
+    ]
+
     /// Environment variables that redirect program loading or command
     /// resolution. Assigning one in command position can turn an allowed binary
     /// into a trampoline (e.g. `DYLD_INSERT_LIBRARIES=… ls`, `PATH=… ls`,
@@ -99,8 +126,16 @@ final class CommandSandbox {
         "PYTHONSTARTUP", "NODE_OPTIONS", "PERL5OPT", "PERL5LIB", "RUBYOPT", "RUBYLIB",
         "PAGER", "LESSOPEN", "LESSCLOSE", "EDITOR", "VISUAL",
         "GIT_PAGER", "GIT_EDITOR", "GIT_SSH", "GIT_SSH_COMMAND",
-        "GIT_EXTERNAL_DIFF", "GIT_SEQUENCE_EDITOR", "GIT_PROXY_COMMAND"
+        "GIT_EXTERNAL_DIFF", "GIT_SEQUENCE_EDITOR", "GIT_PROXY_COMMAND",
+        // Pager/config redirection gaps: `man`'s pager and git's config source.
+        "MANPAGER", "MORE",
+        "GIT_CONFIG", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM", "GIT_CONFIG_COUNT"
     ]
+
+    /// Environment-variable name prefixes that also redirect execution: git's
+    /// `GIT_CONFIG_KEY_<n>`/`GIT_CONFIG_VALUE_<n>` can define an arbitrary
+    /// pager/alias program.
+    private let injectionVariablePrefixes: [String] = ["GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_"]
 
     /// Wrapper/trampoline programs that forward execution to a LATER program.
     /// A leading wrapper must never hide the real executable from layer 3
@@ -196,7 +231,9 @@ final class CommandSandbox {
             for program in executingPrograms(of: segment)
             where dangerousPrograms.contains(program)
                 || codeExecutionInterpreters.contains(program)
-                || codeExecutionRunners.contains(program) {
+                || codeExecutionRunners.contains(program)
+                || interactiveEscapePrograms.contains(program)
+                || remoteExecutionPrograms.contains(program) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 program): '\(command)' runs dangerous program '\(program)'")
                 throw JarvisError.commandBlocked(command: command, reason: "Program '\(program)' is not permitted")
             }
@@ -447,7 +484,8 @@ final class CommandSandbox {
             guard let equals = token.firstIndex(of: "=") else { continue }
             let name = String(token[..<equals]).uppercased()
             guard !name.isEmpty, name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { continue }
-            if injectionVariables.contains(name) {
+            if injectionVariables.contains(name)
+                || injectionVariablePrefixes.contains(where: { name.hasPrefix($0) }) {
                 return "environment variable \(name) can redirect program loading or execution"
             }
         }

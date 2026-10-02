@@ -71,6 +71,37 @@ final class CommandSandbox {
         "swift", "swiftc"
     ]
 
+    /// Build / package / task runners whose whole function is to execute
+    /// project- or package-controlled code (build files, install hooks,
+    /// plugins). They are the same capability class as the interpreters above;
+    /// the repository inventory shows Zia has no production or test usage of
+    /// any of them, so they are rejected as unsupported execution capabilities.
+    private let codeExecutionRunners: Set<String> = [
+        "make", "gmake", "cmake", "ninja",
+        "npm", "npx", "pnpm", "yarn", "bunx",
+        "cargo", "go",
+        "xcodebuild", "xcrun",
+        "bazel", "gradle", "mvn", "ant",
+        "rake", "bundle", "bundler", "gem",
+        "pip", "pip3", "poetry", "conda",
+        "brew", "docker", "podman", "fastlane"
+    ]
+
+    /// Environment variables that redirect program loading or command
+    /// resolution. Assigning one in command position can turn an allowed binary
+    /// into a trampoline (e.g. `DYLD_INSERT_LIBRARIES=… ls`, `PATH=… ls`,
+    /// `GIT_PAGER=… git log`), so those assignments are rejected.
+    private let injectionVariables: Set<String> = [
+        "PATH", "IFS", "BASH_ENV", "ENV", "SHELLOPTS", "BASHOPTS",
+        "LD_PRELOAD", "LD_LIBRARY_PATH", "LD_AUDIT",
+        "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH",
+        "DYLD_FALLBACK_LIBRARY_PATH", "DYLD_FALLBACK_FRAMEWORK_PATH",
+        "PYTHONSTARTUP", "NODE_OPTIONS", "PERL5OPT", "PERL5LIB", "RUBYOPT", "RUBYLIB",
+        "PAGER", "LESSOPEN", "LESSCLOSE", "EDITOR", "VISUAL",
+        "GIT_PAGER", "GIT_EDITOR", "GIT_SSH", "GIT_SSH_COMMAND",
+        "GIT_EXTERNAL_DIFF", "GIT_SEQUENCE_EDITOR", "GIT_PROXY_COMMAND"
+    ]
+
     /// Wrapper/trampoline programs that forward execution to a LATER program.
     /// A leading wrapper must never hide the real executable from layer 3
     /// (e.g. `env rm …`, `nohup rm …`, `xargs rm`, `nice -n 10 rm …`).
@@ -163,13 +194,19 @@ final class CommandSandbox {
         // dangerous-program list must see.
         for segment in segments(of: normalized) {
             for program in executingPrograms(of: segment)
-            where dangerousPrograms.contains(program) || codeExecutionInterpreters.contains(program) {
+            where dangerousPrograms.contains(program)
+                || codeExecutionInterpreters.contains(program)
+                || codeExecutionRunners.contains(program) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 program): '\(command)' runs dangerous program '\(program)'")
                 throw JarvisError.commandBlocked(command: command, reason: "Program '\(program)' is not permitted")
             }
             if let gitRisk = gitExecutionRisk(of: segment) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 git trampoline): '\(command)': \(gitRisk)")
                 throw JarvisError.commandBlocked(command: command, reason: gitRisk)
+            }
+            if let injectionRisk = environmentInjectionRisk(of: segment) {
+                JarvisLogger.security.fault("BLOCKED (layer 3 env injection): '\(command)': \(injectionRisk)")
+                throw JarvisError.commandBlocked(command: command, reason: injectionRisk)
             }
         }
 
@@ -394,6 +431,24 @@ final class CommandSandbox {
             if rest.contains(where: { writeFlags.contains($0) })
                 || rest.filter({ !$0.hasPrefix("-") }).count >= 2 {
                 return "git config write can persist an execution program"
+            }
+        }
+        return nil
+    }
+
+    /// Rejects environment assignments in COMMAND POSITION that redirect
+    /// program loading or command resolution. Only assignments before the
+    /// primary executable are considered — `echo FOO=bar` keeps NAME=value as an
+    /// ordinary argument and is not injection.
+    private func environmentInjectionRisk(of segment: String) -> String? {
+        let tokens = segment.split(separator: " ").map(String.init)
+        let programIndex = primaryExecutableIndex(in: tokens) ?? tokens.count
+        for token in tokens.prefix(programIndex) {
+            guard let equals = token.firstIndex(of: "=") else { continue }
+            let name = String(token[..<equals]).uppercased()
+            guard !name.isEmpty, name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else { continue }
+            if injectionVariables.contains(name) {
+                return "environment variable \(name) can redirect program loading or execution"
             }
         }
         return nil

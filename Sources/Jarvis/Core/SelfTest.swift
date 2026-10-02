@@ -2238,8 +2238,9 @@ enum SelfTest {
                 normalOk = out.stdout.trimmingCharacters(in: .whitespacesAndNewlines) == "test_selftest_exec" && out.exitCode == 0
             }
 
-            // 2. Large output (>64KB pipe buffer)
-            if let out = try? await ShellExecutor.shared.execute("python3 -c 'print(\"X\" * 100000)'", timeoutSeconds: 5.0) {
+            // 2. Large output (>64KB pipe buffer). `seq` is an ordinary
+            // allowed program (interpreters are rejected by the sandbox).
+            if let out = try? await ShellExecutor.shared.execute("seq 1 30000", timeoutSeconds: 5.0) {
                 largeOk = out.stdout.count >= 100000 && out.exitCode == 0
             }
 

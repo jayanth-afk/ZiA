@@ -6,8 +6,14 @@ import Foundation
 ///   1. Exact-pattern blacklist (fast path, defense in depth)
 ///   2. Normalized rescan — strips quoting/substitution syntax before re-checking
 ///      (defeats r'm' -'r'f, $(echo rm) -rf, base64|sh chains, osascript injection)
-///   3. Program analysis — each pipeline/chain segment's executable is checked
-///      against a dangerous-program list (defeats "echo safe && rm -rf /")
+///   2b. Command-generation rejection — command substitution, backtick/parameter/
+///      ANSI-C expansion, process substitution, and `system(`/`popen(` could
+///      synthesize a command layer 3 never sees, so they are rejected outright
+///   3. Program analysis — EVERY program a pipeline/chain segment can launch is
+///      checked against a dangerous-program list, unwrapping wrapper/trampoline
+///      programs (env/nohup/xargs/nice/…) and `find -exec`, and rejecting
+///      code-evaluation interpreters (python/node/ruby/swift/…) as the same
+///      class as the already-blocked sh/bash/eval/osascript
 ///   4. Protected-target scan — destructive verbs aimed at protected paths
 ///      (/, /System, ~/.ssh, etc.) are always blocked
 ///   5. Exfiltration heuristics — local credential files piped/posted to network
@@ -47,6 +53,24 @@ final class CommandSandbox {
         "security", "defaults", "tccutil", "spctl", "xattr"
     ]
 
+    /// General-purpose language runtimes that evaluate code supplied inline
+    /// (`-c`/`-e`/`--eval`), as a module (`-m`), or from a script file. They
+    /// grant the same arbitrary filesystem/process/network authority as the
+    /// already-blocked `sh`/`bash`/`eval`/`exec`/`osascript`, so they are
+    /// rejected by the same deterministic boundary. Zia has no production
+    /// dependency on running interpreter code through `run_shell`, so the
+    /// policy is fail-closed (whole-program rejection) rather than attempting
+    /// to parse arbitrary languages.
+    private let codeExecutionInterpreters: Set<String> = [
+        "python", "python2", "python3", "pythonw",
+        "perl", "ruby", "irb",
+        "node", "nodejs", "deno", "bun",
+        "php", "php7", "php8",
+        "lua", "luajit", "tclsh", "wish",
+        "rscript", "julia",
+        "swift", "swiftc"
+    ]
+
     /// Wrapper/trampoline programs that forward execution to a LATER program.
     /// A leading wrapper must never hide the real executable from layer 3
     /// (e.g. `env rm …`, `nohup rm …`, `xargs rm`, `nice -n 10 rm …`).
@@ -58,12 +82,23 @@ final class CommandSandbox {
     /// (e.g. `find . -exec rm {} +`, `find . -execdir rm {} +`).
     private let execIntroducerFlags: Set<String> = ["-exec", "-execdir", "-ok", "-okdir"]
 
+    /// Constructs that EXECUTE or SYNTHESIZE a command the layer-3 program
+    /// analysis cannot see, so a denylist cannot reason about them:
+    /// command substitution (`$(…)`, backticks), parameter/brace expansion
+    /// (`${…}`), ANSI-C/locale quoting (`$'…'`, `$"…"`), process substitution
+    /// (`<(…)`, `>(…)`), and inline code-execution primitives (`system(…)`,
+    /// `popen(…)`) usable from text processors such as awk. These are invalid
+    /// or unnecessary in Zia's legitimate `run_shell` commands
+    /// (echo/pwd/cat/ls/git/sed/awk field access …), so they are rejected
+    /// outright (fail-closed).
+    private let unsafeShellConstructs: [String] = ["$(", "`", "${", "$'", "$\"", "<(", ">(", "system(", "popen("]
+
     /// Read-only programs allowed to run unsupervised. Anything NOT in this set
     /// and NOT obviously benign is treated as requiring confirmation upstream.
     private let knownSafePrograms: Set<String> = [
         "ls", "cat", "head", "tail", "grep", "find", "wc", "file", "stat",
         "pwd", "echo", "date", "whoami", "uname", "df", "du", "ps", "top",
-        "which", "git", "swift", "swiftc", "python3", "sed", "awk", "sort",
+        "which", "git", "sed", "awk", "sort",
         "uniq", "diff", "less", "open", "mdfind", "env", "printenv", "true", "false"
     ]
 
@@ -109,6 +144,17 @@ final class CommandSandbox {
             throw JarvisError.commandBlocked(command: command, reason: "Command obfuscates a blacklisted pattern")
         }
 
+        // Layer 2b: reject shell command generation / inline code execution. A
+        // denylist cannot see through command substitution, backtick/parameter/
+        // ANSI-C expansion, process substitution, or `system(`/`popen(` — the
+        // shell (or a text processor) runs a command that layer 3 never sees
+        // (e.g. `echo hi$(rm file)`). Evaluated on the raw cleaned command so
+        // the construct syntax is still intact.
+        for construct in unsafeShellConstructs where cleaned.contains(construct) {
+            JarvisLogger.security.fault("BLOCKED (layer 2b command generation): '\(command)' contains '\(construct)'")
+            throw JarvisError.commandBlocked(command: command, reason: "Shell command generation '\(construct)' is not permitted")
+        }
+
         // Layer 3: program analysis on every pipeline/chain segment. EVERY
         // program a segment can actually launch is checked, not merely its
         // leading token: wrapper/trampoline programs (`env`, `nohup`, `xargs`,
@@ -116,7 +162,8 @@ final class CommandSandbox {
         // execution to another program, and that program is the one the
         // dangerous-program list must see.
         for segment in segments(of: normalized) {
-            for program in executingPrograms(of: segment) where dangerousPrograms.contains(program) {
+            for program in executingPrograms(of: segment)
+            where dangerousPrograms.contains(program) || codeExecutionInterpreters.contains(program) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 program): '\(command)' runs dangerous program '\(program)'")
                 throw JarvisError.commandBlocked(command: command, reason: "Program '\(program)' is not permitted")
             }

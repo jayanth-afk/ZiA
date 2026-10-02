@@ -160,9 +160,11 @@ import Testing
     /// without deadlocking. The standard pipe buffer on macOS is 64KB.
     @Test
     func largeOutputNoPipeDeadlock() async throws {
-        // Generate ~100KB of output (well above 64KB pipe buffer)
+        // Generate ~165KB of output (well above the 64KB pipe buffer). `seq`
+        // is an ordinary allowed program; interpreters are rejected by the
+        // sandbox, so the deadlock property is proven without one.
         let output = try await ShellExecutor.shared.execute(
-            "python3 -c 'print(\"A\" * 100000)'",
+            "seq 1 30000",
             timeoutSeconds: 10.0)
         #expect(output.exitCode == 0)
         #expect(output.stdout.count > 50000,

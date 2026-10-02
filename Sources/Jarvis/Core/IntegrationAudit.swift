@@ -1311,7 +1311,13 @@ enum IntegrationAudit {
             ("Wrapper Trampoline (env)", "env rm ~/Documents/zia_probe.txt"),
             ("Wrapper Trampoline (xargs)", "printf '%s' ~/Documents/zia_probe.txt | xargs rm"),
             ("find -exec Trampoline", "find ~/Documents -name '*.tmp' -exec rm {} +"),
-            ("Privilege Alternative (doas)", "doas rm ~/Documents/zia_probe.txt")
+            ("Privilege Alternative (doas)", "doas rm ~/Documents/zia_probe.txt"),
+            ("Interpreter Code Eval (python3 -c)", "python3 -c \"import os; os.remove('x')\""),
+            ("Interpreter Module (python3 -m)", "python3 -m http.server"),
+            ("Interpreter Script (node)", "node script.js"),
+            ("Command Substitution (prefix)", "echo hi$(rm ~/Documents/zia_probe.txt)"),
+            ("Parameter Expansion Obfuscation", "echo ${IFS}rm ~/Documents/zia_probe.txt"),
+            ("Process Substitution", "cat <(rm ~/Documents/zia_probe.txt)")
         ]
 
         var blockedCount = 0

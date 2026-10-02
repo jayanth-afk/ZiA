@@ -1337,8 +1337,8 @@ enum SelfTest {
 
         print("\n─── Phase 2: TTS Engine & Barge-In ───")
         let tts = TTSEngine.shared
+        tts.stop() // Halt any lingering emergency ack utterance
         check(!tts.isSpeaking, "TTS is idle initially")
-        tts.stop() // Safe no-op when idle
         check(true, "TTS stop when idle does not crash")
 
         // Barge-in preemption test
@@ -1958,6 +1958,96 @@ enum SelfTest {
         check(DestructiveActionManager.shared.pendingAction != nil, "Destructive action 2 is staged")
         EmergencyInterrupt.shared.triggerEmergencyStop(phrase: "stop")
         check(DestructiveActionManager.shared.pendingAction == nil, "Emergency stop aborts and clears pending destructive action")
+
+        // ── Phase 3: Emergency Stop Production Contract & Latch Invariance ──
+        print("\n─── Phase 3: Emergency Stop Production Pipeline & Latch Invariance ───")
+        let emSem = DispatchSemaphore(value: 0)
+        var emStopDeterministic = false
+        var emJarvisStopDeterministic = false
+        var emZeroModelCalls = false
+        var emTurn2NotBlocked = false
+        var emTurn3NotBlocked = false
+        var emDestructiveCancelled = false
+        var emDestructiveCommitBlocked = false
+
+        Task { @MainActor in
+            let prevAutonomy = Config.shared.autonomyLevel
+            Config.shared.autonomyLevel = 2
+            defer { Config.shared.autonomyLevel = prevAutonomy }
+
+            // 1. Standalone "stop" via production pipeline: deterministic, returns "Stopped."
+            let runID1 = MLXPlanner.shared.beginLedgerRun()
+            let resp1 = try? await AgentLoop.shared.run(goal: "stop")
+            let route1 = await AgentLoop.shared.latestRoute()
+            let records1 = await MLXPlanner.shared.ledgerRecords(runID: runID1)
+            MLXPlanner.shared.endLedgerRun()
+
+            if resp1 == "Stopped." && route1 == .deterministic {
+                emStopDeterministic = true
+            }
+
+            // 2. "Jarvis, stop" via production pipeline: deterministic, returns "Stopped."
+            let runID2 = MLXPlanner.shared.beginLedgerRun()
+            let resp2 = try? await AgentLoop.shared.run(goal: "Jarvis, stop")
+            let route2 = await AgentLoop.shared.latestRoute()
+            let records2 = await MLXPlanner.shared.ledgerRecords(runID: runID2)
+            MLXPlanner.shared.endLedgerRun()
+
+            if resp2 == "Stopped." && route2 == .deterministic {
+                emJarvisStopDeterministic = true
+            }
+
+            // Zero model calls verified against MLXPlanner attempt ledger
+            if records1.isEmpty && records2.isEmpty {
+                emZeroModelCalls = true
+            }
+
+            // 3. Same-process latch poisoning: stop <| open Calculator <| what time is it
+            _ = try? await AgentLoop.shared.run(goal: "stop")
+
+            // Turn 2: open Calculator (must not be blocked by previous stop)
+            let turn2Resp = (try? await AgentLoop.shared.run(goal: "open Calculator")) ?? ""
+            let turn2Route = await AgentLoop.shared.latestRoute()
+            if turn2Route == .deterministic && (turn2Resp.contains("Calculator") || turn2Resp.contains("Switched") || turn2Resp.contains("Opened")) {
+                emTurn2NotBlocked = true
+            }
+
+            // Turn 3: what time is it (must not be blocked by previous stop)
+            let turn3Resp = (try? await AgentLoop.shared.run(goal: "what time is it")) ?? ""
+            let turn3Route = await AgentLoop.shared.latestRoute()
+            if turn3Route == .deterministic && (turn3Resp.contains("time is") || turn3Resp.contains("The time")) {
+                emTurn3NotBlocked = true
+            }
+
+            // 4. DestructiveActionManager invariant under emergency stop
+            DestructiveActionManager.shared.requestPreview(
+                intent: "system.test_destructive_pipeline",
+                description: "Test pipeline emergency stop abort"
+            ) {
+                return "should_never_execute"
+            }
+            _ = try? await AgentLoop.shared.run(goal: "stop")
+            if DestructiveActionManager.shared.pendingAction == nil {
+                emDestructiveCancelled = true
+            }
+            do {
+                _ = try await DestructiveActionManager.shared.commit()
+            } catch {
+                emDestructiveCommitBlocked = true
+            }
+
+            emSem.signal()
+        }
+        while emSem.wait(timeout: .now() + 0.1) == .timedOut {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+        }
+
+        check(emStopDeterministic, "emergency stop: 'stop' handled deterministically through production AgentLoop (returns 'Stopped.')")
+        check(emJarvisStopDeterministic, "emergency stop: 'Jarvis, stop' handled deterministically through production AgentLoop (returns 'Stopped.')")
+        check(emZeroModelCalls, "emergency stop: zero model calls verified via MLXPlanner attempt ledger")
+        check(emTurn2NotBlocked, "emergency stop latch invariance: Turn 2 'open Calculator' succeeds after stop (no latch poisoning)")
+        check(emTurn3NotBlocked, "emergency stop latch invariance: Turn 3 'what time is it' succeeds after stop")
+        check(emDestructiveCancelled && emDestructiveCommitBlocked, "emergency stop destructive safety: cancels pending action in DestructiveActionManager and subsequent commit fails closed")
 
         // ── Phase 4: Local Reflex & Normal Model Tests ──
         print("\n─── Phase 4: Conversation & Message Model ───")

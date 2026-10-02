@@ -27,7 +27,31 @@ actor TaskExecutionCoordinator {
         guard !normalized.isEmpty else {
             throw JarvisError.actionFailed(action: "AgentLoop.run", reason: "Query cannot be empty")
         }
+        // A completed emergency stop must halt the request that was in flight,
+        // but it must not permanently poison the session. The latch is set when
+        // the stop event is delivered to running work; a NEW top-level request
+        // therefore starts from a clean stop state (same lifecycle rule already
+        // used by AgentLoop.processUserQuery). In-flight work is unaffected
+        // because the stop event reaches it at stop time, not on a later request.
+        AgentLoop.shared.resetEmergencyCancellation()
         try checkCancellation()
+
+        // Emergency stop is a deterministic, zero-model-call pipeline gate at
+        // EVERY entry point — not just the voice transcript path. A typed or
+        // CLI command like "stop" / "Jarvis, stop" must halt deterministically
+        // and must never be forwarded to the planner (which could fetch, plan,
+        // or execute while the user asked for an immediate stop). Reuse the
+        // exact same phrase detector the voice path uses so there is one
+        // authority; it also publishes EmergencyStopEvent to cancel in-flight
+        // work. The stop is honored before any routing or reference resolution.
+        if await MainActor.run(body: { EmergencyInterrupt.shared.checkForEmergency(in: normalized) }) {
+            // Route attribution is truthful: the stop is handled deterministically
+            // with zero model calls (same category as cancel/abort).
+            route = .deterministic
+            await reportInteractionPhase(.stopped)
+            recordConversationTurn(goal: normalized, response: nil)
+            return "Stopped."
+        }
 
         if let continuity = TaskContinuity.query(for: normalized) {
             if continuity == .continueTask {

@@ -528,8 +528,18 @@ final class TaskStateMachine: @unchecked Sendable {
             throw JarvisError.actionFailed(action: "TaskState.persist", reason: "Task is not valid for persistence")
         }
         guard Self.isSafeToPersist(task) else { return false }
-        guard persistentTaskIDs.count < Self.maxPersistedTasks || persistentTaskIDs.contains(taskId) else {
-            throw JarvisError.actionFailed(action: "TaskState.persist", reason: "TaskState snapshot task limit reached")
+        // Bounded retention: at capacity, reclaim the slot of the least
+        // recovery-critical terminal task instead of refusing to persist the new
+        // task. Active, FAILED (recoverable), and unstarted work is never
+        // evicted; only fully-completed (then oldest cancelled) history is
+        // reclaimed, oldest first. If every retained task is still live the
+        // store is genuinely exhausted and the write fails closed.
+        if !persistentTaskIDs.contains(taskId), persistentTaskIDs.count >= Self.maxPersistedTasks {
+            guard let reclaimed = Self.reclaimableTaskID(in: persistentTaskIDs.compactMap { tasks[$0] }) else {
+                throw JarvisError.actionFailed(action: "TaskState.persist", reason: "TaskState snapshot task limit reached")
+            }
+            persistentTaskIDs.remove(reclaimed)
+            JarvisLogger.actions.warning("TaskState retention: evicted terminal task [\(reclaimed.uuidString.prefix(8))] to enroll a new task")
         }
         let inserted = persistentTaskIDs.insert(taskId).inserted
         do {
@@ -618,6 +628,32 @@ final class TaskStateMachine: @unchecked Sendable {
         }
         try data.write(to: url, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    /// The oldest terminal task whose persisted slot may be reclaimed under
+    /// bounded retention. Only COMPLETED (fully finished work) and, failing
+    /// that, CANCELLED (terminal history) are eligible — active and FAILED
+    /// (recoverable) tasks are recovery-critical and never evicted. COMPLETED is
+    /// preferred over CANCELLED because a cancelled task may still be a
+    /// user-authorized continuation target; within a rank the oldest (by
+    /// completion/update time) is reclaimed first. Returns nil when nothing is
+    /// safely reclaimable.
+    private static func reclaimableTaskID(in candidates: [JarvisTask]) -> UUID? {
+        func rank(_ state: TaskState) -> Int? {
+            switch state {
+            case .completed: return 0
+            case .cancelled: return 1
+            default: return nil
+            }
+        }
+        let eligible = candidates.compactMap { task -> (rank: Int, at: Date, id: UUID)? in
+            guard let rank = rank(task.state) else { return nil }
+            return (rank, task.completedAt ?? task.updatedAt, task.id)
+        }
+        return eligible.min { lhs, rhs in
+            if lhs.rank != rhs.rank { return lhs.rank < rhs.rank }
+            return lhs.at < rhs.at
+        }?.id
     }
 
     private static func isSafeToPersist(_ task: JarvisTask) -> Bool {

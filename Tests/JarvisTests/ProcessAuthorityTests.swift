@@ -327,6 +327,30 @@ import Testing
         try ProcessAuthority.shared.revalidateAtLaunch(authorized)
     }
 
+    /// Directly attempts to mutate an authorized request via the caller's own
+    /// value. `AuthorizedProcess` is a value type with `let` fields and a
+    /// `fileprivate` initializer, so neither mutating the source array nor
+    /// hand-constructing a changed request can alter what was authorized.
+    @Test @MainActor
+    func authorizedRequestIsImmutableAgainstCallerMutation() throws {
+        var arguments = ["original"]
+        let authorized = try ProcessAuthority.shared.authorize(
+            .structured(executable: "/bin/echo", arguments: arguments))
+        let identity = authorized.identity
+
+        arguments.append("mutated")
+        arguments[0] = "changed"
+
+        // Mutating the caller's array cannot change what was authorized.
+        #expect(authorized.arguments == ["original"])
+        #expect(authorized.identity == identity)
+
+        // The mutated arguments are a separate, re-authorizable decision.
+        let other = try ProcessAuthority.shared.authorize(
+            .structured(executable: "/bin/echo", arguments: arguments))
+        #expect(other.identity != identity)
+    }
+
     // MARK: - 23/24. Replay cannot transfer authority to a different action
 
     @Test @MainActor

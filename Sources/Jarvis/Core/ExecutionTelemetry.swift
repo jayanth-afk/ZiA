@@ -30,6 +30,28 @@ enum ExecutionFailureCategory: String, Sendable, Codable {
     }
 }
 
+/// Classified retry policy. Recovery replans ONLY when the failure is plausibly
+/// recoverable; a deterministic or authorization failure closes the task with
+/// its recorded evidence rather than replanning without limit.
+///
+/// - `.permission` is authorization: replanning cannot grant authority.
+/// - `.cancellation` is a deliberate stop.
+/// - `.syntax` is malformed structured output: a replan of the same malformed
+///   input cannot help.
+/// - `.semantic`, `.execution`, `.verification`, `.timeout`, `.unavailable`,
+///   and `.unknown` may be recoverable because recovery produces a DIFFERENT
+///   validated plan from the recorded failure context, not a blind re-run.
+enum RecoveryPolicy {
+    static func isRecoverable(_ category: ExecutionFailureCategory) -> Bool {
+        switch category {
+        case .permission, .cancellation, .syntax:
+            return false
+        case .semantic, .execution, .verification, .timeout, .unavailable, .unknown:
+            return true
+        }
+    }
+}
+
 enum ExecutionTelemetryKind: String, Sendable, Codable {
     case taskStarted, stepStarted, stepCompleted, stepFailed, recoveryAttempted
     case verificationCompleted, taskCompleted, taskFailed, stopped

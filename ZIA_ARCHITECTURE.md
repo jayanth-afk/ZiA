@@ -102,6 +102,13 @@ Layered, cheap-first cognition:
 - **Zia-native capabilities** (`Brain/Tools/SystemCapabilityTools.swift`) —
   `project_info`, `check_health`, `schedule_task`, `list_schedule`,
   `remember_fact`, `recall_memory`, `list_artifacts`.
+- **Filesystem / search / patch capabilities**
+  (`Brain/Tools/FileSystemCapabilityTools.swift`) — `list_directory`,
+  `file_metadata`, `search_files`, `grep_files` (read-only, sensitive
+  credential locations refused); `create_directory`, `append_file`,
+  `copy_path`, `move_path`, `replace_in_file` (low impact, exact replacement
+  by default); `delete_path` (destructive). All reuse the `FileManagerJarvis`
+  symlink-aware path boundary and verify by read-back.
 
 ## 6. Execution authority
 
@@ -124,6 +131,10 @@ an authority check.
     ephemeral memory.
   - **Retention:** bounded (2,000 records), expired records dropped, relevance
     decays on a half-life, `endSession()` clears ephemeral memory only.
+  - **Workflow learning (opt-in):** when `Config.proceduralLearningEnabled` is
+    true, a completed multi-step task (≥2 verified tool steps) is recorded as a
+    reusable **procedural** memory with trusted task-result provenance. Off by
+    default; never a silent background behavior.
   - **Retrieval:** blends lexical overlap, relevance, confidence, and recency;
     `retrieveTrusted` excludes untrusted records.
 - **Profile memory** (`Memory/UserProfile.swift`, `Memory/MemoryManager.swift`)
@@ -153,11 +164,21 @@ Bounded recovery lives in `TaskExecutionCoordinator`: classify the failure
 number of recoveries, replan only the remaining work, validate the replan, and
 verify the result. Retry counts are explicit; recovery cannot loop forever.
 
+Retries are **classified** (`RecoveryPolicy`): authorization (`.permission`),
+cancellation, and malformed structured output (`.syntax`) are **not**
+recoverable and close the task with its recorded evidence and a partial-
+completion report. Execution, timeout, verification, and unavailable failures
+are recoverable because recovery produces a *different validated plan* from the
+recorded failure context — never a blind re-run of the same action.
+
 ## 10. Observability & health
 
 - **Telemetry** (`Core/ExecutionTelemetry.swift`) — bounded, observational
   journal of lifecycle events with failure categories, verification outcomes,
   and provider/tier attribution. Never consulted for execution decisions.
+- **Data minimization** (`Core/ContextSanitizer.swift`) — credential redaction
+  and size bounding applied before text leaves the device for an external
+  provider; local providers receive context unmodified.
 - **Health** (`Core/HealthService.swift`) — structured `HealthReport` across
   intelligence, task-state, storage, memory, task-queue, network, resources, and
   computer-control, with a degraded-capabilities list and a user-facing summary.

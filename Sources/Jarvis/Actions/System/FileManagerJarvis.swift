@@ -159,6 +159,14 @@ final class FileManagerJarvis {
         )
     }
 
+    /// Whether a path lies in a credential/sensitive location. Capabilities
+    /// (list/search/grep/metadata) consult this so they can never surface
+    /// credential stores, even indirectly.
+    func isSensitivePath(_ path: String) -> Bool {
+        let lower = resolvePath(path).lowercased()
+        return blockedReadSensitiveSubpaths.contains { lower.contains($0) }
+    }
+
     /// Used by deterministic tests and callers that need a normalized path
     /// after the same symlink-aware safety check as writes and deletes.
     func validatedWritablePath(_ path: String, operation: String = "writeFile") throws -> String {

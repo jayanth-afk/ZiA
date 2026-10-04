@@ -83,6 +83,17 @@ final class ToolRegistry: @unchecked Sendable {
         register(RememberFactTool())
         register(RecallMemoryTool())
         register(ListArtifactsTool())
+        // Safe filesystem, search, and exact-replacement editing capabilities.
+        register(ListDirectoryTool())
+        register(FileMetadataTool())
+        register(SearchFilesTool())
+        register(GrepFilesTool())
+        register(CreateDirectoryTool())
+        register(AppendFileTool())
+        register(MoveOrCopyPathTool(move: false))
+        register(MoveOrCopyPathTool(move: true))
+        register(ReplaceInFileTool())
+        register(DeletePathTool())
     }
 }
 

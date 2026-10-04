@@ -29,6 +29,34 @@ enum ZiaSubsystemSelfTests {
         contextEngine(check: check)
         health(check: check)
         contextSanitizer(check: check)
+        recoveryPolicy(check: check)
+        capabilityRegistry(check: check)
+    }
+
+    private static func recoveryPolicy(check: (Bool, String) -> Void) {
+        check(!RecoveryPolicy.isRecoverable(.permission)
+              && !RecoveryPolicy.isRecoverable(.cancellation)
+              && !RecoveryPolicy.isRecoverable(.syntax),
+              "recovery policy: authorization, cancellation, and malformed output are not recoverable")
+        check(RecoveryPolicy.isRecoverable(.execution)
+              && RecoveryPolicy.isRecoverable(.timeout)
+              && RecoveryPolicy.isRecoverable(.verification)
+              && RecoveryPolicy.isRecoverable(.unavailable),
+              "recovery policy: execution, timeout, verification, and unavailable failures are recoverable")
+    }
+
+    private static func capabilityRegistry(check: (Bool, String) -> Void) {
+        let names = ToolRegistry.shared.allTools.map(\.name)
+        check(Set(names).count == names.count,
+              "tool registry: tool names are unique")
+        let expected = ["project_info", "check_health", "schedule_task", "list_schedule",
+                        "remember_fact", "recall_memory", "list_artifacts",
+                        "list_directory", "file_metadata", "search_files", "grep_files",
+                        "create_directory", "append_file", "copy_path", "move_path",
+                        "replace_in_file", "delete_path"]
+        let missing = expected.filter { !names.contains($0) }
+        check(missing.isEmpty,
+              "tool registry: all capability tools are registered and discoverable (missing: \(missing.joined(separator: ",")))")
     }
 
     private static func contextSanitizer(check: (Bool, String) -> Void) {

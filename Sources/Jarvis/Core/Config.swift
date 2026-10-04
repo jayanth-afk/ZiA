@@ -57,6 +57,9 @@ final class Config {
             // Memory
             Keys.autoExtractMemory: true,
             Keys.inferredMemoryEnabled: false,
+            // Procedural learning is opt-in: successful multi-step workflows are
+            // only turned into reusable procedures when the user enables it.
+            Keys.proceduralLearning: false,
 
             // Resource management
             Keys.modelIdleEvictionSeconds: 300.0, // 5 minutes
@@ -88,6 +91,7 @@ final class Config {
         static let dailyBudgetUSD = "jarvis.budget.dailyLimit"
         static let autoExtractMemory = "jarvis.memory.autoExtract"
         static let inferredMemoryEnabled = "jarvis.memory.inferredEnabled"
+        static let proceduralLearning = "jarvis.memory.proceduralLearning"
         static let modelIdleEvictionSeconds = "jarvis.resource.modelIdleEviction"
         static let memoryReserveMB = "jarvis.resource.memoryReserveMB"
     }
@@ -149,6 +153,14 @@ final class Config {
     var inferredMemoryEnabled: Bool {
         get { defaults.bool(forKey: Keys.inferredMemoryEnabled) }
         set { defaults.set(newValue, forKey: Keys.inferredMemoryEnabled) }
+    }
+
+    /// Whether successful multi-step workflows are recorded as reusable
+    /// procedures. Off by default (safe default): procedural learning is a
+    /// deliberate opt-in, never a silent background behavior.
+    var proceduralLearningEnabled: Bool {
+        get { defaults.bool(forKey: Keys.proceduralLearning) }
+        set { defaults.set(newValue, forKey: Keys.proceduralLearning) }
     }
 
     // MARK: - Resources

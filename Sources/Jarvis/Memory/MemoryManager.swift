@@ -131,6 +131,20 @@ final class MemoryManager {
             source: source, confidence: 0.6, relevance: 0.5))
     }
 
+    /// Record a successful multi-step workflow as a reusable procedure
+    /// (procedural memory). Only called when procedural learning is enabled and
+    /// an independently verified, multi-step task has completed, so a
+    /// procedure always carries trusted task-result provenance.
+    @discardableResult
+    func recordProcedure(goal: String, toolStepNames: [String], taskID: UUID) -> MemoryRecord? {
+        guard toolStepNames.count >= 2 else { return nil }
+        let sequence = toolStepNames.joined(separator: " → ")
+        let body = "Procedure for '\\(String(goal.prefix(120)))': \\(sequence)"
+        return try? structured.write(MemoryDraft(
+            kind: .procedural, trust: .taskResult, content: body, source: "workflow",
+            confidence: 0.8, relevance: 0.7, tags: ["procedure"], taskID: taskID))
+    }
+
     /// Retrieve relevant memory context to inject into prompt generation.
     func retrieveContext(for query: String) -> String {
         let results = vectorSearch.search(query: query, topK: 3, threshold: 0.15)

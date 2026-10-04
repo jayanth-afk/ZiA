@@ -354,6 +354,25 @@ actor TaskExecutionCoordinator {
                     throw error
                 }
 
+                // Classified retry policy: categories that are definitionally
+                // non-recoverable (malformed structured output) close the task
+                // with its recorded evidence instead of replanning. The replan
+                // path below produces a DIFFERENT validated plan, so it is only
+                // entered for failures recovery can plausibly address.
+                if failureCategory != .permission, !RecoveryPolicy.isRecoverable(failureCategory) {
+                    let completedStepCount = stateMachine.getTask(id: task.id)?.steps.filter {
+                        $0.state == .completed && ($0.verification?.isVerified == true || $0.verification == .notApplicable)
+                    }.count ?? 0
+                    let reason = AgentLoop.partialCompletionReport(
+                        completedStepCount: completedStepCount, lastFailure: lastFailure)
+                    telemetry(taskID: task.id, step: nil, kind: .taskFailed, status: reason,
+                              failureCategory: failureCategory)
+                    _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: reason)
+                    recordConversationTurn(goal: originalRequest, response: nil)
+                    throw JarvisError.actionFailed(
+                        action: lastFailure?.tool ?? "AgentLoop.run", reason: reason)
+                }
+
                 // RECOVER: the bounded, real recovery chain — RUNNING → FAILED →
                 // RECOVERING → REPLANNING → replan → RUNNING. The telemetry event
                 // records the attempt; it never authorizes the retry (TaskState
@@ -452,6 +471,21 @@ actor TaskExecutionCoordinator {
         let response = outputs.filter { !$0.isEmpty }.joined(separator: "\n")
         telemetry(taskID: task.id, step: nil, kind: .taskCompleted, status: "completed")
         recordConversationTurn(goal: originalRequest, response: response)
+
+        // Workflow learning (opt-in): a verified multi-step task may become a
+        // reusable procedure. Gated by configuration so it is never a silent
+        // background behavior, and only trusted task-result provenance is used.
+        if finalTask.steps.count >= 2 {
+            let toolStepNames = finalTask.steps.compactMap { $0.toolName }
+            if toolStepNames.count >= 2 {
+                await MainActor.run {
+                    guard Config.shared.proceduralLearningEnabled else { return }
+                    _ = MemoryManager.shared.recordProcedure(
+                        goal: originalRequest, toolStepNames: toolStepNames, taskID: task.id)
+                }
+            }
+        }
+
         return response.isEmpty ? "All actions executed and verified." : response
     }
 

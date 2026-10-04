@@ -2231,6 +2231,37 @@ enum SelfTest {
         check(!sandbox.isSafe("builtin . /tmp/zia_probe.sh"), "Wrapped dot/source builtin blocked")
         check(sandbox.isSafe("find . -name '*.tmp' -delete"), "'.' used as an ordinary argument stays permitted")
 
+        // Structured process authority: the denylist is no longer the
+        // fundamental execution boundary. These protect the invariants that
+        // unknown executables are never auto-authorized, the executable identity
+        // is the canonical trusted path, shell interpretation is a separate
+        // capability, and structured execution uses a fixed environment.
+        let authority = ProcessAuthority.shared
+        check(ProcessAuthority.authorizedExecutables.contains(ProcessAuthority.canonicalPath(for: "/bin/echo")),
+              "Authority allowlists the canonical /bin/echo")
+        var authorityRejectedUnknown = false
+        do { _ = try authority.authorize(.structured(executable: "/tmp/zia_authority_probe")) }
+        catch { authorityRejectedUnknown = true }
+        check(authorityRejectedUnknown, "Authority rejects an unknown executable in /tmp")
+        var authorityRejectedRelative = false
+        do { _ = try authority.authorize(.structured(executable: "./zia_relative_probe")) }
+        catch { authorityRejectedRelative = true }
+        check(authorityRejectedRelative, "Authority rejects a relative executable")
+        var authorityRejectedShellInterpreter = false
+        do { _ = try authority.authorize(.shell(command: "zsh -c 'echo hi'")) }
+        catch { authorityRejectedShellInterpreter = true }
+        check(authorityRejectedShellInterpreter, "Authority rejects an interpreter hidden in a shell command")
+        var authorityRejectedShellPath = false
+        do { _ = try authority.authorize(.shell(command: "/tmp/zia_authority_probe")) }
+        catch { authorityRejectedShellPath = true }
+        check(authorityRejectedShellPath, "Authority rejects a /tmp executable path in a shell command")
+        let authorizedEcho = try? authority.authorize(.structured(executable: "/bin/echo", arguments: ["x"]))
+        check(authorizedEcho != nil, "Authority authorizes a known structured executable")
+        check(authorizedEcho?.executablePath == ProcessAuthority.canonicalPath(for: "/bin/echo"),
+              "Structured authority binds to the canonical executable path")
+        check(authorizedEcho?.environment["PATH"] == "/usr/bin:/bin:/usr/sbin:/sbin",
+              "Structured execution uses a fixed environment")
+
         print("\n─── Phase 6: ShellExecutor & Process Lifecycle ───")
         let shellSem = DispatchSemaphore(value: 0)
         var normalOk = false

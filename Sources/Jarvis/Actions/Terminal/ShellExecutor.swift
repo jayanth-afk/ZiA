@@ -21,6 +21,10 @@ actor ShellExecutor {
         let stderr: String
         let exitCode: Int32
         let durationMs: Double
+        /// Deterministic identity of the authorized process that produced this
+        /// output. Evidence binds to the action that actually executed, not to
+        /// a re-read of the caller's mutable request.
+        let authorizationIdentity: String
     }
 
     /// Thread-safe process group termination scope.
@@ -93,17 +97,53 @@ actor ShellExecutor {
 
     // MARK: - Public API
 
-    /// Execute a shell command asynchronously in the background.
+    /// Authorize a proposed process and execute it. This is the production
+    /// entry point for new callers: intelligence proposes, authority decides.
+    func execute(_ proposal: ProposedProcess) async throws -> CommandOutput {
+        let authorized = try await ProcessAuthority.shared.authorize(proposal)
+        return try await execute(authorized)
+    }
+
+    /// Launch a *structured* executable with an explicit argument vector — no
+    /// shell interpretation. Convenience over the proposal/authority split.
+    func executeStructured(
+        executable: String,
+        arguments: [String] = [],
+        workingDirectory: String? = nil,
+        timeoutSeconds: Double = 30.0,
+        requestedImpact: PermissionGate.ActionImpact = .readOnly
+    ) async throws -> CommandOutput {
+        try await execute(.structured(
+            executable: executable, arguments: arguments,
+            workingDirectory: workingDirectory, timeoutSeconds: timeoutSeconds,
+            requestedImpact: requestedImpact))
+    }
+
+    /// Execute a shell command line. Shell interpretation is a separate,
+    /// explicitly-granted capability: the request is authorized as a shell
+    /// capability (never silently as a structured one) and the returned process
+    /// is the fixed, trusted shell interpreter.
     func execute(_ command: String, timeoutSeconds: Double = 30.0) async throws -> CommandOutput {
-        // Validate with sandbox on MainActor
-        try await CommandSandbox.shared.validateCommand(command)
+        try await execute(.shell(command: command, timeoutSeconds: timeoutSeconds))
+    }
+
+    /// The single process-launch primitive. It accepts ONLY an `AuthorizedProcess`,
+    /// so no caller can reach a process without passing through the authority
+    /// layer, and the executor revalidates at this final choke point.
+    func execute(_ authorized: AuthorizedProcess) async throws -> CommandOutput {
+        // Revalidate at the final choke point before any process exists.
+        try await ProcessAuthority.shared.revalidateAtLaunch(authorized)
 
         // Pre-launch cancellation check: do not spawn OS processes if task is already cancelled
         try Task.checkCancellation()
 
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        process.arguments = ["-c", command]
+        process.executableURL = authorized.executableURL
+        process.arguments = authorized.arguments
+        process.environment = authorized.environment
+        if let workingDirectory = authorized.workingDirectory {
+            process.currentDirectoryURL = workingDirectory
+        }
 
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
@@ -139,10 +179,11 @@ actor ShellExecutor {
         }
 
         // Set up deterministic timeout enforcement task
+        let authorizedTimeout = authorized.timeoutSeconds
         let timeoutTask = Task { [scope] in
-            try await Task.sleep(nanoseconds: UInt64(max(0.001, timeoutSeconds) * 1_000_000_000))
+            try await Task.sleep(nanoseconds: UInt64(max(0.001, authorizedTimeout) * 1_000_000_000))
             JarvisLogger.security.warning(
-                "ShellExecutor: timeout (\(String(format: "%.1f", timeoutSeconds))s) reached for pid \(scope.pid)"
+                "ShellExecutor: timeout (\(String(format: "%.1f", authorizedTimeout))s) reached for pid \(scope.pid)"
             )
             scope.killGroup()
         }
@@ -195,7 +236,8 @@ actor ShellExecutor {
                 stdout: String(data: stdoutData, encoding: .utf8) ?? "",
                 stderr: String(data: stderrData, encoding: .utf8) ?? "",
                 exitCode: exitCode,
-                durationMs: elapsed
+                durationMs: elapsed,
+                authorizationIdentity: authorized.identity
             )
         } catch {
             scope.killGroup()

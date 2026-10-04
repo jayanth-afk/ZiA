@@ -131,6 +131,10 @@ struct RunShellTool: JarvisTool {
         let output = try await ShellExecutor.shared.execute(command)
         let success = output.exitCode == 0
         meta["exitCode"] = String(output.exitCode)
+        // Evidence binding: the identity of the authorized process that actually
+        // executed. A "command succeeded" claim is tied to what was authorized,
+        // not to a re-read of mutable caller input.
+        meta["processIdentity"] = output.authorizationIdentity
         let combined = output.stdout.isEmpty ? output.stderr : output.stdout
         return ToolResult(
             success: success,

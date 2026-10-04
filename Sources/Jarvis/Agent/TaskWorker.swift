@@ -14,7 +14,6 @@ actor TaskWorker: Identifiable {
     let id: UUID
     private(set) var currentTaskId: UUID?
     private(set) var isBusy: Bool = false
-    private var executionTask: Task<Void, Error>?
     /// Injectable authoritative owner (SelfTest restart seam). Production
     /// always uses the shared TaskStateMachine singleton.
     private let stateMachine: TaskStateMachine
@@ -145,8 +144,16 @@ actor TaskWorker: Identifiable {
 
         } catch {
             JarvisLogger.actions.error("Worker [\(self.id.uuidString.prefix(6))] task error: \(error.localizedDescription)")
-            if let index = currentStepIndex, task.steps.indices.contains(index) {
-                let originalStep = task.steps[index]
+            // Failure evidence is derived from the AUTHORITATIVE task state, not
+            // the passed-in snapshot. A concurrent replan (or a restored
+            // continuation) can change the step list between `task` being
+            // handed to this worker and the step failing, so reading
+            // `task.steps[index]` would record the wrong tool, arguments,
+            // fingerprint, or step number as this failure's evidence.
+            if let index = currentStepIndex,
+               let authoritativeTask = stateMachine.getTask(id: task.id),
+               authoritativeTask.steps.indices.contains(index) {
+                let originalStep = authoritativeTask.steps[index]
                 let verificationOutcome = (error as? ToolVerificationFailure)?.outcome ?? .unavailable
                 _ = try? stateMachine.updateStep(
                     taskId: task.id, stepIndex: index, state: .failed, error: error.localizedDescription)
@@ -154,7 +161,7 @@ actor TaskWorker: Identifiable {
                     taskId: task.id, stepIndex: index, outcome: verificationOutcome)
                 if let toolName = originalStep.toolName, let verificationFailure = error as? ToolVerificationFailure {
                     _ = try? stateMachine.appendResolutionRecord(StepResolutionRecord(
-                        stepNumber: index + 1, toolName: toolName, rawOutput: verificationFailure.observed,
+                        stepNumber: originalStep.stepNumber, toolName: toolName, rawOutput: verificationFailure.observed,
                         completedAt: Date(), verification: verificationOutcome, taskID: task.id, stepID: originalStep.id,
                         argumentsFingerprint: StepResolutionRecord.fingerprint(arguments: originalStep.arguments)), for: task.id)
                 }
@@ -167,9 +174,9 @@ actor TaskWorker: Identifiable {
     }
 
     /// Cancel the currently executing task immediately.
+    /// In-flight cancellation is delivered through the `Task` handle owned by
+    /// `TaskWorkerPool`; this clears the worker's claimed-slot state.
     func cancel() {
-        executionTask?.cancel()
-        executionTask = nil
         isBusy = false
         currentTaskId = nil
     }

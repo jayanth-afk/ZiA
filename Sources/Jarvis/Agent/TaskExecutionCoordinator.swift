@@ -501,35 +501,6 @@ actor TaskExecutionCoordinator {
         return nil
     }
 
-    @MainActor
-    private func executeDeterministic(_ result: DeterministicRouteResult) async throws -> String {
-        switch result.actionName {
-        case "system.openApp":
-            guard let name = result.parameters["appName"] else { throw JarvisError.actionFailed(action: result.actionName, reason: "Missing app name") }
-            return try await ActionEngine.shared.execute(intent: "app.open", impact: .safeMutation) {
-                try await AppLauncher.shared.open(name)
-            }
-        case "web.search":
-            let query = result.parameters["query"] ?? ""
-            let output = try await ToolExecutor.shared.execute(toolName: "web_search", arguments: ["query": query])
-            return output.output
-        case "system.volumeUp":
-            return try await ActionEngine.shared.execute(intent: result.actionName, impact: .safeMutation) {
-                try SystemControl.shared.setVolume(min(100, SystemControl.shared.getVolume() + 10))
-            }
-        case "system.volumeDown":
-            return try await ActionEngine.shared.execute(intent: result.actionName, impact: .safeMutation) {
-                try SystemControl.shared.setVolume(max(0, SystemControl.shared.getVolume() - 10))
-            }
-        case "system.mute", "system.unmute":
-            return try await ActionEngine.shared.execute(intent: result.actionName, impact: .safeMutation) {
-                try result.actionName == "system.mute" ? SystemControl.shared.mute() : SystemControl.shared.unmute()
-            }
-        default:
-            throw JarvisError.actionFailed(action: result.actionName, reason: "No deterministic action adapter is registered")
-        }
-    }
-
     private func makeTaskSteps(_ plan: AgentPlan) -> [TaskStep] {
         Self.makeTaskSteps(plan).steps
     }

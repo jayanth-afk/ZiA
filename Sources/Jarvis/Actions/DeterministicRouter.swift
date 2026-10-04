@@ -147,6 +147,7 @@ public final class DeterministicRouter: @unchecked Sendable {
         }
         if let clipboardWrite = clipboardWriteMatch(text) { return clipboardWrite }
         if let speech = speechMatch(text) { return speech }
+        if !compound, let lineCount = lineCountMatch(text) { return lineCount }
         if !compound, let echo = echoMatch(text) { return echo }
 
         guard !compound else { return nil }
@@ -541,12 +542,52 @@ public final class DeterministicRouter: @unchecked Sendable {
               ![",", " then ", " and ", " also "].contains(where: body.contains),
               body.unicodeScalars.allSatisfy({ !forbidden.contains($0) }) else { return nil }
         let command = "echo \(body)"
+        // Structured execution: the literal text is one ARGUMENT to the fixed,
+        // authorized `/bin/echo`. No shell is spawned and nothing is
+        // re-interpreted, so this capability no longer depends on shell syntax
+        // filtering at all.
         return DeterministicMatch(intent: "shell.echo", parameters: ["command": command], impact: .safeMutation) {
-            guard await MainActor.run(body: { CommandSandbox.shared.isSafe(command) }) else {
-                throw JarvisError.commandBlocked(command: command, reason: "Rejected by CommandSandbox")
-            }
-            let output = try await ShellExecutor.shared.execute(command)
+            let output = try await ShellExecutor.shared.executeStructured(
+                executable: "/bin/echo", arguments: [body],
+                timeoutSeconds: 10.0, requestedImpact: .readOnly)
             return output.stdout.isEmpty ? output.stderr : output.stdout
+        }
+    }
+
+    /// Deterministic line count of a file, executed structurally through the
+    /// process authority (`/usr/bin/wc -l <path>` — no shell). The semantics are
+    /// explicit and observable: the file must exist and `wc` must exit 0 before
+    /// a numeric result is reported, so this is a real capability rather than a
+    /// keyword-triggered shell passthrough.
+    private func lineCountMatch(_ text: String) -> DeterministicMatch? {
+        let prefixes = [
+            "count the lines in ", "count the number of lines in ", "count lines in ",
+            "how many lines are in ", "how many lines in ",
+            "line count of ", "line count for "
+        ]
+        guard let prefix = prefixes.first(where: { text.hasPrefix($0) }) else { return nil }
+        let path = String(text.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
+        let forbidden = CharacterSet(charactersIn: "|&;$><`\\\"'\n\r")
+        guard path.hasPrefix("/"), !path.contains(".."),
+              path.unicodeScalars.allSatisfy({ !forbidden.contains($0) }) else { return nil }
+        return DeterministicMatch(intent: "file.lineCount", parameters: ["path": path], impact: .readOnly) {
+            var isDirectory: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue else {
+                throw JarvisError.actionFailed(action: "file.lineCount", reason: "No such file: \(path)")
+            }
+            let output = try await ShellExecutor.shared.executeStructured(
+                executable: "/usr/bin/wc", arguments: ["-l", path],
+                timeoutSeconds: 10.0, requestedImpact: .readOnly)
+            guard output.exitCode == 0 else {
+                throw JarvisError.actionFailed(
+                    action: "file.lineCount", reason: "wc exited with code \(output.exitCode)")
+            }
+            guard let count = output.stdout.split(whereSeparator: { $0 == " " || $0 == "\t" })
+                .first.flatMap({ Int($0) }) else {
+                throw JarvisError.actionFailed(action: "file.lineCount", reason: "Unparsable wc output")
+            }
+            return "\(count) lines"
         }
     }
 }

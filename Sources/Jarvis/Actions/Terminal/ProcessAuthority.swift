@@ -1,0 +1,440 @@
+import Foundation
+import CryptoKit
+
+/// Errors raised by the execution-authority layer. Every one of these means the
+/// request never reached a process primitive.
+enum ProcessAuthorityError: LocalizedError {
+    case emptyExecutable
+    case unknownExecutable(String)
+    case unauthorizedExecutable(String)
+    case rejectedExecutablePath(String)
+    case invalidArgument(String)
+    case invalidWorkingDirectory(String)
+    case interpreterRequiresShellCapability(String)
+    case executableChangedAfterAuthorization(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyExecutable:
+            return "Process request has an empty executable"
+        case .unknownExecutable(let name):
+            return "Executable '\(name)' could not be resolved in a trusted directory"
+        case .unauthorizedExecutable(let path):
+            return "Executable '\(path)' is not authorized for structured execution"
+        case .rejectedExecutablePath(let token):
+            return "Executable path '\(token)' is outside the trusted executable directories"
+        case .invalidArgument(let reason):
+            return "Process argument rejected: \(reason)"
+        case .invalidWorkingDirectory(let path):
+            return "Working directory '\(path)' is not an existing directory"
+        case .interpreterRequiresShellCapability(let name):
+            return "Program '\(name)' is a shell interpreter and requires the explicit shell capability"
+        case .executableChangedAfterAuthorization(let path):
+            return "Authorized executable '\(path)' changed between authorization and launch"
+        }
+    }
+}
+
+/// A process request PROPOSED by intelligence (planner, deterministic router,
+/// recovery, or a direct internal caller).
+///
+/// Constructing a proposal grants NOTHING. It is a description of what the
+/// caller wants to run. Only `ProcessAuthority` can turn a proposal into an
+/// `AuthorizedProcess`, and only an `AuthorizedProcess` reaches the process
+/// primitive. This is the structural separation of proposal from authority.
+///
+/// A structured proposal carries an executable plus an argument vector — there
+/// is no shell string to interpret, so the authority layer never has to answer
+/// the ambiguous question "is this arbitrary string safe?". Shell interpretation
+/// is a *separate* capability that must be requested explicitly.
+struct ProposedProcess: Sendable {
+    enum Capability: Sendable, Equatable {
+        /// Launch one specific executable with an explicit argument vector.
+        /// Nothing in the request is re-interpreted by a shell.
+        case structured
+        /// Interpret a shell command line. Shell interpretation is a distinct,
+        /// explicitly-granted capability.
+        case shell
+    }
+
+    let capability: Capability
+    /// `.structured`: the requested executable (bare name or path).
+    /// `.shell`: the requested shell command line.
+    let executable: String
+    let arguments: [String]
+    let workingDirectory: String?
+    let timeoutSeconds: Double
+    let requestedImpact: PermissionGate.ActionImpact
+
+    static func structured(
+        executable: String,
+        arguments: [String] = [],
+        workingDirectory: String? = nil,
+        timeoutSeconds: Double = 30.0,
+        requestedImpact: PermissionGate.ActionImpact = .readOnly
+    ) -> ProposedProcess {
+        ProposedProcess(capability: .structured, executable: executable,
+                        arguments: arguments, workingDirectory: workingDirectory,
+                        timeoutSeconds: timeoutSeconds, requestedImpact: requestedImpact)
+    }
+
+    static func shell(
+        command: String,
+        timeoutSeconds: Double = 30.0,
+        requestedImpact: PermissionGate.ActionImpact = .destructive
+    ) -> ProposedProcess {
+        ProposedProcess(capability: .shell, executable: command, arguments: [],
+                        workingDirectory: nil, timeoutSeconds: timeoutSeconds,
+                        requestedImpact: requestedImpact)
+    }
+}
+
+/// An AUTHORIZED process request. This is the ONLY representation the executor
+/// accepts.
+///
+/// Immutability is structural, not conventional: every field is `let`, and the
+/// initializer is `fileprivate`, so only `ProcessAuthority` (the same file) can
+/// mint one. No planner, replanner, task worker, recovery path, tool argument,
+/// or mutable shared state can alter the executable, argument vector,
+/// environment, working directory, timeout, or impact after authorization —
+/// changing any of them requires a fresh authorization decision.
+struct AuthorizedProcess: Sendable {
+    let capability: ProposedProcess.Capability
+    /// Canonical, symlink-resolved, absolute executable URL.
+    let executableURL: URL
+    let arguments: [String]
+    /// The explicit environment the process runs with (never the raw ambient
+    /// environment for structured execution).
+    let environment: [String: String]
+    let workingDirectory: URL?
+    let timeoutSeconds: Double
+    let impact: PermissionGate.ActionImpact
+    /// Deterministic identity of exactly what was authorized. Evidence binds to
+    /// this, never to a later re-read of mutable caller input.
+    let identity: String
+
+    fileprivate init(
+        capability: ProposedProcess.Capability,
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String],
+        workingDirectory: URL?,
+        timeoutSeconds: Double,
+        impact: PermissionGate.ActionImpact
+    ) {
+        self.capability = capability
+        self.executableURL = executableURL
+        self.arguments = arguments
+        self.environment = environment
+        self.workingDirectory = workingDirectory
+        self.timeoutSeconds = timeoutSeconds
+        self.impact = impact
+        self.identity = Self.computeIdentity(
+            capability: capability,
+            executableURL: executableURL,
+            arguments: arguments,
+            environment: environment,
+            workingDirectory: workingDirectory,
+            timeoutSeconds: timeoutSeconds,
+            impact: impact)
+    }
+
+    /// Canonical executable path (convenience; equals `executableURL.path`).
+    var executablePath: String { executableURL.path }
+
+    private static func computeIdentity(
+        capability: ProposedProcess.Capability,
+        executableURL: URL,
+        arguments: [String],
+        environment: [String: String],
+        workingDirectory: URL?,
+        timeoutSeconds: Double,
+        impact: PermissionGate.ActionImpact
+    ) -> String {
+        var canonical = ""
+        // Length-prefixed framing prevents field-boundary ambiguity (e.g. an
+        // argument that happens to contain the delimiter).
+        func frame(_ value: String) {
+            canonical += "\(value.utf8.count):\(value)"
+        }
+        frame(capability == .shell ? "shell" : "structured")
+        frame(executableURL.path)
+        for argument in arguments { frame("arg=\(argument)") }
+        for key in environment.keys.sorted() { frame("env=\(key)=\(environment[key] ?? "")") }
+        frame("cwd=\(workingDirectory?.path ?? "")")
+        frame("timeout=\(timeoutSeconds)")
+        frame("impact=\(impact)")
+        return SHA256.hash(data: Data(canonical.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+/// The execution authority.
+///
+/// Invariant: **unknown executable ≠ authorized executable.** A path is
+/// authorized only if its canonical (symlink-resolved) form is explicitly
+/// listed inside a root-owned, system-protected directory. The absence of a
+/// path from a denylist never grants authority; the presence of a path in the
+/// allowlist is the *only* thing that does.
+///
+/// This class is deliberately NOT the only line of defense. PermissionGate,
+/// impact levels, destructive-action confirmation, CommandSandbox (as shell
+/// syntax defense-in-depth), execution-boundary validation, cancellation,
+/// process-group cleanup, and verification/evidence all remain in force. The
+/// authority layer *adds* the missing structural boundary: it decides executable
+/// identity, environment, and working directory before a process exists.
+@MainActor
+final class ProcessAuthority {
+    static let shared = ProcessAuthority()
+
+    private init() {}
+
+    // MARK: - Trusted executable identity
+
+    /// Root-owned, system-protected directories. User-writable locations
+    /// (`/usr/local/bin`, `/opt/homebrew/bin`, `/tmp`, the home directory) are
+    /// deliberately excluded: authority must not depend on a directory an
+    /// unprivileged process can write to.
+    static let trustedExecutableDirectories: [String] = ["/bin", "/usr/bin", "/sbin", "/usr/sbin"]
+
+    /// Explicit allowlist of executables Zia may launch *structurally*, named by
+    /// canonical path. Only leaf programs that cannot themselves launch another
+    /// program appear here (no `env`/`find`/`xargs`/`sort`/interpreters), so a
+    /// structured request cannot be a trampoline. Comparisons are canonicalized
+    /// at first use so a symlinked trusted directory resolves consistently.
+    private static let rawAuthorizedExecutables: [String] = [
+        "/bin/echo", "/bin/ls", "/bin/cat", "/bin/pwd",
+        "/usr/bin/date", "/usr/bin/wc", "/usr/bin/head", "/usr/bin/tail",
+        "/usr/bin/grep", "/usr/bin/stat", "/usr/bin/which", "/usr/bin/diff",
+        "/usr/bin/uniq", "/usr/bin/mdfind"
+    ]
+
+    static let authorizedExecutables: Set<String> = Set(
+        rawAuthorizedExecutables.map { canonicalPath(for: $0) })
+
+    private static let trustedCanonicalDirectories: [String] =
+        trustedExecutableDirectories.map { canonicalPath(for: $0) }
+
+    /// The shell interpreter used by the explicitly-granted shell capability.
+    static let shellInterpreterPath = canonicalPath(for: "/bin/zsh")
+
+    static func canonicalPath(for path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+    }
+
+    /// Fixed search order used ONLY to resolve a bare executable name to a
+    /// canonical path so it can be checked against the allowlist. This is
+    /// deliberately NOT the ambient `PATH`: the caller's environment can never
+    /// influence which binary a structured request resolves to.
+    private static let fixedSearchDirectories: [String] = ["/bin", "/usr/bin", "/sbin", "/usr/sbin"]
+
+    // MARK: - Public API
+
+    /// Turn a proposal into an authorized request, or reject it.
+    func authorize(_ proposal: ProposedProcess) throws -> AuthorizedProcess {
+        switch proposal.capability {
+        case .structured:
+            return try authorizeStructured(proposal)
+        case .shell:
+            return try authorizeShell(proposal)
+        }
+    }
+
+    /// Re-verify an authorized request immediately before the process is
+    /// created. Closes the "authorize → executable replaced → launch" window to
+    /// a bounded re-check at the final choke point, and re-runs the shell syntax
+    /// defense for the shell capability.
+    func revalidateAtLaunch(_ authorized: AuthorizedProcess) throws {
+        let fresh = Self.canonicalPath(for: authorized.executableURL.path)
+        guard fresh == authorized.executableURL.path else {
+            throw ProcessAuthorityError.executableChangedAfterAuthorization(authorized.executableURL.path)
+        }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: fresh, isDirectory: &isDirectory),
+              !isDirectory.boolValue,
+              FileManager.default.isExecutableFile(atPath: fresh) else {
+            throw ProcessAuthorityError.executableChangedAfterAuthorization(fresh)
+        }
+        switch authorized.capability {
+        case .structured:
+            guard Self.authorizedExecutables.contains(fresh),
+                  Self.isWithinTrustedDirectories(fresh) else {
+                throw ProcessAuthorityError.unauthorizedExecutable(fresh)
+            }
+        case .shell:
+            guard fresh == Self.shellInterpreterPath else {
+                throw ProcessAuthorityError.executableChangedAfterAuthorization(fresh)
+            }
+            // authorized.arguments is immutable, so this re-checks the *same*
+            // command that was authorized — defense in depth, not re-authority.
+            if authorized.arguments.count == 2, authorized.arguments[0] == "-c" {
+                try CommandSandbox.shared.validateCommand(authorized.arguments[1])
+            }
+        }
+    }
+
+    // MARK: - Structured authorization
+
+    private func authorizeStructured(_ proposal: ProposedProcess) throws -> AuthorizedProcess {
+        let resolved = try resolveExecutable(proposal.executable)
+        let canonical = Self.canonicalPath(for: resolved.path)
+
+        guard Self.isWithinTrustedDirectories(canonical) else {
+            throw ProcessAuthorityError.rejectedExecutablePath(canonical)
+        }
+        guard !Self.shellInterpreters.contains(canonical) else {
+            throw ProcessAuthorityError.interpreterRequiresShellCapability(canonical)
+        }
+        guard Self.authorizedExecutables.contains(canonical) else {
+            throw ProcessAuthorityError.unauthorizedExecutable(canonical)
+        }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: canonical, isDirectory: &isDirectory),
+              !isDirectory.boolValue,
+              FileManager.default.isExecutableFile(atPath: canonical) else {
+            throw ProcessAuthorityError.unauthorizedExecutable(canonical)
+        }
+        try Self.validateArguments(proposal.arguments)
+
+        let workingDirectory = try Self.resolveWorkingDirectory(proposal.workingDirectory)
+
+        return AuthorizedProcess(
+            capability: .structured,
+            executableURL: URL(fileURLWithPath: canonical),
+            arguments: proposal.arguments,
+            environment: Self.minimalEnvironment(),
+            workingDirectory: workingDirectory,
+            timeoutSeconds: proposal.timeoutSeconds,
+            impact: proposal.requestedImpact)
+    }
+
+    // MARK: - Shell authorization (separate capability)
+
+    private func authorizeShell(_ proposal: ProposedProcess) throws -> AuthorizedProcess {
+        let command = proposal.executable
+        // Legacy syntax defense remains in force (denylist + program analysis +
+        // protected-target + exfiltration heuristics). It is defense in depth:
+        // the authority decision here is that the caller explicitly requested
+        // the shell capability.
+        try CommandSandbox.shared.validateCommand(command)
+
+        // Bind executable identity for path-like program tokens: an absolute or
+        // relative path outside the trusted directories can never be launched,
+        // even through the shell (`/tmp/payload`, `./payload`, `~/x`), while
+        // bare names continue to resolve through the shell's fixed PATH.
+        for token in CommandSandbox.shared.launchedExecutableTokens(in: command)
+        where token.contains("/") {
+            let canonical = Self.canonicalPath(for: token)
+            guard Self.isWithinTrustedDirectories(canonical) else {
+                throw ProcessAuthorityError.rejectedExecutablePath(token)
+            }
+        }
+
+        let interpreter = Self.shellInterpreterPath
+        guard Self.isWithinTrustedDirectories(interpreter),
+              FileManager.default.isExecutableFile(atPath: interpreter) else {
+            throw ProcessAuthorityError.unauthorizedExecutable(interpreter)
+        }
+
+        return AuthorizedProcess(
+            capability: .shell,
+            executableURL: URL(fileURLWithPath: interpreter),
+            arguments: ["-c", command],
+            environment: Self.shellEnvironment(),
+            workingDirectory: nil,
+            timeoutSeconds: proposal.timeoutSeconds,
+            impact: proposal.requestedImpact)
+    }
+
+    // MARK: - Executable resolution
+
+    private static let shellInterpreters: Set<String> = Set(
+        ["/bin/sh", "/bin/bash", "/bin/zsh", "/bin/dash", "/bin/csh", "/bin/ksh", "/bin/tcsh"]
+            .map { canonicalPath(for: $0) })
+
+    private func resolveExecutable(_ requested: String) throws -> URL {
+        guard !requested.isEmpty else { throw ProcessAuthorityError.emptyExecutable }
+        guard !requested.contains("\n"), !requested.contains("\0") else {
+            throw ProcessAuthorityError.invalidArgument("executable contains control characters")
+        }
+
+        if requested.contains("/") {
+            // Explicit path (absolute or relative). Authority still binds to the
+            // canonical resolved path — a relative token is resolved against the
+            // current directory purely to obtain that identity.
+            return URL(fileURLWithPath: requested)
+        }
+
+        // Bare name: fixed trusted-directory search, NEVER ambient PATH.
+        for directory in Self.fixedSearchDirectories {
+            let candidate = "\(directory)/\(requested)"
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return URL(fileURLWithPath: candidate)
+            }
+        }
+        throw ProcessAuthorityError.unknownExecutable(requested)
+    }
+
+    private static func isWithinTrustedDirectories(_ canonicalPath: String) -> Bool {
+        trustedCanonicalDirectories.contains { directory in
+            canonicalPath.hasPrefix(directory + "/")
+        }
+    }
+
+    private static func validateArguments(_ arguments: [String]) throws {
+        for argument in arguments {
+            if argument.contains("\0") {
+                throw ProcessAuthorityError.invalidArgument("argument contains a NUL byte")
+            }
+        }
+    }
+
+    private static func resolveWorkingDirectory(_ requested: String?) throws -> URL? {
+        guard let requested, !requested.isEmpty else { return nil }
+        guard !requested.contains("\0") else {
+            throw ProcessAuthorityError.invalidWorkingDirectory(requested)
+        }
+        let url = URL(fileURLWithPath: requested).standardizedFileURL
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue else {
+            throw ProcessAuthorityError.invalidWorkingDirectory(requested)
+        }
+        return url
+    }
+
+    // MARK: - Environment policy (Phase 6)
+
+    /// Structured execution gets a fixed, minimal environment. The ambient
+    /// environment is NOT inherited: a poisoned `DYLD_INSERT_LIBRARIES`,
+    /// `PATH`, or similar variable in Zia's own process must not be able to turn
+    /// an authorized leaf binary into a trampoline.
+    private static func minimalEnvironment() -> [String: String] {
+        var environment: [String: String] = [
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"
+        ]
+        if let home = ProcessInfo.processInfo.environment["HOME"] {
+            environment["HOME"] = home
+        }
+        environment["LANG"] = "en_US.UTF-8"
+        return environment
+    }
+
+    /// Shell execution inherits a *sanitized* environment: the ambient values
+    /// minus every variable that redirects program loading or resolution, and
+    /// with a fixed PATH. The shell capability is broad by design, but ambient
+    /// executable-resolution redirection is still removed.
+    private static func shellEnvironment() -> [String: String] {
+        let ambient = ProcessInfo.processInfo.environment
+        let passthroughKeys = ["HOME", "USER", "LOGNAME", "TMPDIR", "LANG", "LC_ALL"]
+        var environment: [String: String] = [
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            // Non-interactive shell: no prompts, no pager/terminal games.
+            "TERM": "dumb",
+            "SHELL": "/bin/zsh"
+        ]
+        for key in passthroughKeys {
+            if let value = ambient[key] { environment[key] = value }
+        }
+        return environment
+    }
+}

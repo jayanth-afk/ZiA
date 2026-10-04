@@ -193,15 +193,6 @@ final class CommandSandbox {
     /// rejected outright (fail-closed).
     private let unsafeShellConstructs: [String] = ["$(", "`", "${", "$'", "$\"", "<(", ">(", "system(", "popen(", "| getline", "|getline"]
 
-    /// Read-only programs allowed to run unsupervised. Anything NOT in this set
-    /// and NOT obviously benign is treated as requiring confirmation upstream.
-    private let knownSafePrograms: Set<String> = [
-        "ls", "cat", "head", "tail", "grep", "find", "wc", "file", "stat",
-        "pwd", "echo", "date", "whoami", "uname", "df", "du", "ps", "top",
-        "which", "git", "sed", "awk", "sort",
-        "uniq", "diff", "less", "open", "mdfind", "env", "printenv", "true", "false"
-    ]
-
     // MARK: - Layer 4: Protected targets
 
     private let protectedPrefixes: [String] = [
@@ -313,12 +304,29 @@ final class CommandSandbox {
         }
     }
 
-    /// Whether the command's programs are all known-safe (vs merely unblocked).
-    func isFullyBenign(_ command: String) -> Bool {
-        let normalized = normalize(command.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
-        let programs = segments(of: normalized).compactMap { executable(of: $0) }
-        guard !programs.isEmpty else { return false }
-        return programs.allSatisfy { knownSafePrograms.contains($0) }
+    /// Raw (case-preserved) executable tokens of every program a command's
+    /// segments can launch, using the same wrapper/trampoline unwrapping and
+    /// fail-closed option-value handling as layer 3.
+    ///
+    /// The `ProcessAuthority` uses this to bind executable *identity* for a
+    /// shell-capability request (so a path like `/tmp/payload` can never be
+    /// launched even through the shell). It performs no blocking itself and is
+    /// not the authority boundary — the denylist layers above still apply.
+    func launchedExecutableTokens(in command: String) -> [String] {
+        var tokens: [String] = []
+        for segment in segments(of: command) {
+            let segTokens = segment.split(separator: " ").map(String.init)
+            for index in programCandidateIndices(in: segTokens) {
+                tokens.append(segTokens[index])
+            }
+            for (offset, token) in segTokens.enumerated() where execIntroducerFlags.contains(token.lowercased()) {
+                guard offset + 1 < segTokens.count else { continue }
+                let candidate = segTokens[offset + 1]
+                guard !candidate.hasPrefix("-") else { continue }
+                tokens.append(candidate)
+            }
+        }
+        return tokens
     }
 
     // MARK: - Layer 2: Normalization

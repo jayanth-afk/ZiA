@@ -545,7 +545,9 @@ final class ProcessAuthority {
     /// The environment used to enumerate a repository's effective config: system
     /// and global config are neutralized (they are also neutralized for real
     /// structured execution), so only the repository's own local/worktree config
-    /// is inspected.
+    /// is inspected. It deliberately omits the config overrides below so the
+    /// enumeration does not report the authority's own neutralization keys as if
+    /// they were repository-dangerous config.
     nonisolated static func gitConfigInspectionEnvironment() -> [String: String] {
         [
             "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
@@ -556,6 +558,27 @@ final class ProcessAuthority {
             "GIT_PAGER": "cat",
             "GIT_OPTIONAL_LOCKS": "0"
         ]
+    }
+
+    /// Highest-precedence config overrides so no repository/global config can
+    /// re-enable signature verification, the fsmonitor daemon, or an external
+    /// pager for an authority-launched git process.
+    nonisolated static let gitConfigOverrides: [String: String] = [
+        "GIT_CONFIG_COUNT": "3",
+        "GIT_CONFIG_KEY_0": "log.showSignature",
+        "GIT_CONFIG_VALUE_0": "false",
+        "GIT_CONFIG_KEY_1": "core.fsmonitor",
+        "GIT_CONFIG_VALUE_1": "false",
+        "GIT_CONFIG_KEY_2": "core.pager",
+        "GIT_CONFIG_VALUE_2": "cat"
+    ]
+
+    /// The neutralized environment for an internal, fixed-executable git launch
+    /// (e.g. development history). Ref/object-only commands carry the same
+    /// ambient-config exposure as structured git, so they use the same
+    /// authority-owned environment rather than inheriting Zia's.
+    nonisolated static func gitProcessEnvironment() -> [String: String] {
+        gitConfigInspectionEnvironment().merging(gitConfigOverrides) { _, new in new }
     }
 
     private static func resolveWorkingDirectory(_ requested: String?) throws -> URL? {
@@ -594,18 +617,12 @@ final class ProcessAuthority {
             "GIT_PAGER": "cat",
             "GIT_OPTIONAL_LOCKS": "0",
             "GIT_ATTR_NOSYSTEM": "1",
-            "GIT_ALLOW_PROTOCOL": "none",
-            // Env-level config overrides have the highest precedence: no
-            // repository config can re-enable signature verification, the
-            // fsmonitor daemon, or an external pager for a structured git run.
-            "GIT_CONFIG_COUNT": "3",
-            "GIT_CONFIG_KEY_0": "log.showSignature",
-            "GIT_CONFIG_VALUE_0": "false",
-            "GIT_CONFIG_KEY_1": "core.fsmonitor",
-            "GIT_CONFIG_VALUE_1": "false",
-            "GIT_CONFIG_KEY_2": "core.pager",
-            "GIT_CONFIG_VALUE_2": "cat"
+            "GIT_ALLOW_PROTOCOL": "none"
         ]
+        // Env-level config overrides have the highest precedence: no repository
+        // config can re-enable signature verification, the fsmonitor daemon, or
+        // an external pager for a structured git run.
+        environment.merge(gitConfigOverrides) { _, new in new }
         if let home = ProcessInfo.processInfo.environment["HOME"] {
             environment["HOME"] = home
         }

@@ -53,6 +53,11 @@ enum DevelopmentHistory {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
         process.arguments = ["-C", root.path] + arguments
+        // Ref/object-only git commands still run with the authority-neutralized
+        // environment: a repository-global `log.showSignature` plus a
+        // repository-set `gpg.program` would otherwise turn `git log` into
+        // arbitrary program execution from repository content.
+        process.environment = ProcessAuthority.gitProcessEnvironment()
         
         let outputPipe = Pipe()
         process.standardOutput = outputPipe

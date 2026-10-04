@@ -160,6 +160,19 @@ import Testing
     // MARK: - Authority-owned git environment
 
     @Test @MainActor
+    func internalGitEnvironmentNeutralizesAmbientConfig() {
+        // Fixed-executable internal git launches (development history) must not
+        // inherit a repository-global log.showSignature + gpg.program pair.
+        let environment = ProcessAuthority.gitProcessEnvironment()
+        #expect(environment["GIT_CONFIG_KEY_0"] == "log.showSignature")
+        #expect(environment["GIT_CONFIG_VALUE_0"] == "false")
+        #expect(environment["GIT_CONFIG_NOSYSTEM"] == "1")
+        // Enumeration must NOT include the overrides, or the guard would see its
+        // own neutralization keys as repository-dangerous config.
+        #expect(ProcessAuthority.gitConfigInspectionEnvironment()["GIT_CONFIG_COUNT"] == nil)
+    }
+
+    @Test @MainActor
     func structuredEnvironmentNeutralizesGitConfigSources() throws {
         let authorized = try ProcessAuthority.shared.authorize(.structured(executable: "git", arguments: ["log", "--oneline"]))
         #expect(authorized.environment["GIT_CONFIG_NOSYSTEM"] == "1")

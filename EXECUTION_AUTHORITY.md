@@ -16,8 +16,11 @@ AppleScript bridge, `screencapture`/`pmset` system control, `git` for local
 development history, and the integration audit runner) still call `Process`
 directly. Their executable is a hard-coded absolute path, no model output
 chooses it, and no model-supplied arguments reach them, so they do not cross
-the proposal/authority boundary. They are the known exception to the "one
-primitive" rule and are listed here so the claim is precise.
+the proposal/authority boundary. The internal git launch uses the same
+authority-owned neutralized environment as structured git, so repository/global
+config cannot turn its ref/object reads into program execution either. They are
+the known exception to the "one primitive" rule and are listed here so the
+claim is precise.
 
 ## Execution path
 

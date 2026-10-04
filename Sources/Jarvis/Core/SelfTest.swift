@@ -2307,6 +2307,10 @@ enum SelfTest {
         check(authorityRejectedHugeTimeout, "authority rejects an unbounded timeout")
         check(authorizedEcho?.environment["GIT_CONFIG_NOSYSTEM"] == "1",
               "structured execution neutralizes repository config sources for git")
+        check(ProcessAuthority.gitProcessEnvironment()["GIT_CONFIG_KEY_0"] == "log.showSignature",
+              "internal fixed git launches carry authority-owned config overrides")
+        check(ProcessAuthority.gitConfigInspectionEnvironment()["GIT_CONFIG_COUNT"] == nil,
+              "repository config enumeration is not polluted by authority overrides")
 
         print("\n─── Phase 6: ShellExecutor & Process Lifecycle ───")
         let shellSem = DispatchSemaphore(value: 0)

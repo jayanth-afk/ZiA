@@ -103,6 +103,30 @@ struct TaskStep: Identifiable, Sendable, Codable {
     }
 }
 
+/// Canonical identity of a step's LOGICAL ACTION, used to decide whether a step
+/// that was already resolved under an earlier plan is the SAME action in a
+/// replan. A tool step's identity is its tool plus the canonical fingerprint of
+/// its arguments; a non-tool (composition) step's identity is its purpose.
+///
+/// Position is deliberately NOT part of identity: replanning reorders, inserts,
+/// and removes steps, and index-based preservation would transfer one action's
+/// completion state (and its evidence) to a different action. Identity is also
+/// task-independent by design — cross-task preservation is prevented by only
+/// ever offering steps from the SAME task to the matcher.
+enum StepIdentity: Hashable, Sendable {
+    case tool(toolName: String, argumentsFingerprint: String)
+    case composition(purpose: String)
+
+    init(step: TaskStep) {
+        if let toolName = step.toolName {
+            self = .tool(toolName: toolName,
+                         argumentsFingerprint: StepResolutionRecord.fingerprint(arguments: step.arguments))
+        } else {
+            self = .composition(purpose: step.description)
+        }
+    }
+}
+
 /// Represents an end-to-end task managed by the state machine.
 struct JarvisTask: Identifiable, Sendable {
     let id: UUID
@@ -1143,8 +1167,16 @@ final class TaskStateMachine: @unchecked Sendable {
     /// Update task steps (used during planning/replanning). Every snapshot is
     /// appended to the task's steps history (cycle 0 = initial plan) so replans
     /// preserve — never overwrite — earlier planning evidence.
+    ///
+    /// `replacingResolutionRecords` atomically replaces the task's resolution
+    /// records alongside its steps. A replan that reorders/changes steps must
+    /// rewrite the records too, otherwise a record's `stepNumber` can point at a
+    /// different tool and the task's evidence would silently disagree with its
+    /// steps (which `isValidPersistedTask` rejects). Pass nil to leave the
+    /// records untouched (initial planning, tests).
     @discardableResult
-    func setSteps(taskId: UUID, steps: [TaskStep]) throws -> JarvisTask {
+    func setSteps(taskId: UUID, steps: [TaskStep],
+                  replacingResolutionRecords records: [StepResolutionRecord]? = nil) throws -> JarvisTask {
         lock.lock()
         defer { lock.unlock() }
 
@@ -1153,6 +1185,9 @@ final class TaskStateMachine: @unchecked Sendable {
         }
 
         task.steps = steps
+        if let records {
+            task.resolutionRecords = records
+        }
         task.updatedAt = Date()
         tasks[taskId] = task
 

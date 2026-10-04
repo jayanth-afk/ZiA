@@ -393,10 +393,14 @@ actor TaskExecutionCoordinator {
                         if case .failure(let validationError) = validatedResult { throw validationError }
                         throw PlanValidationError.noJSONFound
                     }
-                    // A replan preserves completed steps and continues execution;
-                    // never reset backwards into already-completed steps.
-                    let existingSteps = stateMachine.getTask(id: task.id)?.steps ?? []
-                    try stateMachine.setSteps(taskId: task.id, steps: Self.makeTaskSteps(validatedPlan, preservingCompletedFrom: existingSteps))
+                    // A replan preserves only steps whose LOGICAL IDENTITY still
+                    // matches, and continues from the first unresolved step —
+                    // never resetting backwards into already-completed work, and
+                    // never transferring a completion to a different action.
+                    let rebuilt = Self.makeTaskSteps(
+                        validatedPlan, preservingResolvedFrom: stateMachine.getTask(id: task.id))
+                    try stateMachine.setSteps(taskId: task.id, steps: rebuilt.steps,
+                                              replacingResolutionRecords: rebuilt.records)
                     // Adopt the validated replan for the remainder of this run and
                     // re-anchor the cursor to the first UNRESOLVED step of the new
                     // plan. Otherwise the loop keeps executing the ORIGINAL plan's
@@ -527,19 +531,75 @@ actor TaskExecutionCoordinator {
     }
 
     private func makeTaskSteps(_ plan: AgentPlan) -> [TaskStep] {
-        Self.makeTaskSteps(plan)
+        Self.makeTaskSteps(plan).steps
     }
 
-    /// Convert validated plan steps into state-machine TaskSteps, preserving
-    /// any already-completed step states and verified outputs.
-    private static func makeTaskSteps(_ plan: AgentPlan, preservingCompletedFrom existingSteps: [TaskStep] = []) -> [TaskStep] {
-        plan.steps.enumerated().map { index, step in
-            if index < existingSteps.count && existingSteps[index].state == .completed {
-                return existingSteps[index]
+    /// Convert a validated plan into authoritative TaskSteps. A step that was
+    /// already RESOLVED under the previous plan is preserved ONLY when the new
+    /// step is provably the SAME logical action — identical canonical tool
+    /// identity and argument fingerprint (or identical purpose for a
+    /// composition step). Position is never used: a replan may reorder, insert,
+    /// or remove steps, and index-based preservation would hand one action's
+    /// completed state and evidence to a different action.
+    ///
+    /// Returns the steps together with the resolution records that must be
+    /// stored beside them: preserved steps keep their original evidence,
+    /// re-numbered to the new position, and every orphaned record (a record
+    /// whose logical step is gone) is dropped so a record's `stepNumber` can
+    /// never point at a step of a different tool.
+    static func makeTaskSteps(
+        _ plan: AgentPlan,
+        preservingResolvedFrom existingTask: JarvisTask? = nil
+    ) -> (steps: [TaskStep], records: [StepResolutionRecord]) {
+        // FIFO queue of already-resolved existing steps per logical identity. A
+        // queue (not a set) keeps duplicates deterministic; and because the key
+        // IS the identity, a completion can never migrate to a different tool or
+        // a different argument set. Identity is also task-bound at the record
+        // level (taskID/stepID/fingerprint), so cross-task evidence cannot enter.
+        var reusable: [StepIdentity: [TaskStep]] = [:]
+        var passedRecordForStep: [UUID: StepResolutionRecord] = [:]
+        if let existingTask {
+            for step in existingTask.steps where TaskContinuity.isResolved(step, task: existingTask) {
+                reusable[StepIdentity(step: step), default: []].append(step)
             }
-            return TaskStep(id: UUID(uuidString: step.id) ?? UUID(), stepNumber: index + 1,
-                            description: step.purpose, toolName: step.toolName, arguments: step.arguments)
+            // Last passed record for a step wins, mirroring the lookup semantics
+            // of TaskContinuity.independentlyVerified / isValidPersistedTask.
+            for record in existingTask.resolutionRecords where record.verification == .passed {
+                if let stepID = record.stepID { passedRecordForStep[stepID] = record }
+            }
         }
+
+        var steps: [TaskStep] = []
+        var records: [StepResolutionRecord] = []
+        for (index, planStep) in plan.steps.enumerated() {
+            let stepNumber = index + 1
+            let fresh = TaskStep(id: UUID(uuidString: planStep.id) ?? UUID(), stepNumber: stepNumber,
+                                 description: planStep.purpose, toolName: planStep.toolName,
+                                 arguments: planStep.arguments)
+            guard let preserved = reusable[StepIdentity(step: fresh)]?.first else {
+                steps.append(fresh)
+                continue
+            }
+            reusable[StepIdentity(step: fresh)]?.removeFirst()
+            // Same logical action: reuse the resolved step, re-numbered to its
+            // new position. Tool identity and arguments are unchanged, so the
+            // reused output/verification still describes exactly this action.
+            steps.append(TaskStep(id: preserved.id, stepNumber: stepNumber,
+                                  description: preserved.description, toolName: preserved.toolName,
+                                  arguments: preserved.arguments, state: preserved.state,
+                                  output: preserved.output, error: preserved.error,
+                                  verification: preserved.verification))
+            if let record = passedRecordForStep[preserved.id] {
+                records.append(StepResolutionRecord(stepNumber: stepNumber, toolName: record.toolName,
+                                                    rawOutput: record.rawOutput,
+                                                    structuredOutput: record.structuredOutput,
+                                                    completedAt: record.completedAt,
+                                                    verification: record.verification,
+                                                    taskID: record.taskID, stepID: record.stepID,
+                                                    argumentsFingerprint: record.argumentsFingerprint))
+            }
+        }
+        return (steps, records)
     }
 
     private func currentTaskStep(_ taskID: UUID, _ index: Int) {

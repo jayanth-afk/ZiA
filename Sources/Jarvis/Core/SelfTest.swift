@@ -5697,6 +5697,58 @@ enum SelfTest {
         }
         check(recoveryFailureClosesFailedWithPartialReport, "agent loop 20.165: recovery-failure exit closes task FAILED with truthful partial report (completed count + actual failed step)")
 
+        // 20.166: identity-safe replan preservation. A replan must preserve an
+        // already-resolved step ONLY when the new step is provably the SAME
+        // logical action (same tool + canonical arguments) — never by position.
+        // Pins that a reordered replan keeps each completion with its own action
+        // (and renumbers its evidence), and that a changed tool never inherits a
+        // completion it did not earn.
+        var identitySafeReplanPreservation = false
+        do {
+            let smIdentity = TaskStateMachine(storageURL: nil)
+            let identityTask = smIdentity.createTask(title: "IdentityReplanProbe", goal: "identity replan probe")
+            try smIdentity.setSteps(taskId: identityTask.id, steps: [
+                TaskStep(stepNumber: 1, description: "echo a", toolName: "run_shell", arguments: ["command": "echo a"]),
+                TaskStep(stepNumber: 2, description: "echo b", toolName: "run_shell", arguments: ["command": "echo b"])
+            ])
+            try smIdentity.transition(taskId: identityTask.id, to: .planning)
+            try smIdentity.transition(taskId: identityTask.id, to: .running)
+            try smIdentity.beginStepAttempt(taskId: identityTask.id, stepIndex: 0)
+            _ = try smIdentity.completeVerifiedStep(taskId: identityTask.id, stepIndex: 0, output: "a")
+            try smIdentity.beginStepAttempt(taskId: identityTask.id, stepIndex: 1)
+            _ = try smIdentity.completeVerifiedStep(taskId: identityTask.id, stepIndex: 1, output: "b")
+
+            guard let resolvedIdentity = smIdentity.getTask(id: identityTask.id) else {
+                throw JarvisError.actionFailed(action: "SelfTest.IdentityReplan", reason: "probe task missing")
+            }
+
+            let reordered = AgentPlan(goal: "identity replan probe", steps: [
+                PlanStep(id: "step_1", toolName: "run_shell", arguments: ["command": "echo b"], purpose: "echo b"),
+                PlanStep(id: "step_2", toolName: "run_shell", arguments: ["command": "echo a"], purpose: "echo a")
+            ])
+            let rebuilt = TaskExecutionCoordinator.makeTaskSteps(reordered, preservingResolvedFrom: resolvedIdentity)
+
+            let changedTool = AgentPlan(goal: "identity replan probe", steps: [
+                PlanStep(id: "step_1", toolName: "read_file", arguments: ["command": "echo a"], purpose: "echo a")
+            ])
+            let rebuiltChanged = TaskExecutionCoordinator.makeTaskSteps(changedTool, preservingResolvedFrom: resolvedIdentity)
+            let changedToolNotPreserved = rebuiltChanged.steps[0].verification == nil && rebuiltChanged.records.isEmpty
+
+            let reorderedOK = rebuilt.steps.count == 2
+                && rebuilt.steps[0].id == resolvedIdentity.steps[1].id
+                && rebuilt.steps[0].output == "b"
+                && rebuilt.steps[1].id == resolvedIdentity.steps[0].id
+                && rebuilt.steps[1].output == "a"
+                && rebuilt.records.count == 2
+                && rebuilt.records[0].stepNumber == 1 && rebuilt.records[0].rawOutput == "b"
+                && rebuilt.records[1].stepNumber == 2 && rebuilt.records[1].rawOutput == "a"
+
+            identitySafeReplanPreservation = reorderedOK && changedToolNotPreserved
+        } catch {
+            identitySafeReplanPreservation = false
+        }
+        check(identitySafeReplanPreservation, "agent loop 20.166: replan preservation is identity-based — reordering keeps each completion with its action, a changed tool never inherits one")
+
         // 21.1 CROSS-TURN MEMORY: a completed production run must be recorded in
         // the ConversationManager so the NEXT user turn can reference it. The
         // deterministic fast path is a real completed interaction (Route=det, no

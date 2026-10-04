@@ -50,7 +50,7 @@ final class CommandSandbox {
     private let dangerousPrograms: Set<String> = [
         "rm", "sudo", "doas", "pkexec", "mkfs", "dd", "diskutil", "osascript",
         "sh", "bash", "zsh", "dash", "csh", "tcsh", "ksh",
-        "eval", "exec", "source", "curl", "wget", "nc", "ncat", "telnet",
+        "eval", "exec", "source", ".", "curl", "wget", "nc", "ncat", "telnet",
         "killall", "kill", "launchctl", "csrutil", "nvram", "pmset",
         "security", "defaults", "tccutil", "spctl", "xattr"
     ]
@@ -102,6 +102,16 @@ final class CommandSandbox {
         "gdb", "lldb",
         "sqlite3", "mysql", "psql", "mongo", "mongosh", "redis-cli"
     ]
+
+    /// Programs whose whole function is to hand control to ANOTHER program or to
+    /// a document the OS will execute. macOS `open` launches an application (or
+    /// opens a launchable document such as `.command`, `.app`, or `.workflow`),
+    /// which is the same arbitrary-process authority as the blocked interpreters:
+    /// `open -a Terminal script.sh` runs script.sh, and `open thing.command`
+    /// runs it via LaunchServices. Zia has dedicated, verified `open_app` and
+    /// `open_browser` tools for the legitimate capability, so `run_shell` never
+    /// needs `open`; it is rejected by the same deterministic boundary.
+    private let processLauncherPrograms: Set<String> = ["open"]
 
     /// Remote-execution / network-launcher programs. Each can launch another
     /// program (or ship data to an arbitrary host): `ssh [host] <command>` runs
@@ -257,7 +267,8 @@ final class CommandSandbox {
                 || codeExecutionInterpreters.contains(program)
                 || codeExecutionRunners.contains(program)
                 || interactiveEscapePrograms.contains(program)
-                || remoteExecutionPrograms.contains(program) {
+                || remoteExecutionPrograms.contains(program)
+                || processLauncherPrograms.contains(program) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 program): '\(command)' runs dangerous program '\(program)'")
                 throw JarvisError.commandBlocked(command: command, reason: "Program '\(program)' is not permitted")
             }

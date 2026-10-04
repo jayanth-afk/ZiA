@@ -118,9 +118,13 @@ final class Config {
         set { defaults.set(newValue, forKey: Keys.hotkeyEnabled) }
     }
 
+    /// Autonomy level, 0-5 (see `AutonomyLevel`). The per-action permission
+    /// gate maps levels >= 3 onto full execution authority; levels 4 and 5
+    /// additionally opt into background workflows and self-improvement
+    /// proposals. Raising the level never removes an authority check.
     var autonomyLevel: Int {
         get { defaults.integer(forKey: Keys.autonomyLevel) }
-        set { defaults.set(min(max(newValue, 0), 3), forKey: Keys.autonomyLevel) }
+        set { defaults.set(min(max(newValue, 0), 5), forKey: Keys.autonomyLevel) }
     }
 
     var ttsProvider: String {

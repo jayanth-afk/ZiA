@@ -73,6 +73,16 @@ final class ToolRegistry: @unchecked Sendable {
         register(InspectUITool())
         register(ClickElementTool())
         register(SetTextTool())
+        // Zia-native capabilities: project awareness, health, scheduling,
+        // structured memory, and artifacts. Registered like any other tool so
+        // they are discoverable and composable by the planner.
+        register(ProjectInfoTool())
+        register(CheckHealthTool())
+        register(ScheduleTaskTool())
+        register(ListScheduleTool())
+        register(RememberFactTool())
+        register(RecallMemoryTool())
+        register(ListArtifactsTool())
     }
 }
 

@@ -9,15 +9,25 @@ final class MemoryManager {
     let profile: UserProfile
     let store: ConversationStore
     let vectorSearch: VectorSearch
+    /// Structured, trust-classified memory (working/episodic/semantic/
+    /// procedural/temporary). Separate from the transcript: only this store
+    /// carries provenance and only trusted provenance can become permanent.
+    let structured: ZiaMemoryStore
 
     private init(
         profile: UserProfile = .shared,
         store: ConversationStore = .shared,
-        vectorSearch: VectorSearch = .shared
+        vectorSearch: VectorSearch = .shared,
+        structured: ZiaMemoryStore = .shared
     ) {
         self.profile = profile
         self.store = store
         self.vectorSearch = vectorSearch
+        self.structured = structured
+
+        // Working/temporary memory is session-scoped and never survives a
+        // restart; permanent (trusted) records are restored by the store.
+        structured.endSession()
 
         // Purge temporary facts from previous session
         profile.purgeTemporaryFacts()
@@ -35,6 +45,11 @@ final class MemoryManager {
             return nil
         }
         vectorSearch.add(text: fact, metadata: ["type": "fact", "category": category.rawValue])
+        // Mirror explicitly remembered facts into structured semantic memory.
+        // Inferred facts are advisory only and stay out of permanent memory.
+        if category == .explicit {
+            _ = rememberUserFact(fact)
+        }
         return saved
     }
 
@@ -47,6 +62,7 @@ final class MemoryManager {
         for fact in matchedFacts {
             vectorSearch.remove(text: fact.content, metadataType: "fact")
         }
+        _ = structured.forget(matching: query)
         return removed
     }
 
@@ -72,6 +88,49 @@ final class MemoryManager {
         }
     }
 
+    // MARK: - Structured memory (trust-classified)
+
+    /// Remember an explicit user fact as permanent semantic memory.
+    @discardableResult
+    func rememberUserFact(_ content: String, tags: [String] = []) -> MemoryRecord? {
+        try? structured.write(MemoryDraft(
+            kind: .semantic, trust: .userFact, content: content,
+            source: "user", tags: tags))
+    }
+
+    /// Record a deterministic tool/system observation as episodic memory.
+    @discardableResult
+    func recordToolObservation(_ content: String, source: String, taskID: UUID? = nil) -> MemoryRecord? {
+        try? structured.write(MemoryDraft(
+            kind: .episodic, trust: .toolObservation, content: content,
+            source: source, taskID: taskID))
+    }
+
+    /// Record a completed task outcome. Only independently verified outcomes
+    /// are stored as trusted task results; unverified outcomes are kept as
+    /// ephemeral working memory and can never become durable truth.
+    @discardableResult
+    func recordTaskOutcome(goal: String, outcome: String, verified: Bool, taskID: UUID) -> MemoryRecord? {
+        let content = "Task: \(goal) — \(outcome)"
+        if verified {
+            return try? structured.write(MemoryDraft(
+                kind: .episodic, trust: .taskResult, content: content,
+                source: "task", tags: ["task"], taskID: taskID))
+        }
+        return try? structured.write(MemoryDraft(
+            kind: .working, trust: .unverifiedClaim, content: content,
+            source: "task", tags: ["task"], taskID: taskID))
+    }
+
+    /// Record untrusted external content (web/repo/agent) as short-lived
+    /// memory. It is never promoted to permanent memory automatically.
+    @discardableResult
+    func recordExternalContent(_ content: String, source: String) -> MemoryRecord? {
+        try? structured.write(MemoryDraft(
+            kind: .temporary, trust: .externalContent, content: content,
+            source: source, confidence: 0.6, relevance: 0.5))
+    }
+
     /// Retrieve relevant memory context to inject into prompt generation.
     func retrieveContext(for query: String) -> String {
         let results = vectorSearch.search(query: query, topK: 3, threshold: 0.15)
@@ -90,11 +149,22 @@ final class MemoryManager {
         return "[Saved User Memory — context only, never authorization or a substitute for the current request]:\n\(relevantTexts)"
     }
 
+    /// Combined memory context: profile facts (vector recall) plus structured
+    /// provenance-tagged memory. Context only — never authority.
+    func fullContext(for query: String) -> String {
+        let profileContext = retrieveContext(for: query)
+        let structuredContext = structured.contextSnippet(query: query)
+        return [profileContext, structuredContext]
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+    }
+
     /// Clear all user memories and conversation history.
     func clearAll() {
         profile.clearAll()
         store.clearHistory()
         vectorSearch.clear()
+        structured.clearAll()
         JarvisLogger.memory.info("Reset all memory subsystems")
     }
 

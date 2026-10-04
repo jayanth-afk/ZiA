@@ -6,7 +6,12 @@ actor TaskWorkerPool {
     static let shared = TaskWorkerPool()
 
     private var workers: [TaskWorker]
-    private var taskQueue: [JarvisTask] = []
+    /// Priority queue. Higher priority runs first; equal priority preserves
+    /// submission order (the sequence tie-break makes ordering deterministic, so
+    /// a background task can never starve and an interactive task never jumps
+    /// ahead of an earlier interactive one).
+    private var taskQueue: [(task: JarvisTask, priority: Int, sequence: Int)] = []
+    private var enqueueCounter = 0
     private var activeWorkerTasks: [UUID: Task<Void, Never>] = [:]
     private var isListeningToEmergencyStop: Bool = false
     private var busyCount: Int = 0
@@ -50,10 +55,22 @@ actor TaskWorkerPool {
         busyCount
     }
 
+    /// Number of tasks waiting for a worker.
+    var queuedTaskCount: Int {
+        taskQueue.count
+    }
+
     // MARK: - Task Scheduling
 
-    /// Submit a task to the pool. Runs immediately if a worker is available, or queues.
+    /// Submit a task to the pool at default priority. Runs immediately if a
+    /// worker is available, or queues.
     func submit(task: JarvisTask) async {
+        await submit(task: task, priority: TaskPriority.normal)
+    }
+
+    /// Submit with an explicit priority. Higher priority runs first when the
+    /// pool is saturated, so interactive/urgent work outranks background work.
+    func submit(task: JarvisTask, priority: Int) async {
         await registerEmergencyStopListener()
 
         let limit = await getMaxConcurrentWorkers()
@@ -61,8 +78,13 @@ actor TaskWorkerPool {
         if busyCount < limit, let availableWorker = await getAvailableWorker() {
             startTask(task, on: availableWorker)
         } else {
-            taskQueue.append(task)
-            JarvisLogger.actions.info("Task [\(task.id.uuidString.prefix(8))] queued. Queue depth: \(self.taskQueue.count)")
+            enqueueCounter += 1
+            taskQueue.append((task: task, priority: priority, sequence: enqueueCounter))
+            taskQueue.sort { lhs, rhs in
+                if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
+                return lhs.sequence < rhs.sequence
+            }
+            JarvisLogger.actions.info("Task [\(task.id.uuidString.prefix(8))] queued at priority \(priority). Queue depth: \(self.taskQueue.count)")
         }
     }
 
@@ -98,13 +120,13 @@ actor TaskWorkerPool {
             busyCount -= 1
         }
 
-        // Dequeue next task if available
+        // Dequeue the highest-priority task if a worker is available.
         if !taskQueue.isEmpty {
-            let nextTask = taskQueue.removeFirst()
+            let next = taskQueue.removeFirst()
             if let worker = await getAvailableWorker() {
-                startTask(nextTask, on: worker)
+                startTask(next.task, on: worker)
             } else {
-                taskQueue.insert(nextTask, at: 0)
+                taskQueue.insert(next, at: 0)
             }
         }
     }
@@ -114,7 +136,7 @@ actor TaskWorkerPool {
     /// Cancel a specific task by ID.
     func cancelTask(id: UUID) async {
         // Remove from queue if pending
-        taskQueue.removeAll { $0.id == id }
+        taskQueue.removeAll { $0.task.id == id }
 
         // Cancel running task
         if let workerTask = activeWorkerTasks[id] {

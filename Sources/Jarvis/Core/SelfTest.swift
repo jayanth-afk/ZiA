@@ -56,6 +56,12 @@ enum SelfTest {
         defer { ConversationStore.endIsolatedTesting(restoring: previousConversationStore) }
         let restoreTaskState = TaskStateMachine.shared.beginIsolatedTesting()
         defer { restoreTaskState() }
+        let restoreMemory = ZiaMemoryStore.beginIsolatedTesting()
+        defer { ZiaMemoryStore.endIsolatedTesting(restoring: restoreMemory) }
+        let restoreArtifacts = ArtifactRegistry.beginIsolatedTesting()
+        defer { ArtifactRegistry.endIsolatedTesting(restoring: restoreArtifacts) }
+        let restoreSchedule = TaskScheduler.beginIsolatedTesting()
+        defer { TaskScheduler.endIsolatedTesting(restoring: restoreSchedule) }
         let productionDBFingerprintBefore = productionDatabaseFingerprint()
 
         setbuf(stdout, nil)
@@ -6258,6 +6264,9 @@ enum SelfTest {
         } else {
             check(true, "production database invariance 21.12: no production database exists yet; nothing to protect")
         }
+
+        print("\n─── Zia Product Subsystems ───")
+        ZiaSubsystemSelfTests.run(check: check)
 
         print("\n══════════════════════════════════════════")
         print("  Results: \(passed) passed, \(failures.count) failed, \(skipped) skipped")

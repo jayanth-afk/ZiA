@@ -144,6 +144,7 @@ public final class DeterministicRouter: @unchecked Sendable {
             if let system = systemCommandMatch(text) { return system }
             if let clipboard = clipboardMatch(text) { return clipboard }
             if let status = statusMatch(text) { return status }
+            if let capability = ziaCapabilityMatch(text) { return capability }
         }
         if !compound, let repo = repoMatch(text) { return repo }
         if let clipboardWrite = clipboardWriteMatch(text) { return clipboardWrite }
@@ -470,6 +471,42 @@ public final class DeterministicRouter: @unchecked Sendable {
             return DeterministicMatch(intent: "system.action.cancel", impact: .readOnly) {
                 await MainActor.run { DestructiveActionManager.shared.cancel() }
                 return "Pending action cancelled."
+            }
+        }
+        return nil
+    }
+
+    /// Zia-native read-only capabilities: health, project awareness, the
+    /// schedule, and artifacts. All read-only, so they are safe at every
+    /// autonomy level. These route deterministically (no model call).
+    private func ziaCapabilityMatch(_ text: String) -> DeterministicMatch? {
+        if ["system health", "health check", "health status", "check health",
+            "how healthy are you", "are you healthy", "diagnostics report"].contains(text) {
+            return DeterministicMatch(intent: "system.health", impact: .readOnly) {
+                let report = await HealthService.shared.report()
+                return report.summary
+            }
+        }
+        if ["what project is this", "project info", "what kind of project is this",
+            "detect project", "project status", "inspect this project"].contains(text) {
+            return DeterministicMatch(intent: "project.info", impact: .readOnly) {
+                ProjectInspector.inspect(root: FileManager.default.currentDirectoryPath).summary
+            }
+        }
+        if ["list scheduled jobs", "show schedule", "what's scheduled", "what is scheduled",
+            "show scheduled jobs", "list schedule", "what do you have scheduled"].contains(text) {
+            return DeterministicMatch(intent: "schedule.list", impact: .readOnly) {
+                let jobs = TaskScheduler.shared.all()
+                guard !jobs.isEmpty else { return "Nothing is scheduled." }
+                return jobs.map { "• \($0.title) — next \($0.nextRunAt)" }.joined(separator: "\n")
+            }
+        }
+        if ["list artifacts", "what have you made", "list produced files", "show artifacts",
+            "what artifacts exist"].contains(text) {
+            return DeterministicMatch(intent: "artifact.list", impact: .readOnly) {
+                let artifacts = ArtifactRegistry.shared.all()
+                guard !artifacts.isEmpty else { return "No artifacts recorded." }
+                return artifacts.map { "\($0.path) (\($0.verified ? "verified" : "unverified"))" }.joined(separator: "\n")
             }
         }
         return nil

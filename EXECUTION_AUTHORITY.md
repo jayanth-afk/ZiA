@@ -171,3 +171,26 @@ execute first unresolved step → verify → complete or fail`.
   explicit destructive gate; the structured allowlist is deliberately narrow;
   TOCTOU is bounded by a canonical-path re-check at launch rather than a
   descriptor-based exec.
+
+## Autonomy is layered above authority
+
+Zia's autonomy model (`Core/AutonomyLevel.swift`, L0–L5) is a capability
+contract that sits **above** this document's authority boundary. It decides how
+much Zia may undertake on its own (background workflows at L4, self-improvement
+*proposals* at L5) — it never decides whether a specific action is authorized.
+Every action still passes `PermissionGate`, `CommandSandbox`, `ProcessAuthority`,
+`PlanValidator`, and the destructive commit gate. Raising the autonomy level
+never removes a check.
+
+Two consequences worth stating explicitly:
+
+- **`run_program` remains the preferred structured path.** New Zia-native tools
+  (`project_info`, `check_health`, `schedule_task`, `list_schedule`,
+  `remember_fact`, `recall_memory`, `list_artifacts`) are read-only or
+  low-impact and carry the same execute → observe → verify contract. None of
+  them executes a process or bypasses the gate.
+- **Scheduling produces goals, not execution.** `TaskScheduler` decides *when* a
+  goal is due; the due goal still enters the normal pipeline and is subject to
+  every authority check in this document.
+
+See `ZIA_ARCHITECTURE.md` for the full product architecture.

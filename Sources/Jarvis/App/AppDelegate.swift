@@ -41,6 +41,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ResourceManager.shared.start()
         HotkeyManager.shared.register()
 
+        // Background autonomy: durable scheduled jobs run through the normal
+        // task system. Gated by autonomy level (>= L4). Never bypasses
+        // planning, permission, execution, or verification.
+        BackgroundAutonomy.shared.start()
+
+        // Record startup health so degraded state is visible without guessing.
+        Task { @MainActor in
+            let report = await HealthService.shared.report()
+            if report.overall != .healthy {
+                JarvisLogger.app.warning("Zia health '\(report.overall.rawValue)': \(report.degradedCapabilities.joined(separator: "; "))")
+            } else {
+                JarvisLogger.app.info("Zia health: healthy")
+            }
+        }
+
         // Start voice pipeline
         VoicePipeline.shared.start()
 
@@ -86,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        BackgroundAutonomy.shared.stop()
         VoicePipeline.shared.stop()
         HotkeyManager.shared.unregister()
         NetworkMonitor.shared.stop()

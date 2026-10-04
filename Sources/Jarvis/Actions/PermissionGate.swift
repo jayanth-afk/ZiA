@@ -26,10 +26,13 @@ final class PermissionGate {
 
     // MARK: - Public API
 
-    /// Current system autonomy level from configuration.
+    /// Current system autonomy level from configuration. Levels above the
+    /// legacy 0-3 range (4 = background workflows, 5 = self-improvement
+    /// proposals) map onto full per-action authority; background/self-improvement
+    /// gating lives in `AutonomyPolicy`, not here.
     var currentLevel: AutonomyLevel {
         let levelInt = Config.shared.autonomyLevel
-        return AutonomyLevel(rawValue: levelInt) ?? .l1Supervised
+        return AutonomyLevel(rawValue: min(max(levelInt, 0), AutonomyLevel.l3Full.rawValue)) ?? .l1Supervised
     }
 
     /// Check if an action of given impact is authorized to run.

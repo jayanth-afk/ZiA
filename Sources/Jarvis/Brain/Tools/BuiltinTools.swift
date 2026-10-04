@@ -176,6 +176,118 @@ struct RunShellTool: JarvisTool {
     }
 }
 
+// MARK: - Run Program Tool (structured execution)
+
+/// Structured execution tool: launches ONE allowlisted executable directly with
+/// an explicit argument vector. There is no shell and no `-c`; arguments are
+/// passed to the process as data and are never re-interpreted. The request flows
+/// `Tool → ProposedProcess → ProcessAuthority → AuthorizedProcess → executor`,
+/// so unknown executables, relative paths outside trusted roots, trampolines,
+/// and interpreters are rejected before any process exists (see
+/// `ProcessAuthority`).
+struct RunProgramTool: JarvisTool {
+    let name = "run_program"
+    let description = "Executes one allowlisted executable directly with an explicit argument vector; no shell, no pipes, no redirection. Prefer this over run_shell when a single executable plus arguments is sufficient."
+    let impact: PermissionGate.ActionImpact = .safeMutation
+    let parameterSpec: [ToolParameterSpec] = [
+        ToolParameterSpec(name: "executable", kind: .string, required: true, description: "Executable bare name in a trusted system directory, or an absolute path (e.g. echo or /bin/echo)"),
+        ToolParameterSpec(name: "arguments", kind: .string, required: false, description: "Optional JSON array of string arguments, e.g. [\"-n\", \"hello\"]"),
+        ToolParameterSpec(name: "working_directory", kind: .string, required: false, description: "Optional absolute working directory that already exists"),
+        ToolParameterSpec(name: "timeout_seconds", kind: .int, required: false, description: "Optional timeout in seconds (default 30)"),
+        ToolParameterSpec(name: "expected_file", kind: .string, required: false, description: "Optional file path expected to exist after execution"),
+        ToolParameterSpec(name: "expected_directory", kind: .string, required: false, description: "Optional directory expected to exist after execution")
+    ]
+
+    /// Decode the scalar `arguments` field (a JSON array of strings) into an
+    /// explicit argument vector. Fails closed on anything that is not an array
+    /// of strings — a malformed model argument becomes a clear error, never a
+    /// crash and never shell interpretation.
+    static func decodeArguments(_ raw: String?) throws -> [String] {
+        guard let raw, !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        let data = Data(raw.utf8)
+        guard let decoded = try? JSONSerialization.jsonObject(with: data),
+              let array = decoded as? [Any] else {
+            throw JarvisError.actionFailed(
+                action: "run_program",
+                reason: "'arguments' must be a JSON array of strings (e.g. [\"-n\", \"hello\"])")
+        }
+        var values: [String] = []
+        for element in array {
+            guard let value = element as? String else {
+                throw JarvisError.actionFailed(
+                    action: "run_program",
+                    reason: "'arguments' array may contain only strings")
+            }
+            values.append(value)
+        }
+        return values
+    }
+
+    func execute(arguments: [String: any Sendable]) async throws -> ToolResult {
+        guard let executable = arguments["executable"] as? String,
+              !executable.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw JarvisError.actionFailed(action: name, reason: "Missing argument 'executable'")
+        }
+        let argv = try Self.decodeArguments(arguments["arguments"] as? String)
+        let workingDirectory = arguments["working_directory"] as? String
+        let timeout = Double((arguments["timeout_seconds"] as? Int) ?? 30)
+
+        var meta: [String: String] = [
+            "executable": executable,
+            "argumentCount": String(argv.count),
+            "argumentsFingerprint": StepResolutionRecord.fingerprint(
+                arguments: ["executable": executable, "argv": argv.joined(separator: "\u{1f}")])
+        ]
+        if let expectedFile = arguments["expected_file"] as? String { meta["expectedFile"] = expectedFile }
+        if let directory = arguments["expected_directory"] as? String { meta["expectedDirectory"] = directory }
+
+        let output = try await ShellExecutor.shared.executeStructured(
+            executable: executable,
+            arguments: argv,
+            workingDirectory: workingDirectory,
+            timeoutSeconds: timeout,
+            requestedImpact: impact)
+        // Bind evidence to the authorized process identity.
+        meta["processIdentity"] = output.authorizationIdentity
+        meta["exitCode"] = String(output.exitCode)
+
+        let success = output.exitCode == 0
+        let combined = output.stdout.isEmpty ? output.stderr : output.stdout
+        return ToolResult(
+            success: success,
+            output: combined,
+            sideEffects: ["process_executed"],
+            metadata: meta)
+    }
+
+    func observe() async throws -> ObservationResult {
+        ObservationResult(observations: ["status": "completed"], isAvailable: true)
+    }
+
+    func verifyDetailed(expected: ToolResult, observed: ObservationResult) -> ToolVerificationResult {
+        guard expected.success else {
+            let code = expected.metadata["exitCode"] ?? "unknown"
+            return .failed("Program exited with code \(code)", expected: "exit code 0", observed: "exit code \(code)")
+        }
+        guard observed.isAvailable else {
+            return .unavailable("Observation mechanism unavailable", expected: "filesystem observation", observed: "unavailable")
+        }
+        if let expectedFile = expected.metadata["expectedFile"], !expectedFile.isEmpty {
+            let state = FileSystemObserver.shared.observe(path: expectedFile)
+            return state.exists && state.isRegularFile
+                ? .passed(reason: "Expected file observed on disk", expected: "regular file at \(expectedFile)", observed: "\(state.fileSize ?? 0) bytes")
+                : .failed("Expected file does not exist after execution: \(expectedFile)", expected: "regular file at \(expectedFile)", observed: state.exists ? "directory" : "missing")
+        }
+        if let expectedDirectory = expected.metadata["expectedDirectory"], !expectedDirectory.isEmpty {
+            let state = FileSystemObserver.shared.observe(path: expectedDirectory)
+            return state.isDirectory
+                ? .passed(reason: "Expected directory observed on disk", expected: "directory at \(expectedDirectory)", observed: "directory")
+                : .failed("Expected directory does not exist after execution: \(expectedDirectory)", expected: "directory at \(expectedDirectory)", observed: state.exists ? "regular file" : "missing")
+        }
+        return .passed(reason: "Program exited successfully; no side-effect was declared", expected: "exit code 0", observed: "exit code 0")
+    }
+}
+
 // MARK: - Safe File Writing Tool
 
 struct WriteFileTool: JarvisTool {

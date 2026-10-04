@@ -145,6 +145,7 @@ public final class DeterministicRouter: @unchecked Sendable {
             if let clipboard = clipboardMatch(text) { return clipboard }
             if let status = statusMatch(text) { return status }
         }
+        if !compound, let repo = repoMatch(text) { return repo }
         if let clipboardWrite = clipboardWriteMatch(text) { return clipboardWrite }
         if let speech = speechMatch(text) { return speech }
         if !compound, let lineCount = lineCountMatch(text) { return lineCount }
@@ -552,6 +553,48 @@ public final class DeterministicRouter: @unchecked Sendable {
                 timeoutSeconds: 10.0, requestedImpact: .readOnly)
             return output.stdout.isEmpty ? output.stderr : output.stdout
         }
+    }
+
+    /// Deterministic repository inspection, executed structurally through the
+    /// pinned read-only `git` argument policy in `ProcessAuthority`. No shell,
+    /// no model, and only argv shapes that cannot launch another program.
+    private func repoMatch(_ text: String) -> DeterministicMatch? {
+        let statusPhrases: Set<String> = [
+            "git status", "repo status", "repository status", "show git status",
+            "what is the git status", "what's the git status",
+            "status of the repo", "status of the repository"
+        ]
+        if statusPhrases.contains(text) {
+            return DeterministicMatch(intent: "repo.status", impact: .readOnly) {
+                let output = try await ShellExecutor.shared.executeStructured(
+                    executable: "git", arguments: ["status", "--porcelain"],
+                    timeoutSeconds: 15.0, requestedImpact: .readOnly)
+                guard output.exitCode == 0 else {
+                    throw JarvisError.actionFailed(
+                        action: "repo.status", reason: "git status exited with code \(output.exitCode)")
+                }
+                let trimmed = output.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? "Working tree clean." : trimmed
+            }
+        }
+        let branchPhrases: Set<String> = [
+            "current branch", "git branch", "which branch", "what branch",
+            "show current branch", "branch name", "current git branch"
+        ]
+        if branchPhrases.contains(text) {
+            return DeterministicMatch(intent: "repo.branch", impact: .readOnly) {
+                let output = try await ShellExecutor.shared.executeStructured(
+                    executable: "git", arguments: ["rev-parse", "--abbrev-ref", "HEAD"],
+                    timeoutSeconds: 15.0, requestedImpact: .readOnly)
+                guard output.exitCode == 0 else {
+                    throw JarvisError.actionFailed(
+                        action: "repo.branch", reason: "git rev-parse exited with code \(output.exitCode)")
+                }
+                let name = output.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+                return name.isEmpty ? "Unknown branch." : name
+            }
+        }
+        return nil
     }
 
     /// Deterministic line count of a file, executed structurally through the

@@ -2262,6 +2262,28 @@ enum SelfTest {
         check(authorizedEcho?.environment["PATH"] == "/usr/bin:/bin:/usr/sbin:/sbin",
               "Structured execution uses a fixed environment")
 
+        // Structured execution as the primary generic path: the tool is
+        // registered, malicious arguments remain DATA (never shell syntax), and
+        // the pinned read-only git capability rejects mutating or arbitrary argv.
+        check(ToolRegistry.shared.getTool(named: "run_program") != nil, "run_program is registered for the planner")
+        check((try? RunProgramTool.decodeArguments("[\"a\", \"b c\"]")) == ["a", "b c"],
+              "run_program decodes a JSON array of string arguments")
+        var runProgramRejectedBadArgs = false
+        do { _ = try RunProgramTool.decodeArguments("not-json") } catch { runProgramRejectedBadArgs = true }
+        check(runProgramRejectedBadArgs, "run_program rejects malformed argument arrays")
+        check(ProcessAuthority.isReadOnlyGitInvocation(["status", "--porcelain"]),
+              "pinned read-only git status is authorized")
+        check(!ProcessAuthority.isReadOnlyGitInvocation(["reset", "--hard"]),
+              "mutating git invocation is not authorized")
+        check(!ProcessAuthority.isReadOnlyGitInvocation(["-c", "core.pager=evil", "status"]),
+              "git config override is not authorized")
+        var gitMutationRejected = false
+        do { _ = try authority.authorize(.structured(executable: "git", arguments: ["reset", "--hard"])) }
+        catch { gitMutationRejected = true }
+        check(gitMutationRejected, "authority rejects a mutating git invocation")
+        check(BrowserManager.appleScriptStringLiteral("a\"b") == "a\\\"b",
+              "AppleScript string escaping neutralizes an embedded quote")
+
         print("\n─── Phase 6: ShellExecutor & Process Lifecycle ───")
         let shellSem = DispatchSemaphore(value: 0)
         var normalOk = false

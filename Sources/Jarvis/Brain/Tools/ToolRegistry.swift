@@ -59,6 +59,7 @@ final class ToolRegistry: @unchecked Sendable {
     private func registerBuiltins() {
         register(OpenAppTool())
         register(SetVolumeTool())
+        register(RunProgramTool())
         register(RunShellTool())
         register(WriteFileTool())
         register(ReadFileTool())

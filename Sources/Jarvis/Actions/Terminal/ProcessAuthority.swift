@@ -11,6 +11,7 @@ enum ProcessAuthorityError: LocalizedError {
     case invalidArgument(String)
     case invalidWorkingDirectory(String)
     case interpreterRequiresShellCapability(String)
+    case unauthorizedArguments(String, [String])
     case executableChangedAfterAuthorization(String)
 
     var errorDescription: String? {
@@ -29,6 +30,8 @@ enum ProcessAuthorityError: LocalizedError {
             return "Working directory '\(path)' is not an existing directory"
         case .interpreterRequiresShellCapability(let name):
             return "Program '\(name)' is a shell interpreter and requires the explicit shell capability"
+        case .unauthorizedArguments(let path, let args):
+            return "Arguments \(args) are not an authorized shape for '\(path)'"
         case .executableChangedAfterAuthorization(let path):
             return "Authorized executable '\(path)' changed between authorization and launch"
         }
@@ -256,9 +259,13 @@ final class ProcessAuthority {
         }
         switch authorized.capability {
         case .structured:
-            guard Self.authorizedExecutables.contains(fresh),
-                  Self.isWithinTrustedDirectories(fresh) else {
+            guard Self.isWithinTrustedDirectories(fresh), Self.isStructuredProgram(fresh) else {
                 throw ProcessAuthorityError.unauthorizedExecutable(fresh)
+            }
+            if let policy = Self.restrictedArgumentPolicy(for: fresh) {
+                guard policy(authorized.arguments) else {
+                    throw ProcessAuthorityError.unauthorizedArguments(fresh, authorized.arguments)
+                }
             }
         case .shell:
             guard fresh == Self.shellInterpreterPath else {
@@ -284,8 +291,16 @@ final class ProcessAuthority {
         guard !Self.shellInterpreters.contains(canonical) else {
             throw ProcessAuthorityError.interpreterRequiresShellCapability(canonical)
         }
-        guard Self.authorizedExecutables.contains(canonical) else {
+        // A program is structurally authorized either as an unrestricted leaf
+        // program or under an explicit, pinned ARGUMENT policy (e.g. read-only
+        // git). An executable outside both is never authorized.
+        guard Self.isStructuredProgram(canonical) else {
             throw ProcessAuthorityError.unauthorizedExecutable(canonical)
+        }
+        if let policy = Self.restrictedArgumentPolicy(for: canonical) {
+            guard policy(proposal.arguments) else {
+                throw ProcessAuthorityError.unauthorizedArguments(canonical, proposal.arguments)
+            }
         }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: canonical, isDirectory: &isDirectory),
@@ -372,6 +387,55 @@ final class ProcessAuthority {
             }
         }
         throw ProcessAuthorityError.unknownExecutable(requested)
+    }
+
+    /// Whether a canonical executable may be launched structurally at all: an
+    /// unrestricted allowlisted leaf program, or a program with an explicit
+    /// argument policy.
+    private static func isStructuredProgram(_ canonicalPath: String) -> Bool {
+        authorizedExecutables.contains(canonicalPath)
+            || restrictedProgramPolicies[canonicalPath] != nil
+    }
+
+    /// Programs authorized ONLY for a pinned set of argument shapes. `git` can
+    /// launch other programs (`-c`, `--exec-path`, aliases, external diff), so
+    /// it is never an unrestricted structured program; these read-only shapes
+    /// cannot launch anything.
+    private static let restrictedProgramPolicies: [String: @Sendable ([String]) -> Bool] = [
+        canonicalPath(for: "/usr/bin/git"): { isReadOnlyGitInvocation($0) }
+    ]
+
+    private static func restrictedArgumentPolicy(for canonicalPath: String) -> (([String]) -> Bool)? {
+        restrictedProgramPolicies[canonicalPath]
+    }
+
+    /// Deterministic, pinned read-only `git` argument shapes. Anything not
+    /// listed (writes, config overrides, pager/exec options, subcommands that
+    /// launch programs) is rejected — this is an allowlist of argv, not a
+    /// denylist of flags.
+    nonisolated static func isReadOnlyGitInvocation(_ arguments: [String]) -> Bool {
+        guard let subcommand = arguments.first else { return false }
+        switch subcommand {
+        case "status":
+            let flags: Set<String> = ["--porcelain", "--short", "--branch", "-b", "-s"]
+            return arguments.dropFirst().allSatisfy { flags.contains($0) }
+        case "rev-parse":
+            return arguments == ["rev-parse", "--abbrev-ref", "HEAD"]
+                || arguments == ["rev-parse", "HEAD"]
+                || arguments == ["rev-parse", "--show-toplevel"]
+        case "branch":
+            return arguments == ["branch"] || arguments == ["branch", "--show-current"]
+        case "log":
+            if arguments == ["log", "--oneline"] { return true }
+            if arguments.count == 4, arguments[1] == "--oneline", arguments[2] == "-n",
+               let count = Int(arguments[3]), count > 0, count <= 100 { return true }
+            return false
+        case "diff":
+            return arguments == ["diff"] || arguments == ["diff", "--stat"]
+                || arguments == ["diff", "--name-only"]
+        default:
+            return false
+        }
     }
 
     private static func isWithinTrustedDirectories(_ canonicalPath: String) -> Bool {

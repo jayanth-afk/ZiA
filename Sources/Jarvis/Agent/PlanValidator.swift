@@ -506,6 +506,13 @@ enum PlanValidator {
                 return .failure(.unsafeOperation(tool: toolName, reason: "empty shell command"))
             }
 
+            // An empty executable is not a real structured request.
+            if toolName == "run_program",
+               let executable = step.arguments["executable"],
+               executable.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return .failure(.unsafeOperation(tool: toolName, reason: "empty executable"))
+            }
+
             let declared = Dictionary(uniqueKeysWithValues: tool.parameterSpec.map { ($0.name, $0) })
 
             for (argName, value) in step.arguments {
@@ -570,6 +577,40 @@ enum PlanValidator {
                     guard CommandSandbox.shared.isSafe(command) else {
                         return .failure(.unsafeOperation(tool: toolName, reason: "command rejected by CommandSandbox"))
                     }
+                }
+            }
+
+            // Structured execution: the authority is consulted at PLAN time so
+            // an unknown/unauthorized executable is rejected with a clear reason
+            // before anything runs. Execution re-authorizes (and re-validates at
+            // the launch choke point) — this is defense in depth, not the
+            // authority. Reference-bearing values are deferred to resolution and
+            // re-checked at execution time.
+            if toolName == "run_program", let executable = step.arguments["executable"],
+               !executable.contains("$step"), !executable.contains("$ambient") {
+                let argv: [String]
+                do {
+                    let rawArguments = step.arguments["arguments"]
+                    if let rawArguments, rawArguments.contains("$step") || rawArguments.contains("$ambient") {
+                        argv = []
+                    } else {
+                        argv = try RunProgramTool.decodeArguments(rawArguments)
+                    }
+                } catch {
+                    return .failure(.unsafeOperation(tool: toolName,
+                        reason: "arguments must be a JSON array of strings"))
+                }
+                let timeout = Double(Int(step.arguments["timeout_seconds"] ?? "") ?? 30)
+                do {
+                    _ = try ProcessAuthority.shared.authorize(.structured(
+                        executable: executable,
+                        arguments: argv,
+                        workingDirectory: step.arguments["working_directory"],
+                        timeoutSeconds: timeout,
+                        requestedImpact: .safeMutation))
+                } catch {
+                    return .failure(.unsafeOperation(tool: toolName,
+                        reason: "executable rejected by ProcessAuthority: \(error.localizedDescription)"))
                 }
             }
 

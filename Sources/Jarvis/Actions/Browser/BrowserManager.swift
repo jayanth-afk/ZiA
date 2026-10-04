@@ -52,6 +52,18 @@ public actor BrowserManager {
 
     // MARK: - Public API
 
+    /// Escapes a value for safe interpolation into an AppleScript string
+    /// literal. AppleScript is an executable authority: a URL is untrusted model
+    /// output, so a raw `"`/`\` or a newline must never be able to terminate the
+    /// literal and inject a second statement (`do shell script …`).
+    static func appleScriptStringLiteral(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "")
+            .replacingOccurrences(of: "\r", with: "")
+    }
+
     /// Opens a URL in the designated browser or default system browser.
     public func open(url: URL, in browser: BrowserType = .defaultBrowser) async throws -> Bool {
         if browser == .defaultBrowser {
@@ -60,27 +72,29 @@ public actor BrowserManager {
             }
         }
 
+        let location = Self.appleScriptStringLiteral(url.absoluteString)
+        let application = Self.appleScriptStringLiteral(browser.rawValue)
         let script: String
         switch browser {
         case .safari:
             script = """
             tell application "Safari"
                 activate
-                open location "\(url.absoluteString)"
+                open location "\(location)"
             end tell
             """
         case .chrome:
             script = """
             tell application "Google Chrome"
                 activate
-                open location "\(url.absoluteString)"
+                open location "\(location)"
             end tell
             """
         default:
             script = """
-            tell application "\(browser.rawValue)"
+            tell application "\(application)"
                 activate
-                open location "\(url.absoluteString)"
+                open location "\(location)"
             end tell
             """
         }

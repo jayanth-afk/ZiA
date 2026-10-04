@@ -866,6 +866,7 @@ actor MLXPlanner {
         p += "{\"tool\": \"<one tool name>\", \"arguments\": {<argument names exactly as listed>}, \"literal\": \"<the exact words from the goal that are the user's requested content>\"}\n\n"
         p += "ARGUMENT VALUES:\n"
         p += "- run_shell: the ENTIRE shell command as ONE scalar string.\n"
+        p += "- run_program: executable = a bare name or absolute path; arguments = an optional JSON array of strings.\n"
         p += "- web_search: the search query text.\n"
         p += "- write_file: content = the exact text to write; path = a file path.\n"
         p += "- read_file: path = the file path to read.\n"
@@ -983,7 +984,7 @@ actor MLXPlanner {
             case "app": return tools.filter { $0.name == "open_app" }
             case "volume": return tools.filter { $0.name == "set_volume" }
             case "file": return tools.filter { $0.name == "write_file" || $0.name == "read_file" }
-            case "shell": return tools.filter { $0.name == "run_shell" }
+            case "shell": return tools.filter { $0.name == "run_shell" || $0.name == "run_program" }
             case "web": return tools.filter { ["web_search", "fetch_url", "open_browser"].contains($0.name) }
             default: return tools.filter { $0.name == family }
             }
@@ -1049,6 +1050,9 @@ actor MLXPlanner {
                 lines.append("  WRONG:   {\"tool\": \"run_shell\", \"arguments\": {\"command\": \"echo\", \"args\": [\"hello\"]}}")
                 lines.append("  RULE: command is ONE scalar string containing the complete shell command. Never create an args field.")
                 lines.append("  RULE: \"echo hello world\" must be represented as one scalar command string.")
+            }
+            if tool.name == "run_program" {
+                lines.append("  RULE: executable is a bare name (echo) or absolute path (/bin/echo); arguments is an optional JSON array of strings, e.g. [\"-n\", \"hello\"]. Never put a shell command here.")
             }
         }
         lines.append("RULE: never add argument fields that are not declared above (e.g. there is no \"args\" field next to \"command\").")
@@ -1142,6 +1146,7 @@ actor MLXPlanner {
         - To fetch or download web URL content, use fetch_url. To search the web, use web_search. To open a site in a browser window, use open_browser.
         - Copy argument names and value shapes EXACTLY from the schema above. Numbers without quotes. Never invent argument fields that are not in the schema.
         - If the goal asks to run a shell command, use run_shell and put the ENTIRE command text into one "command" string.
+        - PREFER run_program when ONE executable plus arguments is enough: "executable" is a bare name or absolute path and "arguments" is an optional JSON array of strings. Use run_shell ONLY when pipes, redirects, or compound shell syntax are genuinely required.
         - command is ONE scalar string containing the complete shell command. Never create an args field.
         - "echo hello world" must be represented as one scalar command string.
         - Always fill "purpose" with a short reason.
@@ -1167,6 +1172,10 @@ actor MLXPlanner {
         Example 5:
         Goal: fetch the url https://example.com and write output to output.txt
         {"goal":"fetch the url https://example.com and write output to output.txt","steps":[{"id":"step_1","tool":"fetch_url","arguments":{"url":"https://example.com"},"purpose":"fetch web page"},{"id":"step_2","tool":"write_file","arguments":{"content":"$step.1.output","path":"output.txt"},"purpose":"write content to file"}]}
+
+        Example 6:
+        Goal: print the text hello without a shell
+        {"goal":"print the text hello without a shell","steps":[{"id":"step_1","tool":"run_program","arguments":{"executable":"echo","arguments":"[\"hello\"]"},"purpose":"print the text with the echo program"}]}
 
         Goal: \(goal)
         """

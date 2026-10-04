@@ -2284,6 +2284,30 @@ enum SelfTest {
         check(BrowserManager.appleScriptStringLiteral("a\"b") == "a\\\"b",
               "AppleScript string escaping neutralizes an embedded quote")
 
+        // Repository content is DATA, not authority: a repository whose own
+        // config can launch a program must not authorize a worktree-reading git
+        // command, and the shell capability must not source ambient startup
+        // files past command analysis.
+        check(ProcessAuthority.isDangerousGitConfigKey("filter.evil.clean"),
+              "a repository-defined filter driver is treated as program-launching")
+        check(ProcessAuthority.isDangerousGitConfigKey("core.fsmonitor"),
+              "core.fsmonitor is treated as program-launching")
+        check(!ProcessAuthority.isDangerousGitConfigKey("core.repositoryformatversion"),
+              "benign repository config is still inert")
+        let authorizedShellProbe = try? authority.authorize(.shell(command: "echo zia_selftest_shell"))
+        check(authorizedShellProbe?.arguments == ["-f", "-c", "echo zia_selftest_shell"],
+              "shell capability runs with startup files disabled (-f)")
+        var authorityRejectedTimeout = false
+        do { _ = try authority.authorize(.structured(executable: "/bin/echo", timeoutSeconds: 0)) }
+        catch { authorityRejectedTimeout = true }
+        check(authorityRejectedTimeout, "authority rejects a non-positive timeout")
+        var authorityRejectedHugeTimeout = false
+        do { _ = try authority.authorize(.structured(executable: "/bin/echo", timeoutSeconds: 100000)) }
+        catch { authorityRejectedHugeTimeout = true }
+        check(authorityRejectedHugeTimeout, "authority rejects an unbounded timeout")
+        check(authorizedEcho?.environment["GIT_CONFIG_NOSYSTEM"] == "1",
+              "structured execution neutralizes repository config sources for git")
+
         print("\n─── Phase 6: ShellExecutor & Process Lifecycle ───")
         let shellSem = DispatchSemaphore(value: 0)
         var normalOk = false

@@ -7,8 +7,17 @@ process. The invariant is:
 > authority to execute that process.**
 
 The model, the planner, the tool system, and recovery all *propose*. Only
-trusted code (`ProcessAuthority`) *authorizes*. Every process reaches the OS
-through exactly one primitive that accepts only an authorized request.
+trusted code (`ProcessAuthority`) *authorizes*. Every **model-driven** process
+reaches the OS through exactly one primitive that accepts only an authorized
+request.
+
+A small set of internal, fixed-executable launches (the MLX Python worker, the
+AppleScript bridge, `screencapture`/`pmset` system control, `git` for local
+development history, and the integration audit runner) still call `Process`
+directly. Their executable is a hard-coded absolute path, no model output
+chooses it, and no model-supplied arguments reach them, so they do not cross
+the proposal/authority boundary. They are the known exception to the "one
+primitive" rule and are listed here so the claim is precise.
 
 ## Execution path
 
@@ -44,10 +53,19 @@ Execution is requested under exactly one capability:
 | Capability | Program | Authorization |
 |---|---|---|
 | `structured` | a specific allowlisted executable + explicit argv, no shell | canonical path in a root-owned system directory **and** the executable is an unrestricted leaf program, or matches a pinned argument policy |
-| `shell` | `/bin/zsh -c <command>` | explicit capability grant; CommandSandbox (denylist/analysis) as defense in depth; every path-like program token must resolve inside a trusted directory |
+| `shell` | `/bin/zsh -f -c <command>` | explicit capability grant; CommandSandbox (denylist/analysis) as defense in depth; every path-like program token must resolve inside a trusted directory |
 
 A structured request can never silently become `zsh -c`, and a shell request can
 never be mistaken for a structured one.
+
+The shell capability passes `-f` (no-rcs): non-interactive `zsh -c` would
+otherwise source the user's `.zshenv` *before* running the analyzed command, so
+arbitrary ambient configuration could bypass `CommandSandbox`. With `-f`, the
+only code that runs is the command the authority authorized.
+
+Every authorized process timeout is validated and bounded
+(`0 < timeout <= 600s`); a caller cannot request an unbounded, zero, negative, or
+non-finite lifetime.
 
 ## Trusted roots and executable identity
 
@@ -60,6 +78,29 @@ never be mistaken for a structured one.
 - Bare names resolve through a **fixed trusted-directory search**, never the
   ambient `PATH`. There is no cwd lookup.
 - A renamed copy of an allowed binary is a different path and is rejected.
+
+## Repository content is data, not authority
+
+A repository's own `.git/config` and `.gitattributes` can bind a file attribute
+to an external program — clean/smudge filters, external diff drivers, textconv,
+and the fsmonitor hook. An otherwise "read-only" `git status` or `git diff` then
+executes that program: repository content would silently become authority.
+
+Therefore `git status` and `git diff` (the worktree-reading subcommands) are
+authorized **only** when the repository reachable from the authorized working
+directory has an inert effective config. Before authorizing (and again at the
+launch choke point) the authority enumerates the repository's config with
+system/global config neutralized and rejects the request if any
+program-launching key is present (`filter.*`, `core.fsmonitor`, `diff.external`,
+`diff.*.textconv`, `diff.*.command`, `log.showSignature`, `gpg.program`,
+`credential.helper`, `core.pager`, `core.editor`, `core.hookspath`, …). An
+unreadable or non-repository directory fails closed.
+
+Ref/object-only shapes (`rev-parse`, `branch`, `log --oneline`) do not read
+worktree content and remain available in any repository. All structured git
+execution additionally runs with an authority-owned environment that neutralizes
+system/global config, the pager, terminal prompts, optional locks, and
+signature/fsmonitor defaults; the caller cannot supply any of it.
 
 ## Program classification
 
@@ -80,8 +121,8 @@ never be mistaken for a structured one.
 ## Environment and working directory
 
 - Structured execution runs with a fixed minimal environment (no ambient
-  `DYLD_*`, `LD_*`, `BASH_ENV`, …). The caller cannot supply an environment at
-  all.
+  `DYLD_*`, `LD_*`, `BASH_ENV`, …, and authority-owned `GIT_CONFIG_*`
+  neutralization). The caller cannot supply an environment at all.
 - Shell execution runs with a sanitized environment and a fixed `PATH`.
 - The working directory, if specified, must be an existing directory and is
   bound at authorization.

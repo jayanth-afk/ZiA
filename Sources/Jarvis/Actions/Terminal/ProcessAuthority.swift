@@ -13,6 +13,8 @@ enum ProcessAuthorityError: LocalizedError {
     case interpreterRequiresShellCapability(String)
     case unauthorizedArguments(String, [String])
     case executableChangedAfterAuthorization(String)
+    case invalidTimeout(Double)
+    case unsafeRepositoryConfiguration(String)
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +36,10 @@ enum ProcessAuthorityError: LocalizedError {
             return "Arguments \(args) are not an authorized shape for '\(path)'"
         case .executableChangedAfterAuthorization(let path):
             return "Authorized executable '\(path)' changed between authorization and launch"
+        case .invalidTimeout(let seconds):
+            return "Process timeout \(seconds)s is outside the authorized range (0, \(ProcessAuthority.maximumTimeoutSeconds)]"
+        case .unsafeRepositoryConfiguration(let reason):
+            return "Repository configuration is not inert for a worktree-reading git command: \(reason)"
         }
     }
 }
@@ -220,7 +226,12 @@ final class ProcessAuthority {
     /// The shell interpreter used by the explicitly-granted shell capability.
     static let shellInterpreterPath = canonicalPath(for: "/bin/zsh")
 
-    static func canonicalPath(for path: String) -> String {
+    /// Upper bound on any authorized process lifetime. A caller cannot request
+    /// an unbounded (or negative/NaN) timeout: timeout is part of the authorized
+    /// request, so it is validated and bounded here rather than trusted.
+    nonisolated static let maximumTimeoutSeconds: Double = 600
+
+    nonisolated static func canonicalPath(for path: String) -> String {
         URL(fileURLWithPath: path).resolvingSymlinksInPath().path
     }
 
@@ -267,14 +278,19 @@ final class ProcessAuthority {
                     throw ProcessAuthorityError.unauthorizedArguments(fresh, authorized.arguments)
                 }
             }
+            try Self.validateTimeout(authorized.timeoutSeconds)
+            try Self.assertRepositoryInspectionIsSafeIfNeeded(
+                canonical: fresh, arguments: authorized.arguments, directory: authorized.workingDirectory)
         case .shell:
             guard fresh == Self.shellInterpreterPath else {
                 throw ProcessAuthorityError.executableChangedAfterAuthorization(fresh)
             }
             // authorized.arguments is immutable, so this re-checks the *same*
             // command that was authorized — defense in depth, not re-authority.
-            if authorized.arguments.count == 2, authorized.arguments[0] == "-c" {
-                try CommandSandbox.shared.validateCommand(authorized.arguments[1])
+            // The shape is fixed by the authority: `zsh -f -c <command>`.
+            if authorized.arguments.count == 3,
+               authorized.arguments[0] == "-f", authorized.arguments[1] == "-c" {
+                try CommandSandbox.shared.validateCommand(authorized.arguments[2])
             }
         }
     }
@@ -309,8 +325,11 @@ final class ProcessAuthority {
             throw ProcessAuthorityError.unauthorizedExecutable(canonical)
         }
         try Self.validateArguments(proposal.arguments)
+        try Self.validateTimeout(proposal.timeoutSeconds)
 
         let workingDirectory = try Self.resolveWorkingDirectory(proposal.workingDirectory)
+        try Self.assertRepositoryInspectionIsSafeIfNeeded(
+            canonical: canonical, arguments: proposal.arguments, directory: workingDirectory)
 
         return AuthorizedProcess(
             capability: .structured,
@@ -326,6 +345,7 @@ final class ProcessAuthority {
 
     private func authorizeShell(_ proposal: ProposedProcess) throws -> AuthorizedProcess {
         let command = proposal.executable
+        try Self.validateTimeout(proposal.timeoutSeconds)
         // Legacy syntax defense remains in force (denylist + program analysis +
         // protected-target + exfiltration heuristics). It is defense in depth:
         // the authority decision here is that the caller explicitly requested
@@ -350,10 +370,15 @@ final class ProcessAuthority {
             throw ProcessAuthorityError.unauthorizedExecutable(interpreter)
         }
 
+        // `-f` disables ALL shell startup files (`.zshenv`, `/etc/zshrc`, …).
+        // Without it, non-interactive `zsh -c` sources the user's `.zshenv`
+        // before running the command — arbitrary code that the CommandSandbox
+        // never analyzed. The shell capability is privileged, but command
+        // analysis must not be bypassed by ambient shell configuration.
         return AuthorizedProcess(
             capability: .shell,
             executableURL: URL(fileURLWithPath: interpreter),
-            arguments: ["-c", command],
+            arguments: ["-f", "-c", command],
             environment: Self.shellEnvironment(),
             workingDirectory: nil,
             timeoutSeconds: proposal.timeoutSeconds,
@@ -452,6 +477,87 @@ final class ProcessAuthority {
         }
     }
 
+    private static func validateTimeout(_ seconds: Double) throws {
+        guard seconds.isFinite, seconds > 0, seconds <= maximumTimeoutSeconds else {
+            throw ProcessAuthorityError.invalidTimeout(seconds)
+        }
+    }
+
+    // MARK: - Worktree-reading git defense
+
+    /// git subcommands that read the WORKTREE (not just refs/objects). These can
+    /// run programs named by the repository's own `.git/config` and
+    /// `.gitattributes` — clean/smudge filters, external diff drivers, textconv,
+    /// fsmonitor. Repository content is DATA, not authority, so a worktree-reading
+    /// git invocation is authorized only when the repository's effective config
+    /// defines none of those program-launching keys.
+    static let worktreeReadingGitSubcommands: Set<String> = ["status", "diff"]
+
+    /// Config key prefixes that can name an external program. `filter.<driver>.*`
+    /// and `diff.<driver>.textconv`/`diff.<driver>.command` are how git binds a
+    /// file attribute to a program, so their presence anywhere in the effective
+    /// config makes a worktree read unsafe. Exact keys cover fsmonitor, pager,
+    /// editor, hooks, signature verification, and credential/ssh helpers.
+    nonisolated private static let dangerousGitConfigPrefixes = ["filter.", "pager."]
+    nonisolated private static let dangerousGitConfigKeys: Set<String> = [
+        "core.fsmonitor", "core.pager", "core.editor", "core.hookspath",
+        "core.sshcommand", "core.gitproxy", "log.showsignature", "gpg.program",
+        "credential.helper", "sequence.editor", "core.alternateRefsCommand".lowercased()
+    ]
+
+    nonisolated static func isDangerousGitConfigKey(_ key: String) -> Bool {
+        let lower = key.lowercased()
+        if dangerousGitConfigKeys.contains(lower) { return true }
+        if dangerousGitConfigPrefixes.contains(where: { lower.hasPrefix($0) }) { return true }
+        if lower == "diff.external" { return true }
+        if lower.hasPrefix("diff.") && (lower.hasSuffix(".textconv") || lower.hasSuffix(".command")) {
+            return true
+        }
+        return false
+    }
+
+    /// Whether the repository reachable from `directory` (or Zia's own cwd when
+    /// nil) has an inert config for a worktree-reading git command. Fails CLOSED:
+    /// an unreadable/non-repository directory is treated as unsafe. The check
+    /// neutralizes system/global config the same way real structured execution
+    /// does, so it reasons about exactly the config git will actually read.
+    nonisolated static func repositoryInspectionIsInert(at directory: String?) -> Bool {
+        let workingDirectory = directory ?? FileManager.default.currentDirectoryPath
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: canonicalPath(for: "/usr/bin/git"))
+        process.arguments = ["-C", workingDirectory, "config", "--list", "--includes", "--name-only", "-z"]
+        process.environment = gitConfigInspectionEnvironment()
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = Pipe()
+        do {
+            try process.run()
+        } catch {
+            return false
+        }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        guard process.terminationStatus == 0 else { return false }
+        let keys = String(decoding: data, as: UTF8.self).split(separator: "\0")
+        return !keys.contains { isDangerousGitConfigKey(String($0)) }
+    }
+
+    /// The environment used to enumerate a repository's effective config: system
+    /// and global config are neutralized (they are also neutralized for real
+    /// structured execution), so only the repository's own local/worktree config
+    /// is inspected.
+    nonisolated static func gitConfigInspectionEnvironment() -> [String: String] {
+        [
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_PAGER": "cat",
+            "GIT_OPTIONAL_LOCKS": "0"
+        ]
+    }
+
     private static func resolveWorkingDirectory(_ requested: String?) throws -> URL? {
         guard let requested, !requested.isEmpty else { return nil }
         guard !requested.contains("\0") else {
@@ -472,15 +578,57 @@ final class ProcessAuthority {
     /// environment is NOT inherited: a poisoned `DYLD_INSERT_LIBRARIES`,
     /// `PATH`, or similar variable in Zia's own process must not be able to turn
     /// an authorized leaf binary into a trampoline.
+    ///
+    /// A fixed set of git variables is included for every structured program.
+    /// Non-git programs ignore them; git programs get system/global config and
+    /// program-launching defaults neutralized, so the working directory's
+    /// repository is the only config that reaches the process. These are
+    /// authority-owned and cannot be supplied by the caller.
     private static func minimalEnvironment() -> [String: String] {
         var environment: [String: String] = [
-            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin"
+            "PATH": "/usr/bin:/bin:/usr/sbin:/sbin",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_PAGER": "cat",
+            "GIT_OPTIONAL_LOCKS": "0",
+            "GIT_ATTR_NOSYSTEM": "1",
+            "GIT_ALLOW_PROTOCOL": "none",
+            // Env-level config overrides have the highest precedence: no
+            // repository config can re-enable signature verification, the
+            // fsmonitor daemon, or an external pager for a structured git run.
+            "GIT_CONFIG_COUNT": "3",
+            "GIT_CONFIG_KEY_0": "log.showSignature",
+            "GIT_CONFIG_VALUE_0": "false",
+            "GIT_CONFIG_KEY_1": "core.fsmonitor",
+            "GIT_CONFIG_VALUE_1": "false",
+            "GIT_CONFIG_KEY_2": "core.pager",
+            "GIT_CONFIG_VALUE_2": "cat"
         ]
         if let home = ProcessInfo.processInfo.environment["HOME"] {
             environment["HOME"] = home
         }
         environment["LANG"] = "en_US.UTF-8"
         return environment
+    }
+
+    /// A worktree-reading git command is authorized only in a repository whose
+    /// effective config cannot launch a program. `status`/`diff` read file
+    /// content through clean filters, external diff drivers, textconv, and the
+    /// fsmonitor hook — all of which are named by the repository itself. This is
+    /// the boundary that keeps repository content DATA rather than authority.
+    private static func assertRepositoryInspectionIsSafeIfNeeded(
+        canonical: String,
+        arguments: [String],
+        directory: URL?
+    ) throws {
+        guard canonical == canonicalPath(for: "/usr/bin/git"),
+              let subcommand = arguments.first,
+              worktreeReadingGitSubcommands.contains(subcommand) else { return }
+        guard repositoryInspectionIsInert(at: directory?.path) else {
+            throw ProcessAuthorityError.unsafeRepositoryConfiguration(subcommand)
+        }
     }
 
     /// Shell execution inherits a *sanitized* environment: the ambient values

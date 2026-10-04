@@ -13,6 +13,18 @@ actor TaskExecutionCoordinator {
     private var replanCount = 0
     private var plannerMetrics: MLXPlanner.PlannerMetrics?
 
+    /// Test seam: when set, recovery replanning calls this instead of the real
+    /// MLX planner. Production leaves it nil so every recovery plan still goes
+    /// through the real MLXPlanner and is validated by PlanValidator; a real
+    /// plan is required for every recovery, model or not.
+    private var replanOverride: (@Sendable (String, PlannerContext, UUID) async throws -> AgentPlan)?
+
+    /// Install/clear the recovery replanner used by tests. Passing nil restores
+    /// the production MLX planner.
+    func setReplanOverrideForTesting(_ override: (@Sendable (String, PlannerContext, UUID) async throws -> AgentPlan)?) {
+        replanOverride = override
+    }
+
     func latestRoute() -> PipelineRoute? { route }
     func latestReplanCount() -> Int { replanCount }
     func latestPlannerMetrics() -> MLXPlanner.PlannerMetrics? { plannerMetrics }
@@ -237,11 +249,17 @@ actor TaskExecutionCoordinator {
     ) async throws -> String {
         var observations: [String] = []
         var outputs: [String] = []
-        var replanCount = 0
+        // NOTE: replanCount is the actor's `replanCount` property, not a local.
+        // A shadowing local here silently froze `latestReplanCount()` at 0, so
+        // the audit/metrics reported "0 replans" even when recovery replanned.
         var lastFailure: (stepNumber: Int, purpose: String, tool: String?, error: String)?
         var stepIndex = 0
-        while stepIndex < plan.steps.count {
-            let planStep = plan.steps[stepIndex]
+        // The plan actually driving execution. It starts as the caller's plan and
+        // is REPLACED by a validated replan, so the tool and arguments that run
+        // always match the TaskStep whose evidence is recorded for them.
+        var activePlan = plan
+        while stepIndex < activePlan.steps.count {
+            let planStep = activePlan.steps[stepIndex]
             try checkCancellation()
             guard let currentTask = stateMachine.getTask(id: task.id), currentTask.steps.indices.contains(stepIndex) else {
                 throw JarvisError.actionFailed(action: "AgentLoop.execute", reason: "Authoritative task changed during execution")
@@ -363,8 +381,13 @@ actor TaskExecutionCoordinator {
                     var plannerContext = PlannerContext.initial(goal: recoveryGoal)
                     plannerContext = plannerContext.with(
                         failure: error.localizedDescription, observations: observations)
-                    let replanned = try await MLXPlanner.shared.plan(
-                        goal: recoveryGoal, context: plannerContext, taskID: task.id)
+                    let replanned: AgentPlan
+                    if let replanOverride {
+                        replanned = try await replanOverride(recoveryGoal, plannerContext, task.id)
+                    } else {
+                        replanned = try await MLXPlanner.shared.plan(
+                            goal: recoveryGoal, context: plannerContext, taskID: task.id)
+                    }
                     let validatedResult = await MainActor.run { PlanValidator.validate(replanned, originalGoal: recoveryGoal) }
                     guard case .success(let validatedPlan) = validatedResult else {
                         if case .failure(let validationError) = validatedResult { throw validationError }
@@ -374,8 +397,20 @@ actor TaskExecutionCoordinator {
                     // never reset backwards into already-completed steps.
                     let existingSteps = stateMachine.getTask(id: task.id)?.steps ?? []
                     try stateMachine.setSteps(taskId: task.id, steps: Self.makeTaskSteps(validatedPlan, preservingCompletedFrom: existingSteps))
-                    let completedCount = existingSteps.filter { $0.state == .completed }.count
-                    if stepIndex >= validatedPlan.steps.count { stepIndex = max(stepIndex, completedCount) }
+                    // Adopt the validated replan for the remainder of this run and
+                    // re-anchor the cursor to the first UNRESOLVED step of the new
+                    // plan. Otherwise the loop keeps executing the ORIGINAL plan's
+                    // tool/arguments while the task steps — and therefore the
+                    // recorded evidence identity — come from the replan, so the
+                    // action that runs is not the action its evidence claims, and
+                    // the recovery plan is silently ignored.
+                    activePlan = validatedPlan
+                    if let replannedTask = stateMachine.getTask(id: task.id),
+                       let firstUnresolved = TaskContinuity.firstIncompleteStepIndex(task: replannedTask) {
+                        stepIndex = firstUnresolved
+                    } else {
+                        stepIndex = activePlan.steps.count
+                    }
                     try stateMachine.transition(taskId: task.id, to: .running)
                 } catch is CancellationError {
                     cancel(taskID: task.id, stateMachine: stateMachine, reason: "Emergency Stop")

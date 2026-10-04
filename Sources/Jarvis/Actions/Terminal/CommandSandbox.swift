@@ -269,6 +269,10 @@ final class CommandSandbox {
                 JarvisLogger.security.fault("BLOCKED (layer 3 tar trampoline): '\(command)': \(tarRisk)")
                 throw JarvisError.commandBlocked(command: command, reason: tarRisk)
             }
+            if let sortRisk = sortExecutionRisk(of: segment) {
+                JarvisLogger.security.fault("BLOCKED (layer 3 sort trampoline): '\(command)': \(sortRisk)")
+                throw JarvisError.commandBlocked(command: command, reason: sortRisk)
+            }
             if let injectionRisk = environmentInjectionRisk(of: segment) {
                 JarvisLogger.security.fault("BLOCKED (layer 3 env injection): '\(command)': \(injectionRisk)")
                 throw JarvisError.commandBlocked(command: command, reason: injectionRisk)
@@ -379,7 +383,11 @@ final class CommandSandbox {
                 previousChar = nil
                 continue
             }
-            if char == ";" || char == "|" || char == "\n" {
+            // A single `&` (job control) separates two commands exactly like
+            // `;`/`|`. It must be segmented, or the program after it is never
+            // program-checked (`echo hi & sh -c '…'`). `&&` is already handled
+            // above, so this only sees the single-ampersand form.
+            if char == ";" || char == "|" || char == "&" || char == "\n" {
                 if !current.isEmpty { parts.append(current) }
                 current = ""
                 previousChar = char
@@ -600,6 +608,23 @@ final class CommandSandbox {
         return nil
     }
 
+    /// Rejects `sort --compress-program[=]PROG`. GNU/BSD `sort` spawns PROG as a
+    /// subprocess to (de)compress its input — the same arbitrary-process
+    /// authority as tar's `--use-compress-program` and the blocked interpreters.
+    /// Both the `--compress-program=PROG` and the space-separated
+    /// `--compress-program PROG` forms are rejected; abbreviations are covered by
+    /// the `--compress` prefix. Scoped to `sort` so the option name on any other
+    /// tool is unaffected. O(tokens).
+    private func sortExecutionRisk(of segment: String) -> String? {
+        let tokens = segment.split(separator: " ").map(String.init)
+        guard let sortIndex = primaryExecutableIndex(in: tokens),
+              executableName(of: tokens[sortIndex]) == "sort" else { return nil }
+        for token in tokens[(sortIndex + 1)...] where token.hasPrefix("--compress") {
+            return "sort --compress-program launches an external program"
+        }
+        return nil
+    }
+
     /// Rejects environment assignments in COMMAND POSITION that redirect
     /// program loading or command resolution. Only assignments before the
     /// primary executable are considered — `echo FOO=bar` keeps NAME=value as an
@@ -625,9 +650,22 @@ final class CommandSandbox {
         return token.dropFirst().contains("=")
     }
 
-    /// Basename of a command token (strips a leading path).
+    /// Shell control operators the shell acts on even when no whitespace
+    /// separates them from a program name (`sh<<<'cmd'`, `sh</tmp/script`,
+    /// `sh>out`). A program token is everything before the first of these.
+    private static let programNameTerminators: Set<Character> = ["<", ">", "|", "&", ";", "`", "(", ")"]
+
+    /// Program basename of a command token. Shell control operators glued to the
+    /// program name are stripped FIRST — redirection/here-string syntax must not
+    /// hide the program from the layer-3 program analysis (`sh<<<'cmd'` has to
+    /// resolve to `sh`, not to the opaque `sh<<<'cmd'`) — then a leading path is
+    /// removed.
     private func executableName(of token: String) -> String {
-        token.split(separator: "/").last.map(String.init) ?? token
+        var name = token
+        if let terminator = name.firstIndex(where: { Self.programNameTerminators.contains($0) }) {
+            name = String(name[..<terminator])
+        }
+        return name.split(separator: "/").last.map(String.init) ?? name
     }
 
     // MARK: - Layer 4 helpers

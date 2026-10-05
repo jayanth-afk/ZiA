@@ -10,15 +10,15 @@
 
 # CURRENT VERIFIED STATE
 
-- **Date:** 2026-09-29 `[VERIFIED FROM SYSTEM ENVIRONMENT]`
-- **Current HEAD Commit:** `2f75969001e28daa93109b76a6c29f01805191b6` `[VERIFIED: git rev-parse HEAD]`
-- **Latest Commit Message:** `docs: reconcile PROJECT_CONTEXT.md to canonical engineering handoff baseline` `[VERIFIED: git log -1]`
-- **Previous Engineering Commit:** `fd4bf87a3b495ac18ef3dda20dc126d2dcc11c54` (`fix: accept verified silent actions in agent execution`) `[VERIFIED: git log]`
-- **Active Branch:** `master` (synchronized with `origin/master`) `[VERIFIED: git branch --show-current]`
+- **Date:** 2026-10-05 `[VERIFIED FROM CURRENT SESSION]`
+- **Current HEAD Commit:** `a9f58ef` (`fix: harden process cancellation and provider routing`) `[VERIFIED: git rev-parse HEAD]`
+- **Latest Commit Message:** `fix: harden process cancellation and provider routing` `[VERIFIED: git log -1]`
+- **Previous Engineering Commit:** `84b4d21` (`fix: stabilize core test suite, eliminate notification and concurrency deadlocks, fix scheduler and error taxonomy`) `[VERIFIED: git log]`
+- **Active Branch:** `master` (ahead of `origin/master` by the local hardening commit; push pending at this handoff point) `[VERIFIED: git status]`
 - **Working Tree State:** Tracked tree is clean. Untracked diagnostic/evidence files preserved under `build/`. `[VERIFIED: git status --short]`
 
 ### CURRENT VERIFIED BASELINE
-- **Canonical SelfTest Result:** **624 passed, 0 failed** across 20 phases. `[VERIFIED BY TEST: execution of ./.build/debug/Jarvis --self-test]`
+- **Native Swift test suite:** **235 tests / 37 suites, 0 failures** on the current Apple Silicon toolchain. `[VERIFIED BY TEST: swift test]`
 - **Offline Replay Benchmark:** **15/15 passed** (structural repair of malformed shapes + deterministic compilation gates). `[VERIFIED FROM BENCHMARK: Sources/Jarvis/Core/PlannerRoutingBenchmark.swift:102-120]`
 - **Live Routing Benchmark Matrix (30 runs across 10 cases + 5 rerun):**
   - Structural conformance: **30/30** (and **35/35** including rerun)
@@ -60,7 +60,7 @@
 - Physical browser DOM automation in Safari requires the user to enable *"Allow JavaScript from Apple Events"* in Safari Developer settings. `[VERIFIED FROM CODE/DOCS]`
 - Chrome active-tab automation was unverified on sign-in pages to prevent credential leakage. `[VERIFIED HISTORICAL]`
 - Acoustic DSP wake-word engine remains deferred; wake detection relies on streaming `SFSpeechRecognizer` transcript matching. `[VERIFIED FROM CURRENT CODE]`
-- `swift test` fails under macOS Command Line Tools-only environment; the in-process `SelfTest` runner (`Jarvis --self-test`) is the canonical suite. `[VERIFIED FROM BUILD ENVIRONMENT]`
+- `swift test` is currently executable on the installed Swift 6.4 toolchain and is the primary automated suite; `SelfTest` remains the broader in-process integration/physical capability runner. `[VERIFIED BY CURRENT SESSION]`
 - Four to five shell benchmark cases in the routing matrix were handled by deterministic `explicitShellEchoExtraction` rather than model generation. `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Agent/PlannerExtraction.swift:151-176]`
 
 ### CURRENT OPEN ENGINEERING QUESTION & PROPOSED NEXT WORK
@@ -115,7 +115,7 @@
   - `KeychainAccess` (4.2.2): macOS Keychain wrapper for secure cloud API key storage `[VERIFIED FROM CURRENT CODE: Package.swift:17]`
   - `mlx` / `mlx_lm`: Python virtual environment (`.venv-mlx` with Python 3.12) running a persistent worker process (`mlx_worker.py`) for on-device Apple Metal neural network inference `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Brain/Workers/mlx_worker.py]`
 - **Build System:** Swift Package Manager (SPM). Build invocation: `swift build` or `./Scripts/build-app.sh debug|release`.
-- **Test Strategy:** Native in-process test runner `SelfTest` (`swift run Jarvis --self-test` or `./.build/debug/Jarvis --self-test`). Standard `swift test` fails on this machine because standalone Command Line Tools lacks `XCTest.framework`. All automated verification uses the canonical `SelfTest` suite. `[VERIFIED BY TEST: SelfTest.swift]`
+- **Test Strategy:** Native in-process `SelfTest` remains the broad integration runner, while `swift test` now executes the Swift Testing/XCTest suite on the current toolchain. Both are used; neither is treated as evidence for capabilities that were not physically exercised. `[VERIFIED BY CURRENT SESSION]`
 
 ---
 
@@ -730,7 +730,7 @@ Deterministic Post-Action Verification
 5. **Emergency Stop Load Sensitivity:** Emergency stop latency assertions pass near the 50ms threshold (e.g. 43.58ms) and can be sensitive to heavy CPU load.
 6. **Browser DOM Physical Automation:** Safari requires explicit manual developer enablement (*"Allow JavaScript from Apple Events"*).
 7. **Acoustic Wake Word Deferred:** Voice system uses speech recognizer transcript streaming; acoustic DSP micro-models remain deferred.
-8. **Toolchain Limitation:** `swift test` cannot run due to missing `XCTest` in macOS Command Line Tools; `SelfTest` is the canonical runner.
+8. **Current test tooling:** `swift test` is operational on the installed Swift 6.4 toolchain; `SelfTest` remains the broader integration/physical-capability runner.
 
 ---
 
@@ -750,8 +750,8 @@ To prevent scope creep and maintain architectural stability, the following items
 
 `[VERIFIED FROM GIT: git log, git status]`
 
-- **Active Branch:** `master` (synchronized with `origin/master`)
-- **Current HEAD Commit:** `2f75969001e28daa93109b76a6c29f01805191b6` — *"docs: reconcile PROJECT_CONTEXT.md to canonical engineering handoff baseline"*
+- **Active Branch:** `master` (local hardening commit pending push; `[VERIFIED FROM CURRENT SESSION]`)
+- **Current HEAD Commit:** `a9f58ef` — *"fix: harden process cancellation and provider routing"*
 - **Preceding Key Commits:**
   - `655bab5`: `feat: add Milestone 3 EscalationAudit harness and test evidence` (EscalationAudit harness, Phase 18 test evidence).
   - `fd4bf87`: `fix: accept verified silent actions in agent execution` (`AgentStepOutcomePolicy`, verified silent action fix).
@@ -790,12 +790,13 @@ To prevent scope creep and maintain architectural stability, the following items
 **How should Zia combine deterministic routing, bounded extraction, local models (0.5B/3B/7B), and Groq efficiently while preserving safety, strictly adhering to the 9 Frozen Principles, and minimizing unnecessary model/API usage?**
 
 ### Work Items Under Architectural Review
-1. **Local-vs-Groq Latency & Accuracy Benchmark [PROPOSED / PENDING ARCHITECTURAL REVIEW]:**
+1. **Local-vs-Groq Latency & Accuracy Benchmark [STILL OPEN]:**
    - Benchmark local Qwen2.5-7B and Qwen2.5-3B against Groq `llama-3.3-70b-versatile` across standard macOS intent tasks.
    - Measure real TTFT, total latency, memory footprint, and token cost.
-2. **Bounded Extraction Expansion [PROPOSED / PENDING ARCHITECTURAL REVIEW]:**
-   - Expand `PlannerExtraction` to support additional single-action tool shapes (e.g. `open_app`, `system.volume`, `browser_search`) without triggering full-plan generation overhead.
-3. **Hybrid Routing Policy Formalization [PROPOSED / PENDING ARCHITECTURAL REVIEW]:**
+2. **Bounded Extraction Expansion [SUBSTANTIALLY IMPLEMENTED]:**
+   - Current deterministic extraction already covers `open_app`, volume, URL opening/fetching, web search, file read/write, and explicit shell forms; remaining work is empirical coverage expansion rather than the original missing architecture.
+3. **Hybrid Routing Policy Formalization [PARTIALLY IMPLEMENTED]:
+   - Provider routing now makes live availability and quarantine state part of the auditable decision itself; benchmark-driven threshold tuning remains open.**
    - Formulate clear routing thresholds: when to use 0-model deterministic routing, when to use local reflex/extraction, when to escalate to external Groq acceleration, and how to maintain zero-cost local fallback.
 
 ---

@@ -31,6 +31,96 @@ enum ZiaSubsystemSelfTests {
         contextSanitizer(check: check)
         recoveryPolicy(check: check)
         capabilityRegistry(check: check)
+        productCompletion(check: check)
+    }
+
+    private static func productCompletion(check: (Bool, String) -> Void) {
+        // Error taxonomy: stable categories + dispositions.
+        check(ErrorTaxonomy.classify(JarvisError.permissionDenied(action: "x", requiredLevel: 2, currentLevel: 1)) == .permissionError,
+              "error taxonomy: permission denial classifies as permissionError")
+        check(ErrorTaxonomy.classify(CancellationError()) == .cancellation,
+              "error taxonomy: cancellation classifies as cancellation")
+        check(ErrorTaxonomy.classify(JarvisError.timeout(operation: "x", durationMs: 1)).disposition == .retry,
+              "error taxonomy: timeouts are configured to retry")
+        check(ErrorTaxonomy.classify(JarvisError.actionFailed(action: "x", reason: "y")).disposition == .replan,
+              "error taxonomy: execution failures are configured to replan")
+
+        // Patch engine: deterministic hashing + default scope.
+        check(PatchEngine.sha256("abc") == PatchEngine.sha256("abc")
+              && PatchEngine.sha256("abc") != PatchEngine.sha256("abd"),
+              "patch engine: SHA-256 hashing is stable and change-sensitive")
+        let defaultPatch = FilePatch(target: "/tmp/x", find: "a", replacement: "b", reason: "test")
+        check(defaultPatch.scope == .firstOccurrence,
+              "patch engine: default scope is a single exact occurrence, not a blind global replace")
+
+        // Crash recovery: classification from durable state only.
+        crashRecovery(check: check)
+
+        // External agent transport: correlation/staleness is enforced.
+        let request = ExternalAgentRequest(id: UUID(), correlationID: UUID(), taskID: nil,
+                                           capability: "c", payload: "p", deadline: Date().addingTimeInterval(60))
+        let good = ExternalAgentResponse(requestID: request.id, correlationID: request.correlationID,
+                                         status: "ok", payload: "d", provenance: "external")
+        let stale = ExternalAgentResponse(requestID: request.id, correlationID: request.correlationID,
+                                          status: "ok", payload: "d", provenance: "external")
+        let pastDeadline = ExternalAgentRequest(id: request.id, correlationID: request.correlationID,
+                                                taskID: nil, capability: "c", payload: "p",
+                                                deadline: Date().addingTimeInterval(-1))
+        check(good.isCorrelated(with: request),
+              "external agents: a matching, fresh response is correlated")
+        check(!stale.isCorrelated(with: pastDeadline),
+              "external agents: a response past the request deadline is rejected (stale/replay)")
+
+        // Notification importance ordering.
+        check(NotificationImportance.low < NotificationImportance.critical,
+              "notifications: importance is ordered from low to critical")
+
+        // Code intelligence: source scanning is extension-bounded.
+        check(CodeIntelligence.sourceExtensions.contains("swift")
+              && CodeIntelligence.sourceExtensions.contains("py")
+              && !CodeIntelligence.sourceExtensions.contains("dylib"),
+              "code intelligence: scans known source extensions only")
+
+        // Preferences: defaults are safe and explicit-first.
+        let prefs = UserPreferences()
+        check(prefs.verbosity == .normal && prefs.confirmation == .askForDestructive
+              && prefs.explicitKeys.isEmpty,
+              "preferences: safe defaults with no explicit keys set")
+    }
+
+    private static func crashRecovery(check: (Bool, String) -> Void) {
+        let now = Date()
+        func task(_ state: TaskState, steps: [TaskStep], updatedAt: Date) -> JarvisTask {
+            JarvisTask(title: "t", goal: "goal", state: state, steps: steps,
+                       createdAt: now.addingTimeInterval(-3600), updatedAt: updatedAt)
+        }
+        let freshCreated = task(.created,
+            steps: [TaskStep(stepNumber: 1, description: "d", toolName: "read_file", arguments: ["path": "/tmp/x"])],
+            updatedAt: now)
+        let staleDestructive = task(.running,
+            steps: [TaskStep(stepNumber: 1, description: "d", toolName: "delete_path", arguments: ["path": "/tmp/x"], state: .running)],
+            updatedAt: now.addingTimeInterval(-3600))
+        let freshRunning = task(.running,
+            steps: [TaskStep(stepNumber: 1, description: "d", toolName: "read_file", arguments: ["path": "/tmp/x"], state: .running)],
+            updatedAt: now)
+        let failed = task(.failed, steps: [TaskStep(stepNumber: 1, description: "d", toolName: "read_file", arguments: [:])],
+                          updatedAt: now.addingTimeInterval(-3600))
+        let completed = task(.completed, steps: [], updatedAt: now)
+
+        let report = CrashRecovery.inspect(tasks: [freshCreated, staleDestructive, freshRunning, failed, completed], now: now)
+        let plans = Dictionary(uniqueKeysWithValues: report.plans.map { ($0.taskID, $0) })
+        check(plans[freshCreated.id]?.disposition == .safeToResume,
+              "crash recovery: a not-yet-started task is safe to resume")
+        check(plans[staleDestructive.id]?.disposition == .requiresConfirmation,
+              "crash recovery: an uncertain destructive step requires confirmation, never blind replay")
+        check(plans[freshRunning.id]?.disposition == .needsVerification,
+              "crash recovery: a recently-active task needs verification before resuming")
+        check(plans[failed.id]?.disposition == .requiresConfirmation,
+              "crash recovery: a previously failed task requires a user decision")
+        check(plans[completed.id] == nil,
+              "crash recovery: terminal tasks are not offered for recovery")
+        check(report.resumable.count == 1,
+              "crash recovery: only the provably-safe task is auto-resumable")
     }
 
     private static func recoveryPolicy(check: (Bool, String) -> Void) {

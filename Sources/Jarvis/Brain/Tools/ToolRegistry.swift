@@ -94,6 +94,17 @@ final class ToolRegistry: @unchecked Sendable {
         register(MoveOrCopyPathTool(move: true))
         register(ReplaceInFileTool())
         register(DeletePathTool())
+        // Assistant-grade capabilities: code intelligence, self-awareness,
+        // preferences, crash-recovery status, and the patch engine.
+        register(FindSymbolTool())
+        register(FindMarkersTool())
+        register(ChangedFilesTool())
+        register(CapabilitiesTool())
+        register(SelfStatusTool())
+        register(RecoveryStatusTool())
+        register(GetPreferencesTool())
+        register(SetPreferenceTool())
+        register(PatchFileTool())
     }
 }
 

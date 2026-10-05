@@ -20,18 +20,9 @@ final class FileManagerJarvis {
         "/var"
     ]
 
-    // Sensitive credential subpaths that cannot be read
-    private let blockedReadSensitiveSubpaths = [
-        ".ssh",
-        ".gnupg",
-        ".aws",
-        ".kube",
-        ".config/gcloud",
-        ".env",
-        ".netrc",
-        ".zsh_history",
-        ".bash_history"
-    ]
+    // Sensitive credential subpaths that cannot be read. Single source of truth
+    // shared with every capability via `SensitivePaths`.
+    private let blockedReadSensitiveSubpaths = SensitivePaths.subpaths
 
     private init() {}
 
@@ -163,8 +154,7 @@ final class FileManagerJarvis {
     /// (list/search/grep/metadata) consult this so they can never surface
     /// credential stores, even indirectly.
     func isSensitivePath(_ path: String) -> Bool {
-        let lower = resolvePath(path).lowercased()
-        return blockedReadSensitiveSubpaths.contains { lower.contains($0) }
+        SensitivePaths.contains(path)
     }
 
     /// Used by deterministic tests and callers that need a normalized path

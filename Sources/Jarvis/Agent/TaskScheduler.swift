@@ -370,7 +370,31 @@ final class BackgroundAutonomy {
             TaskScheduler.shared.recordRun(id: job.id, at: now, outcome: outcome, didLaunch: true)
             launched += 1
         }
-        return launched
+        // Crash recovery: resume only tasks whose remaining work is proven safe
+        // to replay. Uncertain destructive work is never resumed automatically.
+        let resumed = await resumeInterruptedWork(now: now)
+        return launched + resumed
+    }
+
+    /// Inspect durable state and resume the interrupted tasks that are safe.
+    /// Never resumes a task currently owned by the interactive AgentLoop, and
+    /// never resumes a task with an uncertain destructive side effect.
+    @discardableResult
+    func resumeInterruptedWork(now: Date = .now) async -> Int {
+        guard AutonomyPolicy.backgroundExecutionEnabled else { return 0 }
+        let report = CrashRecovery.inspect(tasks: TaskStateMachine.shared.allTasks, now: now)
+        var resumed = 0
+        let interactiveTaskID = AgentLoop.shared.status.taskId
+        for plan in report.resumable {
+            if let interactiveTaskID, interactiveTaskID == plan.taskID.uuidString { continue }
+            guard let task = TaskStateMachine.shared.getTask(id: plan.taskID) else { continue }
+            await TaskWorkerPool.shared.submit(task: task, priority: TaskPriority.backgroundMaintenance)
+            resumed += 1
+        }
+        if resumed > 0 {
+            JarvisLogger.actions.info("Crash recovery resumed \(resumed) interrupted task(s)")
+        }
+        return resumed
     }
 
     private func launch(_ job: ScheduledJob) async -> String {

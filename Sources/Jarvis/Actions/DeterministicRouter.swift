@@ -509,6 +509,31 @@ public final class DeterministicRouter: @unchecked Sendable {
                 return artifacts.map { "\($0.path) (\($0.verified ? "verified" : "unverified"))" }.joined(separator: "\n")
             }
         }
+        if ["what can you do", "what are you able to do", "list your capabilities",
+            "your capabilities", "what are your capabilities", "what can you not do"].contains(text) {
+            return DeterministicMatch(intent: "capabilities", impact: .readOnly) {
+                await MainActor.run { CapabilityRegistry.capabilitySummary() }
+            }
+        }
+        if ["what's happening", "what is happening", "system state", "what tasks are running",
+            "are you degraded", "what permissions do you have", "self status",
+            "how are you doing", "what's your status"].contains(text) {
+            return DeterministicMatch(intent: "self.status", impact: .readOnly) {
+                await CapabilityRegistry.selfAwarenessReport()
+            }
+        }
+        if ["what are my preferences", "show preferences", "show my preferences",
+            "my settings", "what are my settings"].contains(text) {
+            return DeterministicMatch(intent: "preferences.show", impact: .readOnly) {
+                await MainActor.run { PreferenceStore.shared.summary() }
+            }
+        }
+        if ["recover interrupted work", "any interrupted work", "resume interrupted work",
+            "show interrupted work", "what happened to my tasks"].contains(text) {
+            return DeterministicMatch(intent: "recovery.status", impact: .readOnly) {
+                CrashRecovery.inspect(tasks: TaskStateMachine.shared.allTasks).summary
+            }
+        }
         return nil
     }
 

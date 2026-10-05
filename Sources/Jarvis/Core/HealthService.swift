@@ -1,24 +1,39 @@
 import Foundation
 import AppKit
 
-/// Structured health of a component. `unknown` is honest: it means Zia has no
-/// observation mechanism, not that the component is broken.
+/// Structured health of a component. `unknown`, `disabled`, `notConfigured`,
+/// and `permissionBlocked` are all honest states — none is a failure by itself.
 enum HealthStatus: String, Sendable, Comparable {
     case healthy
     case degraded
-    case unavailable
+    case disabled
+    case notConfigured
     case unknown
+    case unavailable
+    case permissionBlocked
 
     private var order: Int {
         switch self {
         case .healthy: return 0
         case .degraded: return 1
-        case .unknown: return 2
-        case .unavailable: return 3
+        case .disabled: return 2
+        case .notConfigured: return 2
+        case .unknown: return 3
+        case .unavailable: return 4
+        case .permissionBlocked: return 4
         }
     }
 
     static func < (lhs: HealthStatus, rhs: HealthStatus) -> Bool { lhs.order < rhs.order }
+
+    /// Whether this status genuinely reduces overall capability (and therefore
+    /// should degrade the overall report). Optional/inactive components do not.
+    var reducesCapability: Bool {
+        switch self {
+        case .degraded, .disabled, .unavailable, .permissionBlocked: return true
+        case .healthy, .notConfigured, .unknown: return false
+        }
+    }
 }
 
 struct ComponentHealth: Sendable, Equatable {
@@ -42,14 +57,7 @@ struct HealthReport: Sendable {
 
     /// A compact, user-facing summary. Never exposes stack traces or secrets.
     var summary: String {
-        let label: String
-        switch overall {
-        case .healthy: label = "healthy"
-        case .degraded: label = "degraded"
-        case .unavailable: label = "unavailable"
-        case .unknown: label = "unknown"
-        }
-        var lines = ["Zia health: \(label)."]
+        var lines = ["Zia health: \(overall.rawValue)."]
         for component in components where component.status != .healthy {
             lines.append("• \(component.name): \(component.status.rawValue) — \(component.detail)")
         }
@@ -70,88 +78,93 @@ final class HealthService {
         var components: [ComponentHealth] = []
         var degraded: [String] = []
 
+        func add(_ name: String, _ status: HealthStatus, _ detail: String, degradation: String? = nil) {
+            components.append(ComponentHealth(name: name, status: status, detail: detail))
+            if status.reducesCapability, let degradation { degraded.append(degradation) }
+        }
+
         // 1. Intelligence providers.
         let providerHealth = await ProviderManager.shared.healthSnapshot()
         if providerHealth.availableCount == 0 {
-            components.append(ComponentHealth(
-                name: "intelligence",
-                status: .unavailable,
-                detail: "No provider is available; Zia can still run deterministic capabilities."))
-            degraded.append("model reasoning unavailable — deterministic capabilities only")
+            add("intelligence", .unavailable,
+                "No provider is available; deterministic capabilities continue.",
+                degradation: "model reasoning unavailable — deterministic capabilities only")
         } else if providerHealth.isDegraded {
-            components.append(ComponentHealth(
-                name: "intelligence",
-                status: .degraded,
-                detail: "\(providerHealth.availableCount)/\(providerHealth.totalCount) providers available; local fallback active."))
-            degraded.append("cloud reasoning unavailable — local model only")
+            add("intelligence", .degraded,
+                "\(providerHealth.availableCount)/\(providerHealth.totalCount) providers available; local fallback active.",
+                degradation: "cloud reasoning unavailable — local model only")
         } else {
-            components.append(ComponentHealth(
-                name: "intelligence",
-                status: .healthy,
-                detail: "\(providerHealth.availableCount)/\(providerHealth.totalCount) providers available."))
+            add("intelligence", .healthy,
+                "\(providerHealth.availableCount)/\(providerHealth.totalCount) providers available.")
+        }
+        if !providerHealth.quarantined.isEmpty {
+            add("provider-circuit", .degraded,
+                "Quarantined: \(providerHealth.quarantined.joined(separator: ", ")).",
+                degradation: "some providers quarantined after repeated failures")
         }
 
         // 2. Durable task state.
         if TaskStateMachine.shared.isPersistenceAvailable {
-            components.append(ComponentHealth(name: "task-state", status: .healthy,
-                                              detail: "Durable task state loaded."))
+            add("task-state", .healthy, "Durable task state loaded.")
         } else {
-            components.append(ComponentHealth(name: "task-state", status: .degraded,
-                                              detail: "Durable task state unavailable; continuation disabled."))
-            degraded.append("task continuation unavailable")
+            add("task-state", .degraded, "Durable task state unavailable; continuation disabled.",
+                degradation: "task continuation unavailable")
         }
 
         // 3. Conversation storage.
         let persistent = ConversationStore.shared.isPersistentStorage
-        components.append(ComponentHealth(
-            name: "storage",
-            status: persistent ? .healthy : .degraded,
-            detail: persistent ? "SQLite conversation archive open." : "In-memory only; history will not survive restart."))
-        if !persistent { degraded.append("conversation history is not durable") }
+        add("storage", persistent ? .healthy : .degraded,
+            persistent ? "SQLite conversation archive open." : "In-memory only; history will not survive restart.",
+            degradation: persistent ? nil : "conversation history is not durable")
 
-        // 4. Structured memory.
-        components.append(ComponentHealth(name: "memory", status: .healthy,
-                                          detail: "\(ZiaMemoryStore.shared.count) structured record(s)."))
+        // 4. Structured memory + artifacts.
+        add("memory", .healthy, "\(ZiaMemoryStore.shared.count) structured record(s).")
+        add("artifacts", .healthy, "\(ArtifactRegistry.shared.count) artifact(s) tracked.")
 
-        // 5. Task queue.
+        // 5. Task queue + scheduler.
         let busy = await TaskWorkerPool.shared.busyWorkerCount
+        let queued = await TaskWorkerPool.shared.queuedTaskCount
         let capacity = await TaskWorkerPool.shared.getMaxConcurrentWorkers()
-        let queued = TaskScheduler.shared.enabledJobCount
-        components.append(ComponentHealth(
-            name: "task-queue",
-            status: .healthy,
-            detail: "\(busy)/\(capacity) workers busy; \(queued) scheduled job(s)."))
+        add("task-queue", .healthy, "\(busy)/\(capacity) workers busy; \(queued) queued.")
+        add("scheduler", .healthy, "\(TaskScheduler.shared.enabledJobCount) enabled job(s).")
 
         // 6. Network.
         let online = AppState.shared.isOnline
-        components.append(ComponentHealth(
-            name: "network",
-            status: online ? .healthy : .degraded,
-            detail: online ? "Online." : "Offline; local work continues."))
-        if !online { degraded.append("network unavailable — local work only") }
+        add("network", online ? .healthy : .degraded,
+            online ? "Online." : "Offline; local work continues.",
+            degradation: online ? nil : "network unavailable — local work only")
 
         // 7. Resources.
         let pressure = ResourceManager.shared.currentPressure
-        components.append(ComponentHealth(
-            name: "resources",
-            status: pressure == .critical ? .degraded : .healthy,
-            detail: "Memory pressure: \(pressure.rawValue)."))
-        if pressure == .critical { degraded.append("memory pressure critical — worker capacity reduced") }
+        add("resources", pressure == .critical ? .degraded : .healthy,
+            "Memory pressure: \(pressure.rawValue).",
+            degradation: pressure == .critical ? "memory pressure critical — worker capacity reduced" : nil)
 
-        // 8. Automation / accessibility (computer control).
+        // 8. Computer control (accessibility).
         let accessibilityTrusted = AXIsProcessTrusted()
-        components.append(ComponentHealth(
-            name: "computer-control",
-            status: accessibilityTrusted ? .healthy : .degraded,
-            detail: accessibilityTrusted
-                ? "Accessibility trusted."
-                : "Accessibility permission not granted; UI automation and inspection are limited."))
-        if !accessibilityTrusted { degraded.append("computer control limited (accessibility permission)") }
+        add("computer-control", accessibilityTrusted ? .healthy : .permissionBlocked,
+            accessibilityTrusted ? "Accessibility trusted."
+                : "Accessibility permission not granted; UI automation and inspection are limited.",
+            degradation: accessibilityTrusted ? nil : "computer control limited (accessibility permission)")
+
+        // 9. Voice.
+        let voiceRunning = VoicePipeline.shared.isRunning
+        add("voice", voiceRunning ? .healthy : .disabled,
+            voiceRunning ? "Voice pipeline running." : "Voice pipeline not running.",
+            degradation: voiceRunning ? nil : "voice interaction disabled")
+
+        // 10. External agents (optional integration).
+        let externalConfigured = ExternalAgentRegistry.shared.isConfigured
+        add("agent-bridge", externalConfigured ? .healthy : .notConfigured,
+            externalConfigured ? "External agent transport configured." : "No external agent transport configured.")
+
+        // 11. Browser.
+        add("browser", .unknown, "Browser automation availability is determined per action.")
 
         let overall: HealthStatus
-        if components.contains(where: { $0.status == .unavailable }) {
+        if components.contains(where: { $0.status == .unavailable || $0.status == .permissionBlocked }) {
             overall = .unavailable
-        } else if components.contains(where: { $0.status == .degraded }) {
+        } else if components.contains(where: { $0.status == .degraded || $0.status == .disabled }) {
             overall = .degraded
         } else {
             overall = .healthy

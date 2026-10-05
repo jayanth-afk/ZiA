@@ -30,13 +30,15 @@ actor ShellExecutor {
     /// Thread-safe process group termination scope.
     /// Manages atomic termination state and POSIX signal escalation.
     final class ProcessScope: @unchecked Sendable {
+        let process: Process
         let pid: pid_t
         private let lock = NSLock()
         private var isKilled = false
         private var escalationWorkItem: DispatchWorkItem?
 
-        init(pid: pid_t) {
-            self.pid = pid
+        init(process: Process) {
+            self.process = process
+            self.pid = process.processIdentifier
         }
 
         func killGroup() {
@@ -46,12 +48,20 @@ actor ShellExecutor {
             isKilled = true
             guard pid > 0 else { return }
 
-            // Send SIGTERM to entire process group
+            // Foundation's documented termination path reaches the launched
+            // process and its subtasks. The process-group signal remains as a
+            // second containment layer for shells that create descendants.
+            process.terminate()
             killpg(pid, SIGTERM)
 
-            // Escalate to SIGKILL if processes remain after grace period
+            // Escalate to SIGKILL if the process or its group is still alive
+            // after the grace period.
+            let capturedProcess = process
             let capturedPid = pid
             let item = DispatchWorkItem {
+                if capturedProcess.isRunning {
+                    capturedProcess.terminate()
+                }
                 if kill(capturedPid, 0) == 0 {
                     killpg(capturedPid, SIGKILL)
                 }
@@ -162,8 +172,7 @@ actor ShellExecutor {
             )
         }
 
-        let pid = process.processIdentifier
-        let scope = ProcessScope(pid: pid)
+        let scope = ProcessScope(process: process)
         let processID = UUID()
         runningScopes[processID] = scope
 

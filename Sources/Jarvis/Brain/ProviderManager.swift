@@ -146,27 +146,55 @@ final class ProviderManager {
                                      quarantined: quarantinedProviderIDs())
     }
 
-    /// Deterministic routing decision for an intent category. Considers health
-    /// and quarantine state so the selected provider and the reason are explicit
-    /// and auditable — never a silent substitution.
-    func routingDecision(for category: IntentClassifier.IntentCategory) -> RoutingDecision {
-        let chain = getFallbackChain(for: category).map(\.id)
-        let now = Date()
-        let eligible = getFallbackChain(for: category).filter { !self.isQuarantined($0.id, now: now) }
-        guard let chosen = eligible.first else {
-            return RoutingDecision(category: category.rawValue, chain: chain, chosen: nil,
-                                   reason: "all providers quarantined or unavailable",
+    /// Deterministic routing decision for an intent category. Considers both
+    /// circuit-breaker state and live provider availability so the decision is
+    /// itself truthful; execution does not silently reinterpret an unavailable
+    /// provider as healthy.
+    func routingDecision(for category: IntentClassifier.IntentCategory) async -> RoutingDecision {
+        let chain = getFallbackChain(for: category)
+        let chainIDs = chain.map(\.id)
+        var skippedQuarantined: [String] = []
+        var skippedUnavailable: [String] = []
+        var chosen: (any LLMProvider)?
+
+        for provider in chain {
+            if isQuarantined(provider.id) {
+                skippedQuarantined.append(provider.id)
+                continue
+            }
+            if await !provider.isAvailable {
+                skippedUnavailable.append(provider.id)
+                continue
+            }
+            chosen = provider
+            break
+        }
+
+        guard let chosen else {
+            var reasons: [String] = []
+            if !skippedQuarantined.isEmpty {
+                reasons.append("quarantined: \(skippedQuarantined.joined(separator: ", "))")
+            }
+            if !skippedUnavailable.isEmpty {
+                reasons.append("unavailable: \(skippedUnavailable.joined(separator: ", "))")
+            }
+            let detail = reasons.isEmpty ? "no providers configured" : reasons.joined(separator: "; ")
+            return RoutingDecision(category: category.rawValue, chain: chainIDs, chosen: nil,
+                                   reason: "no healthy provider for \(category.rawValue) (\(detail))",
                                    degraded: true)
         }
-        let quarantined = chain.filter { self.isQuarantined($0, now: now) }
+
+        let skipped = chainIDs.filter {
+            $0 != chosen.id && (skippedQuarantined.contains($0) || skippedUnavailable.contains($0))
+        }
+        let degraded = chosen.id.hasPrefix("mlx") || !skipped.isEmpty
         let reason: String
-        if quarantined.isEmpty {
+        if skipped.isEmpty {
             reason = "first healthy provider for \(category.rawValue)"
         } else {
-            reason = "skipped quarantined \(quarantined.joined(separator: ", ")) for \(category.rawValue)"
+            reason = "selected \(chosen.id) for \(category.rawValue); skipped \(skipped.joined(separator: ", "))"
         }
-        let degraded = quarantined.count == chain.count - 1
-        return RoutingDecision(category: category.rawValue, chain: chain, chosen: chosen.id,
+        return RoutingDecision(category: category.rawValue, chain: chainIDs, chosen: chosen.id,
                                reason: reason, degraded: degraded)
     }
 
@@ -175,7 +203,7 @@ final class ProviderManager {
         messages: [Message],
         category: IntentClassifier.IntentCategory
     ) async throws -> String {
-        let decision = routingDecision(for: category)
+        let decision = await routingDecision(for: category)
         JarvisLogger.brain.info("Routing decision: chosen=\(decision.chosen ?? "none"), reason=\(decision.reason), degraded=\(decision.degraded)")
 
         let chain = getFallbackChain(for: category)
@@ -216,10 +244,20 @@ final class ProviderManager {
                     }
                 }
 
-                if !responseText.isEmpty {
+                if !responseText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     recordSuccess(providerID: provider.id)
                     return responseText
                 }
+
+                // A silent successful transport is not a successful provider turn.
+                // Count it so health, circuit-breaking, and audit state remain truthful.
+                let emptyResponse = "provider returned an empty response"
+                recordFailure(providerID: provider.id, error: emptyResponse)
+                EventBus.shared.publish(ProviderFailedEvent(
+                    provider: provider.id,
+                    error: emptyResponse,
+                    fallbackProvider: "next-in-chain"
+                ))
             } catch {
                 JarvisLogger.brain.warning("Provider \(provider.id) failed: \(error.localizedDescription)")
                 recordFailure(providerID: provider.id, error: error.localizedDescription)

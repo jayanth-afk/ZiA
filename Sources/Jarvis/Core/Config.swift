@@ -31,7 +31,8 @@ final class Config {
             // Hotkey
             Keys.hotkeyEnabled: true,
 
-            // Autonomy (0=autonomous, 1=notify, 2=confirm, 3=review)
+            // Autonomy: 0=conversational, 1=suggest, 2=execute safe,
+            // 3=autonomous multi-step, 4=background workflows, 5=controlled self-improvement.
             Keys.autonomyLevel: 1,
 
             // TTS

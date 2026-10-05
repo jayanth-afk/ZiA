@@ -6,10 +6,10 @@ import KeychainAccess
 /// Keys are stored with `.afterFirstUnlock` accessibility —
 /// available after first device unlock, persists across reboots.
 /// Never stored in config files, UserDefaults, or plaintext.
-@MainActor
-final class KeychainManager {
+final class KeychainManager: @unchecked Sendable {
     static let shared = KeychainManager()
 
+    private let lock = NSLock()
     private let keychain = Keychain(service: "com.jarvis.app")
         .accessibility(.afterFirstUnlock)
 
@@ -42,19 +42,27 @@ final class KeychainManager {
     // MARK: - CRUD
 
     func getAPIKey(for service: APIService) -> String? {
-        try? keychain.get(service.rawValue)
+        lock.lock()
+        defer { lock.unlock() }
+        return try? keychain.get(service.rawValue)
     }
 
     func getCustomKey(_ keyName: String) -> String? {
-        try? keychain.get(keyName)
+        lock.lock()
+        defer { lock.unlock() }
+        return try? keychain.get(keyName)
     }
 
     func setAPIKey(_ key: String, for service: APIService) throws {
+        lock.lock()
+        defer { lock.unlock() }
         try keychain.set(key, key: service.rawValue)
         JarvisLogger.security.info("API key stored for \(service.displayName)")
     }
 
     func removeAPIKey(for service: APIService) throws {
+        lock.lock()
+        defer { lock.unlock() }
         try keychain.remove(service.rawValue)
         JarvisLogger.security.info("API key removed for \(service.displayName)")
     }

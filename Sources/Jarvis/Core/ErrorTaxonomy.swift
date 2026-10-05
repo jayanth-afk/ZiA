@@ -25,9 +25,9 @@ enum ErrorCategory: String, Sendable, Codable, CaseIterable {
     /// bounded retry budget.
     var disposition: RecoveryDisposition {
         switch self {
-        case .timeout, .networkError, .providerError, .executionError:
+        case .timeout, .networkError, .providerError:
             return .retry
-        case .verificationError, .planningError, .modelError, .validationError:
+        case .executionError, .verificationError, .planningError, .modelError, .validationError:
             return .replan
         case .resourceExhaustion:
             return .escalate

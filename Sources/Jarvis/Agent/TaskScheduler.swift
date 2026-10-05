@@ -384,8 +384,8 @@ final class BackgroundAutonomy {
         }
         // Crash recovery: resume only tasks whose remaining work is proven safe
         // to replay. Uncertain destructive work is never resumed automatically.
-        let resumed = await resumeInterruptedWork(now: now)
-        return launched + resumed
+        _ = await resumeInterruptedWork(now: now)
+        return launched
     }
 
     /// Inspect durable state and resume the interrupted tasks that are safe.

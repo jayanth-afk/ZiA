@@ -54,9 +54,12 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
         super.init()
         synthesizer.delegate = self
 
-        // Direct barge-in subscription: user speech onset halts TTS immediately
+        // Direct barge-in subscription: user speech onset halts TTS immediately if speaking
         EventBus.shared.subscribe(UserInterruptedEvent.self) { [weak self] _ in
-            self?.stop()
+            guard let self else { return }
+            if self.synthesizer.isSpeaking || self.synthesizer.isPaused || self.isStreamingActive {
+                self.stop()
+            }
         }
 
         // Direct emergency stop subscription: emergency phrase halts TTS immediately
@@ -100,6 +103,7 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
         isExplicitlyStopped = false
         isStreamingActive = true
         streamingBuffer = ""
+        speakDispatchTime = nil
         if synthesizer.isSpeaking || synthesizer.isPaused {
             currentUtteranceText = nil
             synthesizer.stopSpeaking(at: .immediate)

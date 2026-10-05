@@ -49,11 +49,9 @@ struct OverlayView: View {
 
                 Spacer()
 
-                // Emergency STOP button
+                // Context-aware STOP button: finalizes input if user speaking; cancels if assistant responding
                 Button(action: {
-                    EventBus.shared.publish(EmergencyStopEvent(phrase: "STOP"))
-                    AudioPlayer.shared.stopPlayback()
-                    TTSEngine.shared.stop()
+                    VoicePipeline.shared.handleUserStopAction()
                 }) {
                     HStack(spacing: 4) {
                         Image(systemName: "stop.circle.fill")

@@ -10,6 +10,7 @@ final class VoiceActivityDetector: @unchecked Sendable {
     // MARK: - Configuration
     struct Configuration: Sendable {
         var energyThreshold: Float = 0.015
+        var minEnergyThreshold: Float = 0.008
         /// Short pause for a complete-sounding utterance; keeps voice actions snappy.
         var completedUtteranceSilence: TimeInterval = 0.30
         /// Shortest pause for recognized commands / deterministic actions
@@ -30,6 +31,8 @@ final class VoiceActivityDetector: @unchecked Sendable {
     private var consecutiveSpeechFrames = 0
     private var silenceDuration: TimeInterval = 0
     private var latestPartialTranscript = ""
+    private(set) var noiseFloor: Float = 0.008
+    private let noiseFloorAlpha: Float = 0.05
 
     // Handlers
     var onSpeechStart: (@MainActor @Sendable () -> Void)?
@@ -66,6 +69,11 @@ final class VoiceActivityDetector: @unchecked Sendable {
         latestPartialTranscript = transcript
     }
 
+    /// Current cached partial transcript
+    var currentPartialTranscript: String {
+        latestPartialTranscript
+    }
+
     /// Reset internal state.
     func reset() {
         isSpeaking = false
@@ -77,7 +85,14 @@ final class VoiceActivityDetector: @unchecked Sendable {
     // MARK: - Private
 
     private func handleEnergy(_ rms: Float, duration: TimeInterval) {
-        let isFrameSpeech = rms >= configuration.energyThreshold
+        // Adapt noise floor during silence
+        if !isSpeaking {
+            noiseFloor = (1.0 - noiseFloorAlpha) * noiseFloor + noiseFloorAlpha * rms
+            noiseFloor = min(max(noiseFloor, 0.002), 0.040)
+        }
+
+        let dynamicThreshold = max(configuration.minEnergyThreshold, max(configuration.energyThreshold, noiseFloor * 1.8))
+        let isFrameSpeech = rms >= dynamicThreshold
 
         if isFrameSpeech {
             consecutiveSpeechFrames += 1
@@ -85,7 +100,7 @@ final class VoiceActivityDetector: @unchecked Sendable {
 
             if !isSpeaking && consecutiveSpeechFrames >= configuration.minSpeechFrames {
                 isSpeaking = true
-                JarvisLogger.voice.info("[VOICE_TRACE] VAD speech started (RMS: \(rms))")
+                JarvisLogger.voice.info("[VOICE_TRACE] VAD speech started (RMS: \(rms), threshold: \(dynamicThreshold), noiseFloor: \(self.noiseFloor))")
                 onSpeechStart?()
             }
         } else {
@@ -96,8 +111,7 @@ final class VoiceActivityDetector: @unchecked Sendable {
             if isSpeaking && silenceDuration >= endpointDelay {
                 isSpeaking = false
                 silenceDuration = 0
-                latestPartialTranscript = ""
-                JarvisLogger.voice.info("[VOICE_TRACE] VAD speech ended")
+                JarvisLogger.voice.info("[VOICE_TRACE] VAD speech ended (silence: \(String(format: "%.2f", endpointDelay))s, transcript: '\(self.latestPartialTranscript)')")
                 onSpeechEnd?()
             }
         }
@@ -108,19 +122,38 @@ final class VoiceActivityDetector: @unchecked Sendable {
     static func silenceNeeded(for transcript: String, configuration: Configuration = Configuration()) -> TimeInterval {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return configuration.continuationSilence }
+
+        // Mid-phrase punctuations indicate user paused mid-sentence
+        if trimmed.hasSuffix(",") || trimmed.hasSuffix("...") || trimmed.hasSuffix("-") {
+            return configuration.continuationSilence
+        }
+
         if let last = trimmed.last, ".!?".contains(last) {
             return configuration.completedUtteranceSilence
         }
         let lower = trimmed.lowercased()
-        if DeterministicRouter.shared.match(lower) != nil {
-            return configuration.fastCommandSilence
-        }
         let lastWord = lower
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" })
             .last.map(String.init) ?? ""
-        let continuationWords: Set<String> = ["and", "or", "but", "because", "if", "when", "while", "to", "for", "with", "about", "that", "the", "a", "an", "of", "into", "from", "on", "at"]
-        return continuationWords.contains(lastWord)
-            ? configuration.continuationSilence
-            : configuration.completedUtteranceSilence
+        let continuationWords: Set<String> = [
+            "and", "or", "but", "because", "if", "when", "while", "to", "for", "with",
+            "about", "that", "the", "a", "an", "of", "into", "from", "on", "at", "then",
+            "as", "by", "so", "than", "run", "in"
+        ]
+
+        // Endpointing must respect speech syntax before deterministic routing.
+        // A transcript such as "open Safari and" can look like a deterministic
+        // command prefix, but the trailing conjunction is strong evidence that
+        // the user has not finished. Cutting it at the fast-command threshold
+        // loses the remainder of the utterance.
+        if continuationWords.contains(lastWord) {
+            return configuration.continuationSilence
+        }
+
+        if DeterministicRouter.shared.match(lower) != nil {
+            return configuration.fastCommandSilence
+        }
+
+        return configuration.completedUtteranceSilence
     }
 }

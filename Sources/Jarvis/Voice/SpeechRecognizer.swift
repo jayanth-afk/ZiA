@@ -10,6 +10,9 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
 
     // MARK: - State
     private(set) var isRecognizing = false
+    internal func setIsRecognizingForTesting(_ value: Bool) {
+        isRecognizing = value
+    }
     private var speechRecognizer: SFSpeechRecognizer?
     private var recognitionTask: SFSpeechRecognitionTask?
 
@@ -18,6 +21,13 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
 
     // Active session timing
     private(set) var currentTimer: PipelineTimer?
+
+    // Turn tracking and guaranteed finalization
+    private(set) var latestPartialTranscript = ""
+    private(set) var currentTurnId: UUID?
+    private var finalizationTask: Task<Void, Never>?
+    private var turnCompletion: (@MainActor (String) -> Void)?
+    private var hasDispatchedCurrentTurn = false
 
     // Thread-safe request holder for audio tap
     private nonisolated(unsafe) var currentRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -112,6 +122,8 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
     /// Inject a simulated transcript directly into the pipeline.
     /// Used for deterministic automated self-tests, offline validation, and behavioral proofs.
     func simulateTranscript(_ text: String, isFinal: Bool, durationMs: Double = 10.0) {
+        sessionSawRecognition = true
+        latestPartialTranscript = text
         if isFinal {
             JarvisLogger.voice.info("Simulated final transcript (\(durationMs)ms): '\(text)'")
             EventBus.shared.publish(TranscriptFinalEvent(text: text, durationMs: durationMs))
@@ -127,7 +139,7 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
     // MARK: - Recognition Control
 
     /// Start a continuous streaming recognition session.
-    func startRecognition(timer: PipelineTimer? = nil) throws {
+    func startRecognition(timer: PipelineTimer? = nil, turnId: UUID? = nil) throws {
         guard !isRecognizing else { return }
 
         // TCC safety: never attempt speech recognition if the bundle lacks usage description
@@ -140,6 +152,13 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
             JarvisLogger.voice.error("SFSpeechRecognizer is unavailable")
             throw JarvisError.speechRecognitionDenied
         }
+
+        self.currentTurnId = turnId ?? UUID()
+        self.latestPartialTranscript = ""
+        self.hasDispatchedCurrentTurn = false
+        self.finalizationTask?.cancel()
+        self.finalizationTask = nil
+        self.turnCompletion = nil
 
         self.currentTimer = timer ?? PipelineTimer(id: UUID().uuidString)
         self.currentTimer?.mark(.sttStart)
@@ -255,8 +274,67 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
         appendCapturedBuffer(buffer)
     }
 
+    /// Stop accepting audio for current turn while allowing recognizer to process remaining audio.
+    func freezeAudio() {
+        if let token = tapToken {
+            AudioCapture.shared.removeBufferHandler(token)
+            tapToken = nil
+        }
+
+        requestLock.lock()
+        let req = currentRequest
+        self.currentRequest = nil
+        requestLock.unlock()
+
+        req?.endAudio()
+        self.trace("STT audio input frozen for turn finalization")
+    }
+
+    /// Finalize current turn with a bounded wait for Apple Speech final result,
+    /// falling back to the best validated partial transcript if recognizer lags or hangs.
+    func finalizeCurrentTurn(fallbackTimeoutMs: Double = 280, completion: @escaping @MainActor (String) -> Void) {
+        guard isRecognizing || !latestPartialTranscript.isEmpty else {
+            completion("")
+            return
+        }
+
+        self.turnCompletion = completion
+        self.hasDispatchedCurrentTurn = false
+        freezeAudio()
+        if currentTurnId == nil {
+            currentTurnId = UUID()
+        }
+        let targetTurnId = currentTurnId
+
+        finalizationTask?.cancel()
+        finalizationTask = Task { @MainActor [weak self] in
+            if fallbackTimeoutMs > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(fallbackTimeoutMs * 1_000_000))
+            }
+            guard let self, !self.hasDispatchedCurrentTurn, self.currentTurnId == targetTurnId else { return }
+            self.hasDispatchedCurrentTurn = true
+
+            let fallback = self.latestPartialTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+            JarvisLogger.voice.info("Apple Speech finalization bounded timeout (\(fallbackTimeoutMs)ms) elapsed; using validated partial transcript: '\(fallback, privacy: .public)'")
+            self.trace("STT timeout fallback to partial transcript: '\(fallback)'")
+
+            self.sessionSawRecognition = true
+            let cb = self.turnCompletion
+            self.turnCompletion = nil
+
+            self.stopRecognition(skipDeadSessionProbe: true)
+            cb?(fallback)
+            if !fallback.isEmpty {
+                EventBus.shared.publish(TranscriptFinalEvent(text: fallback, durationMs: fallbackTimeoutMs))
+            }
+        }
+    }
+
     /// Complete current speech recognition session and process final result.
-    func stopRecognition() {
+    func stopRecognition(skipDeadSessionProbe: Bool = false) {
+        finalizationTask?.cancel()
+        finalizationTask = nil
+
         guard isRecognizing else { return }
 
         if let token = tapToken {
@@ -280,7 +358,8 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
         // spoken utterance happened during this session but the recognizer
         // produced nothing at all — the session was provably dead.
         let sessionStart = lastSessionStart ?? Date.distantPast
-        if !sessionSawRecognition,
+        if !skipDeadSessionProbe,
+           !sessionSawRecognition,
            VoiceTraceState.shared.hasSpeech(since: sessionStart),
            VoiceTraceState.shared.hasSpeechEnd(since: sessionStart) {
             handleDeadSession()
@@ -289,6 +368,13 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
 
     /// Cancel current recognition session without emitting final result.
     func cancelRecognition() {
+        finalizationTask?.cancel()
+        finalizationTask = nil
+        turnCompletion = nil
+        hasDispatchedCurrentTurn = true
+        latestPartialTranscript = ""
+        currentTurnId = nil
+
         // EmergencyInterrupt cancels synchronously, then its EventBus fan-out
         // invokes this method again. Make the common already-idle path truly
         // idempotent: do not take the audio-request lock or log when there is
@@ -324,9 +410,20 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
 
     private func handleRecognitionResult(_ result: SFSpeechRecognitionResult?, error: (any Error)?) {
         if let error = error {
-            // Error code 216 is recognition cancelled; ignore it cleanly
+            // Error code 216 is recognition cancelled/finished by endAudio()
             let nsError = error as NSError
             if nsError.domain == "kAFAssistantErrorDomain" && nsError.code == 216 {
+                if !hasDispatchedCurrentTurn && !latestPartialTranscript.isEmpty {
+                    hasDispatchedCurrentTurn = true
+                    finalizationTask?.cancel()
+                    finalizationTask = nil
+                    let fallback = latestPartialTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let cb = turnCompletion
+                    turnCompletion = nil
+                    stopRecognition()
+                    cb?(fallback)
+                    EventBus.shared.publish(TranscriptFinalEvent(text: fallback, durationMs: 0))
+                }
                 return
             }
             JarvisLogger.voice.error("Speech recognition error (\(nsError.code)): \(error.localizedDescription)")
@@ -344,22 +441,31 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
 
         guard let result = result else { return }
         let transcript = result.bestTranscription.formattedString
+        latestPartialTranscript = transcript
 
         if result.isFinal {
-            sessionSawRecognition = true
-            currentTimer?.mark(.sttFinal)
-            let elapsedMs = currentTimer?.elapsed(from: .sttStart, to: .sttFinal) ?? 0
+            finalizationTask?.cancel()
+            finalizationTask = nil
+            if !hasDispatchedCurrentTurn {
+                hasDispatchedCurrentTurn = true
+                sessionSawRecognition = true
+                currentTimer?.mark(.sttFinal)
+                let elapsedMs = currentTimer?.elapsed(from: .sttStart, to: .sttFinal) ?? 0
 
-            JarvisLogger.voice.info("Final transcript (\(String(format: "%.1f", elapsedMs), privacy: .public)ms): '\(transcript, privacy: .public)'")
-            EventBus.shared.publish(TranscriptFinalEvent(text: transcript, durationMs: elapsedMs))
+                JarvisLogger.voice.info("Final transcript (\(String(format: "%.1f", elapsedMs), privacy: .public)ms): '\(transcript, privacy: .public)'")
+                let cb = turnCompletion
+                turnCompletion = nil
 
-            // Check emergency phrases immediately
-            EmergencyInterrupt.shared.checkForEmergency(in: transcript)
+                stopRecognition()
+                cb?(transcript)
+                EventBus.shared.publish(TranscriptFinalEvent(text: transcript, durationMs: elapsedMs))
 
-            // VOICE_TRACE
-            self.trace("STT final: '\(transcript)'")
+                // Check emergency phrases immediately
+                EmergencyInterrupt.shared.checkForEmergency(in: transcript)
 
-            stopRecognition()
+                // VOICE_TRACE
+                self.trace("STT final: '\(transcript)'")
+            }
         } else {
             sessionSawRecognition = true
             if currentTimer?.elapsed(from: .sttStart, to: .sttFirstPartial) == nil {

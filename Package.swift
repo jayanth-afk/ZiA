@@ -38,7 +38,7 @@ let package = Package(
                     "-Xlinker", "-sectcreate",
                     "-Xlinker", "__TEXT",
                     "-Xlinker", "__info_plist",
-                    "-Xlinker", "Jarvis.app/Contents/Info.plist"
+                    "-Xlinker", "Scripts/Info.plist"
                 ])
             ]
         ),

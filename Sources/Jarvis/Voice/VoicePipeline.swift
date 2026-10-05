@@ -38,6 +38,46 @@ final class VoicePipeline {
         )
     }
 
+    // MARK: - Voice Turn State Machine
+    struct VoiceTurn: Sendable, Identifiable {
+        let id: UUID
+        let startUptime: UInt64
+        var state: State
+        var speechStartUptime: UInt64?
+        var endpointConfirmedUptime: UInt64?
+        var latestPartial: String = ""
+        var isDispatched: Bool = false
+
+        enum State: String, Sendable {
+            case idle
+            case listening
+            case speaking
+            case endpointDetected
+            case finalizing
+            case dispatched
+            case responding
+            case speakingResponse
+        }
+
+        var isInputActive: Bool {
+            switch state {
+            case .listening, .speaking, .endpointDetected, .finalizing:
+                return true
+            case .idle, .dispatched, .responding, .speakingResponse:
+                return false
+            }
+        }
+    }
+
+    private(set) var currentTurn: VoiceTurn?
+
+    internal func startTurnForTesting(id: UUID = UUID()) {
+        let nowUptime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        var turn = VoiceTurn(id: id, startUptime: nowUptime, state: .speaking)
+        turn.speechStartUptime = nowUptime
+        currentTurn = turn
+    }
+
     /// Internal setter so same-module test harnesses (--physical-test) can
     /// register simulated background tasks; production code never mutates it.
     private(set) var activeBackgroundTasks: [String: Task<Void, Never>] = [:]
@@ -138,12 +178,13 @@ final class VoicePipeline {
 
         // Partial hypotheses improve endpointing: complete commands can finish
         // quickly, while a clause ending in "and" / "to" gets a longer pause.
-        EventBus.shared.subscribe(TranscriptPartialEvent.self) { event in
+        EventBus.shared.subscribe(TranscriptPartialEvent.self) { [weak self] event in
             let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
             if !text.isEmpty {
                 InteractionPhaseCenter.report(.listening)
             }
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                self?.currentTurn?.latestPartial = text
                 VoiceActivityDetector.shared.updatePartialTranscript(event.text)
                 // Speculative preparation: overlap model readiness with remaining user speech
                 if text.split(separator: " ").count >= 2 {
@@ -167,26 +208,31 @@ final class VoicePipeline {
 
         // VAD speech start -> barge-in check (halts audio output, never cancels background task)
         VoiceActivityDetector.shared.onSpeechStart = { [weak self] in
-            guard self != nil else { return }
+            guard let self else { return }
+            let nowUptime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
             InteractionPhaseCenter.report(.listening)
             VoiceTraceState.shared.markSpeechStart()
             JarvisLogger.voice.info("[VOICE_TRACE] VAD speech onset → engage recognition")
-            if TTSEngine.shared.isSpeaking || AudioPlayer.shared.isPlaying {
+
+            // True barge-in: user speech interrupts an active assistant speech/playback
+            if TTSEngine.shared.isSpeaking {
                 EventBus.shared.publish(UserInterruptedEvent())
             }
-            if let self {
-                for (_, task) in self.activeBackgroundTasks {
-                    task.cancel()
-                }
-                self.activeBackgroundTasks.removeAll()
+            if AudioPlayer.shared.isPlaying {
+                AudioPlayer.shared.stopPlayback()
             }
 
-            // In SLEEP state, start speech recognition on speech onset to spot wake word and commands
-            if AppState.shared.state == .sleep && !SpeechRecognizer.shared.isRecognizing {
-                if SpeechRecognizer.shared.authorizationStatus == .authorized {
+            let turnId = UUID()
+            var turn = VoiceTurn(id: turnId, startUptime: nowUptime, state: .speaking)
+            turn.speechStartUptime = nowUptime
+            self.currentTurn = turn
+
+            // In SLEEP or ACTIVE state, ensure speech recognition is engaged for this turn
+            if SpeechRecognizer.shared.authorizationStatus == .authorized {
+                if !SpeechRecognizer.shared.isRecognizing {
                     do {
-                        try SpeechRecognizer.shared.startRecognition()
-                        JarvisLogger.voice.debug("VAD speech onset in SLEEP -> engaged SpeechRecognizer")
+                        try SpeechRecognizer.shared.startRecognition(turnId: turnId)
+                        JarvisLogger.voice.debug("Engaged SpeechRecognizer for turn \(turnId)")
                     } catch {
                         JarvisLogger.voice.error("Failed to start speech recognition on VAD onset: \(error.localizedDescription)")
                     }
@@ -194,14 +240,26 @@ final class VoicePipeline {
             }
         }
 
-        // VAD speech end -> if recognizing, finish recognition to emit final transcript
+        // VAD speech end -> endpoint detected, bounded finalization
         VoiceActivityDetector.shared.onSpeechEnd = { [weak self] in
-            guard self != nil else { return }
+            guard let self else { return }
+            let nowUptime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
             VoiceTraceState.shared.markSpeechEnd()
-            JarvisLogger.voice.info("[VOICE_TRACE] VAD speech end")
-            if SpeechRecognizer.shared.isRecognizing {
-                SpeechRecognizer.shared.stopRecognition()
+            JarvisLogger.voice.info("[VOICE_TRACE] VAD speech end → finalize turn")
+
+            guard var turn = self.currentTurn, turn.isInputActive else {
+                if SpeechRecognizer.shared.isRecognizing {
+                    SpeechRecognizer.shared.stopRecognition()
+                }
+                return
             }
+
+            turn.state = .endpointDetected
+            turn.endpointConfirmedUptime = nowUptime
+            self.currentTurn = turn
+
+            // Freeze audio input and trigger bounded finalization
+            SpeechRecognizer.shared.finalizeCurrentTurn(fallbackTimeoutMs: 250) { _ in }
         }
     }
 
@@ -302,6 +360,23 @@ final class VoicePipeline {
     }
 
     private func handleFinalTranscript(_ text: String) {
+        if var turn = currentTurn {
+            if turn.isDispatched {
+                JarvisLogger.voice.warning("[VOICE turn=\(turn.id.uuidString.prefix(8))] duplicate final transcript ignored")
+                return
+            }
+            let nowUptime = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+            let start = turn.speechStartUptime ?? turn.startUptime
+            let totalMs = Double(nowUptime - start) / 1_000_000.0
+            let endpointMs = turn.endpointConfirmedUptime.map { Double($0 - start) / 1_000_000.0 } ?? 0.0
+            let finMs = Double(nowUptime - (turn.endpointConfirmedUptime ?? start)) / 1_000_000.0
+            JarvisLogger.voice.info("[VOICE turn=\(turn.id.uuidString.prefix(8))] speechToEndpoint=\(String(format: "%.1f", endpointMs))ms finalization=\(String(format: "%.1f", finMs))ms totalToDispatch=\(String(format: "%.1f", totalMs))ms text='\(text)'")
+
+            turn.isDispatched = true
+            turn.state = .dispatched
+            currentTurn = turn
+        }
+
         var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         // Apple Speech finals carry natural punctuation ("jarvis, what time is it?").
         // The deterministic router is an exact-command matcher — strip trailing
@@ -311,6 +386,7 @@ final class VoicePipeline {
         }
         guard !cleaned.isEmpty else {
             InteractionPhaseCenter.report(.idle)
+            currentTurn = nil
             if AppState.shared.state == .active {
                 AppState.shared.transition(to: .sleep)
             }
@@ -321,6 +397,7 @@ final class VoicePipeline {
 
         // 1. Emergency stop check (deterministic, 0ms LLM)
         if EmergencyInterrupt.shared.checkForEmergency(in: cleaned) {
+            currentTurn = nil
             return
         }
 
@@ -332,6 +409,7 @@ final class VoicePipeline {
             guard let match = wakeMatch else {
                 JarvisLogger.voice.debug("Utterance in SLEEP state ignored (no wake alias detected): '\(text, privacy: .public)'")
                 InteractionPhaseCenter.report(.idle)
+                currentTurn = nil
                 return
             }
             JarvisLogger.voice.info("Wake alias '\(match.matchedAlias, privacy: .public)' recognized in SLEEP state: '\(text, privacy: .public)'")
@@ -341,6 +419,7 @@ final class VoicePipeline {
             guard !cleaned.isEmpty else {
                 // Utterance was just the wake phrase (e.g. "Hey Zia" or "Jarvis")
                 InteractionPhaseCenter.report(.idle)
+                currentTurn = nil
                 return
             }
         } else {
@@ -358,7 +437,7 @@ final class VoicePipeline {
             timer?.mark(.deterministicRouterHit)
             timer?.mark(.actionStart)
             JarvisLogger.voice.info("Voice command matched deterministic intent: \(match.intent, privacy: .public)")
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 do {
                     InteractionPhaseCenter.report(.executing)
                     let actionStart = CFAbsoluteTimeGetCurrent()
@@ -372,13 +451,19 @@ final class VoicePipeline {
                     timer?.mark(.actionExecuted)
                     timer?.mark(.ttsStart)
                     JarvisLogger.voice.info("ActionEngine completed '\(match.intent, privacy: .public)' in \(String(format: "%.2f", actionMs), privacy: .public)ms: '\(result, privacy: .public)'")
-                    TTSEngine.shared.onSpeechFinished = {
+                    TTSEngine.shared.onSpeechFinished = { [weak self] in
                         InteractionPhaseCenter.report(.success)
+                        self?.currentTurn?.state = .idle
                         TTSEngine.shared.onSpeechFinished = nil
                     }
                     TTSEngine.shared.speak(result, mode: .acknowledgement)
                 } catch {
                     InteractionPhaseCenter.report(.error)
+                    TTSEngine.shared.onSpeechFinished = { [weak self] in
+                        InteractionPhaseCenter.report(.error)
+                        self?.currentTurn?.state = .idle
+                        TTSEngine.shared.onSpeechFinished = nil
+                    }
                     TTSEngine.shared.speak("Action failed: \(error.localizedDescription)", mode: .acknowledgement)
                 }
             }
@@ -409,6 +494,8 @@ final class VoicePipeline {
             TTSEngine.shared.beginStreaming(mode: .conversational)
         }
 
+        currentTurn?.state = .responding
+
         // 4. Asynchronous task execution decoupled from voice loop (Requirement F & H)
         let taskID = UUID().uuidString
         let bgTask = Task { @MainActor [weak self] in
@@ -429,8 +516,9 @@ final class VoicePipeline {
                     )
                     guard !Task.isCancelled else { return }
                     TTSEngine.shared.finishStreaming()
-                    TTSEngine.shared.onSpeechFinished = {
+                    TTSEngine.shared.onSpeechFinished = { [weak self] in
                         InteractionPhaseCenter.report(.success)
+                        self?.currentTurn?.state = .idle
                         TTSEngine.shared.onSpeechFinished = nil
                     }
                     JarvisLogger.voice.info("Direct answer streaming completed: '\(response, privacy: .public)'")
@@ -438,21 +526,25 @@ final class VoicePipeline {
                     // Route tool execution through the authoritative task loop
                     let response = try await AgentLoop.shared.run(goal: cleaned)
                     guard !Task.isCancelled else { return }
-                    TTSEngine.shared.onSpeechFinished = {
+                    TTSEngine.shared.onSpeechFinished = { [weak self] in
                         InteractionPhaseCenter.report(.success)
+                        self?.currentTurn?.state = .idle
                         TTSEngine.shared.onSpeechFinished = nil
                     }
                     TTSEngine.shared.speak(response, mode: .conversational)
                 }
             } catch is CancellationError {
                 TTSEngine.shared.stop()
+                self?.currentTurn?.state = .idle
                 JarvisLogger.voice.info("Voice background task \(taskID) cancelled")
             } catch {
                 guard !Task.isCancelled else { return }
                 TTSEngine.shared.stop()
+                self?.currentTurn?.state = .idle
                 InteractionPhaseCenter.report(.error)
-                TTSEngine.shared.onSpeechFinished = {
+                TTSEngine.shared.onSpeechFinished = { [weak self] in
                     InteractionPhaseCenter.report(.error)
+                    self?.currentTurn?.state = .idle
                     TTSEngine.shared.onSpeechFinished = nil
                 }
                 TTSEngine.shared.speak("Sorry, I encountered an issue: \(error.localizedDescription)", mode: .acknowledgement)
@@ -464,6 +556,34 @@ final class VoicePipeline {
         // Transition back to SLEEP so user can speak again while background task runs.
         if AppState.shared.state == .active {
             AppState.shared.transition(to: .sleep)
+        }
+    }
+
+    // MARK: - User Control & Forced Endpointing
+
+    /// User requested forced finalization of whatever speech has been captured so far.
+    func forceEndpointCurrentTurn() {
+        guard isRunning else { return }
+        JarvisLogger.voice.info("User requested forced turn endpointing")
+        SpeechRecognizer.shared.finalizeCurrentTurn(fallbackTimeoutMs: 0) { _ in }
+    }
+
+    /// User triggered the STOP button in HUD / overlay.
+    /// Distinguishes between input finalization (while user is speaking) and cancellation (while assistant is responding).
+    func handleUserStopAction() {
+        if SpeechRecognizer.shared.isRecognizing || currentTurn?.isInputActive == true {
+            JarvisLogger.voice.info("User clicked STOP during voice input: finalizing current utterance without cancellation")
+            forceEndpointCurrentTurn()
+        } else if TTSEngine.shared.isSpeaking || AudioPlayer.shared.isPlaying || !activeBackgroundTasks.isEmpty || InteractionPhaseCenter.backendPhase == .executing || InteractionPhaseCenter.backendPhase == .thinking {
+            JarvisLogger.voice.info("User clicked STOP during assistant response/task: executing emergency cancel")
+            EventBus.shared.publish(EmergencyStopEvent(phrase: "STOP"))
+            AudioPlayer.shared.stopPlayback()
+            TTSEngine.shared.stop()
+        } else {
+            JarvisLogger.voice.info("User clicked STOP in idle state: resetting voice/audio state")
+            EventBus.shared.publish(EmergencyStopEvent(phrase: "STOP"))
+            AudioPlayer.shared.stopPlayback()
+            TTSEngine.shared.stop()
         }
     }
 

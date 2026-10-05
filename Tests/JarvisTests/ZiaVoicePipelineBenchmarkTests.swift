@@ -6,7 +6,7 @@ import AVFoundation
 @Suite struct ZiaVoicePipelineBenchmarkTests {
 
     @Test @MainActor
-    func vadLatency() {
+    func vadOnsetAndFrameLatency() {
         let vad = VoiceActivityDetector.shared
         var durations: [Double] = []
 
@@ -21,7 +21,7 @@ import AVFoundation
             }
         }
 
-        for _ in 0..<50 {
+        for _ in 0..<100 {
             let start = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
             vad.processBuffer(buffer)
             let end = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
@@ -31,13 +31,46 @@ import AVFoundation
 
         durations.sort()
         let p50 = durations[durations.count / 2]
+        let p90 = durations[Int(Double(durations.count) * 0.90)]
         let p95 = durations[Int(Double(durations.count) * 0.95)]
-        #expect(p50 < 5.0)
-        #expect(p95 < 15.0)
+        let p99 = durations[Int(Double(durations.count) * 0.99)]
+
+        #expect(p50 < 1.0, "VAD processBuffer p50 under 1ms")
+        #expect(p95 < 5.0, "VAD processBuffer p95 under 5ms")
+        #expect(p99 < 15.0, "VAD processBuffer p99 under 15ms")
     }
 
     @Test @MainActor
-    func streamingTTSLatency() async {
+    func vadEndpointSilenceThresholds() {
+        let vad = VoiceActivityDetector.shared
+        vad.reset()
+
+        // Test deterministic command recognized: fastCommandSilence = 0.22s
+        let cmdSilence = VoiceActivityDetector.silenceNeeded(for: "mute", configuration: vad.configuration)
+        #expect(cmdSilence == vad.configuration.fastCommandSilence)
+        #expect(cmdSilence <= 0.25)
+
+        // Test completed sentence: completedUtteranceSilence = 0.30s
+        let sentSilence = VoiceActivityDetector.silenceNeeded(for: "what is the capital of France?", configuration: vad.configuration)
+        #expect(sentSilence == vad.configuration.completedUtteranceSilence)
+        #expect(sentSilence <= 0.30)
+
+        // Test natural hesitation/continuation: continuationSilence = 0.75s
+        let contSilence = VoiceActivityDetector.silenceNeeded(for: "I was wondering about and", configuration: vad.configuration)
+        #expect(contSilence == vad.configuration.continuationSilence)
+        #expect(contSilence >= 0.70)
+
+        // Regression: a deterministic command prefix ending in a conjunction
+        // must not be cut at the fast-command threshold.
+        let unfinishedDeterministic = VoiceActivityDetector.silenceNeeded(
+            for: "open Safari and",
+            configuration: vad.configuration
+        )
+        #expect(unfinishedDeterministic == vad.configuration.continuationSilence)
+    }
+
+    @Test @MainActor
+    func streamingTTSChunkingLatency() async {
         let tts = TTSEngine.shared
         tts.warmup()
 
@@ -52,7 +85,7 @@ import AVFoundation
 
         var durations: [Double] = []
 
-        for _ in 0..<20 {
+        for _ in 0..<50 {
             let start = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
             tts.beginStreaming()
             for token in sampleTokens {
@@ -66,7 +99,12 @@ import AVFoundation
 
         durations.sort()
         let p50 = durations[durations.count / 2]
-        #expect(p50 < 20.0)
+        let p90 = durations[Int(Double(durations.count) * 0.90)]
+        let p95 = durations[Int(Double(durations.count) * 0.95)]
+        let p99 = durations[Int(Double(durations.count) * 0.99)]
+
+        #expect(p50 < 10.0, "Streaming TTS chunking overhead p50 under 10ms")
+        #expect(p95 < 25.0, "Streaming TTS chunking overhead p95 under 25ms")
     }
 
     @Test @MainActor
@@ -74,9 +112,10 @@ import AVFoundation
         let provider = ProviderManager.shared.chatgptDesktop
         var durations: [Double] = []
 
+        // Warm first check
         _ = await ProviderManager.shared.isProviderAvailable(provider)
 
-        for _ in 0..<30 {
+        for _ in 0..<50 {
             let start = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
             _ = await ProviderManager.shared.isProviderAvailable(provider)
             let end = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
@@ -85,6 +124,31 @@ import AVFoundation
 
         durations.sort()
         let p50 = durations[durations.count / 2]
-        #expect(p50 < 5.0)
+        let p90 = durations[Int(Double(durations.count) * 0.90)]
+        let p95 = durations[Int(Double(durations.count) * 0.95)]
+        let p99 = durations[Int(Double(durations.count) * 0.99)]
+
+        #expect(p50 < 1.0, "Cached provider availability check p50 under 1ms")
+        #expect(p95 < 3.0, "Cached provider availability check p95 under 3ms")
+    }
+
+    @Test @MainActor
+    func speculativePreparationOverlap() async {
+        // Measure speculative preparation trigger vs non-speculative
+        let provider = ProviderManager.shared.chatgptDesktop
+
+        // Speculative step (triggered as soon as partial words >= 2)
+        let specStart = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        _ = await ProviderManager.shared.isProviderAvailable(provider)
+        let specEnd = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        let specMs = Double(specEnd - specStart) / 1_000_000.0
+
+        // At final transcript time, cached availability is instantly hit
+        let finalStart = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        let available = await ProviderManager.shared.isProviderAvailable(provider)
+        let finalEnd = clock_gettime_nsec_np(CLOCK_UPTIME_RAW)
+        let finalMs = Double(finalEnd - finalStart) / 1_000_000.0
+
+        #expect(finalMs < 0.5, "Speculatively pre-warmed provider check at final transcript time under 0.5ms")
     }
 }

@@ -11,10 +11,12 @@ final class VoiceActivityDetector: @unchecked Sendable {
     struct Configuration: Sendable {
         var energyThreshold: Float = 0.015
         /// Short pause for a complete-sounding utterance; keeps voice actions snappy.
-        var completedUtteranceSilence: TimeInterval = 0.42
+        var completedUtteranceSilence: TimeInterval = 0.30
+        /// Shortest pause for recognized commands / deterministic actions
+        var fastCommandSilence: TimeInterval = 0.22
         /// Longer pause when the live transcript appears to end mid-thought.
-        var continuationSilence: TimeInterval = 0.95
-        var minSpeechFrames: Int = 3  // Minimum speech frames to declare speech started
+        var continuationSilence: TimeInterval = 0.75
+        var minSpeechFrames: Int = 2  // Minimum speech frames to declare speech started (~128ms)
 
         // Compatibility/readability for existing diagnostics and tests.
         var hangoverFrames: Int { Int((completedUtteranceSilence / (1024.0 / 16_000.0)).rounded(.up)) }
@@ -109,7 +111,11 @@ final class VoiceActivityDetector: @unchecked Sendable {
         if let last = trimmed.last, ".!?".contains(last) {
             return configuration.completedUtteranceSilence
         }
-        let lastWord = trimmed.lowercased()
+        let lower = trimmed.lowercased()
+        if DeterministicRouter.shared.match(lower) != nil {
+            return configuration.fastCommandSilence
+        }
+        let lastWord = lower
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber && $0 != "'" })
             .last.map(String.init) ?? ""
         let continuationWords: Set<String> = ["and", "or", "but", "because", "if", "when", "while", "to", "for", "with", "about", "that", "the", "a", "an", "of", "into", "from", "on", "at"]

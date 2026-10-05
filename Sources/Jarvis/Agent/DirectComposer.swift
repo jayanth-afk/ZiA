@@ -3,7 +3,11 @@ import Foundation
 /// Direct-answer composition for planner steps with `tool: null` (STEP 7).
 actor DirectComposer {
 
-    func composeAnswer(goal: String, observations: [String]) async throws -> String {
+    func composeAnswer(
+        goal: String,
+        observations: [String],
+        onChunk: (@Sendable (String) -> Void)? = nil
+    ) async throws -> String {
         try Task.checkCancellation()
 
         // Single MainActor hop to batch conversation history + user memory retrieval
@@ -58,24 +62,37 @@ actor DirectComposer {
 
         prompt.append("Answer: ")
 
-        let stream = await provider.complete(
-            messages: [Message(role: .user, content: prompt)],
-            tools: nil,
-            stream: false,
-            options: ["max_tokens": 96])
-
-        var text = ""
-        text.reserveCapacity(256)
-        for try await chunk in stream {
-            try Task.checkCancellation()
-            switch chunk {
-            case .text(let t): text.append(t)
-            case .error(let e): throw JarvisError.providerError(provider: "direct-composer", message: e)
-            case .done, .toolCall: continue
+        let dispatchMessage = [Message(role: .user, content: prompt)]
+        let rawAnswer: String
+        do {
+            rawAnswer = try await ProviderManager.shared.executeWithStreamingFallback(
+                messages: dispatchMessage,
+                category: .conversation,
+                onChunk: onChunk
+            )
+        } catch {
+            // Failsafe local fallback if the supervisor throws
+            let fallbackStream = await provider.complete(
+                messages: dispatchMessage,
+                tools: nil,
+                stream: onChunk != nil,
+                options: ["max_tokens": 96])
+            var fallbackText = ""
+            for try await chunk in fallbackStream {
+                try Task.checkCancellation()
+                if case .text(let t) = chunk {
+                    fallbackText.append(t)
+                    onChunk?(t)
+                }
             }
+            let trimmed = fallbackText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty {
+                throw error
+            }
+            rawAnswer = trimmed
         }
 
-        var cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        var cleaned = rawAnswer.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleaned.hasPrefix("\"") { cleaned.removeFirst() }
         if cleaned.hasSuffix("\"") { cleaned.removeLast() }
         return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)

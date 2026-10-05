@@ -2153,14 +2153,17 @@ enum SelfTest {
 
         print("\n─── Phase 5: Fallback Chains ───")
         let codingChain = pm.getFallbackChain(for: .coding)
-        check(codingChain.first?.id == "anthropic", "Coding fallback chain starts with Claude")
+        check(codingChain.first?.id == "chatgpt-desktop", "Coding fallback chain starts with ChatGPT Desktop")
+        check(codingChain.contains(where: { $0.id == "anthropic" }), "Coding chain includes Claude fallback")
         check(codingChain.contains(where: { $0.id == "mlx-normal" }), "Coding chain includes on-device MLX fallback")
 
         let reasoningChain = pm.getFallbackChain(for: .deepReasoning)
-        check(reasoningChain.first?.id == "anthropic", "Deep reasoning chain starts with Claude")
+        check(reasoningChain.first?.id == "chatgpt-desktop", "Deep reasoning chain starts with ChatGPT Desktop")
+        check(reasoningChain.contains(where: { $0.id == "anthropic" }), "Deep reasoning chain includes Claude fallback")
 
         let searchChain = pm.getFallbackChain(for: .webSearch)
-        check(searchChain.first?.id == "groq", "Web search chain starts with Groq")
+        check(searchChain.first?.id == "chatgpt-desktop", "Web search chain starts with ChatGPT Desktop")
+        check(searchChain.contains(where: { $0.id == "groq" }), "Web search chain includes Groq fallback")
 
         print("\n─── Phase 5: Context Builder ───")
         let cb = ContextBuilder.shared

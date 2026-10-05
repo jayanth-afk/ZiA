@@ -46,6 +46,7 @@ final class ProviderManager {
     let openai = OpenAIProvider()
     let groq = GroqProvider()
     let openrouter = OpenRouterProvider()
+    let chatgptDesktop = ChatGPTDesktopProvider()
     let localNormal = MLXProvider(id: "mlx-normal", modelSlot: "normal")
     let localReflex = MLXProvider(id: "mlx-reflex", modelSlot: "reflex")
 
@@ -93,15 +94,33 @@ final class ProviderManager {
 
     // MARK: - Public API
 
+    /// Fast availability caching to avoid redundant probes within the same turn/request.
+    private var availabilityCache: [String: (available: Bool, timestamp: ContinuousClock.Instant)] = [:]
+    private let availabilityCacheTTL: Duration = .seconds(2)
+
+    func isProviderAvailable(_ provider: any LLMProvider) async -> Bool {
+        if let entry = availabilityCache[provider.id], entry.timestamp.duration(to: .now) < availabilityCacheTTL {
+            return entry.available
+        }
+        let available = await provider.isAvailable
+        availabilityCache[provider.id] = (available, .now)
+        return available
+    }
+
+    func invalidateAvailability(for providerID: String) {
+        availabilityCache[providerID] = nil
+    }
+
     /// All registered providers in deterministic order.
     var allProviders: [any LLMProvider] {
-        [claude, gemini, openai, groq, openrouter, localNormal, localReflex]
+        [claude, gemini, openai, groq, openrouter, chatgptDesktop, localNormal, localReflex]
     }
 
     /// Record an observed provider failure. Trips the circuit breaker once the
     /// consecutive-failure threshold is reached. Returns the new failure count.
     @discardableResult
     func recordFailure(providerID: String, error: String, now: Date = .now) -> Int {
+        invalidateAvailability(for: providerID)
         let count = (failureCounts[providerID] ?? 0) + 1
         failureCounts[providerID] = count
         lastErrors[providerID] = error
@@ -116,6 +135,7 @@ final class ProviderManager {
     }
 
     func recordSuccess(providerID: String) {
+        availabilityCache[providerID] = (true, .now)
         failureCounts[providerID] = 0
         lastErrors[providerID] = nil
         if quarantines[providerID] != nil {
@@ -131,7 +151,7 @@ final class ProviderManager {
     func healthSnapshot() async -> ProviderHealthSummary {
         var statuses: [ProviderStatus] = []
         for provider in allProviders {
-            let available = await provider.isAvailable
+            let available = await isProviderAvailable(provider)
             statuses.append(ProviderStatus(
                 id: provider.id,
                 isAvailable: available,
@@ -162,7 +182,7 @@ final class ProviderManager {
                 skippedQuarantined.append(provider.id)
                 continue
             }
-            if await !provider.isAvailable {
+            if await !isProviderAvailable(provider) {
                 skippedUnavailable.append(provider.id)
                 continue
             }
@@ -203,6 +223,16 @@ final class ProviderManager {
         messages: [Message],
         category: IntentClassifier.IntentCategory
     ) async throws -> String {
+        try await executeWithStreamingFallback(messages: messages, category: category, onChunk: nil)
+    }
+
+    /// Select the best available provider for an intent category and execute with streaming fallback.
+    /// Delivers real-time incremental tokens to `onChunk` as they arrive from the active provider.
+    func executeWithStreamingFallback(
+        messages: [Message],
+        category: IntentClassifier.IntentCategory,
+        onChunk: (@Sendable (String) -> Void)? = nil
+    ) async throws -> String {
         let decision = await routingDecision(for: category)
         JarvisLogger.brain.info("Routing decision: chosen=\(decision.chosen ?? "none"), reason=\(decision.reason), degraded=\(decision.degraded)")
 
@@ -216,7 +246,7 @@ final class ProviderManager {
                 JarvisLogger.brain.warning("Skipping \(provider.id): \(self.quarantineReason(provider.id) ?? "quarantined")")
                 continue
             }
-            let available = await provider.isAvailable
+            let available = await isProviderAvailable(provider)
             guard available else { continue }
 
             EventBus.shared.publish(ProviderSelectedEvent(
@@ -224,6 +254,7 @@ final class ProviderManager {
                 reason: decision.chosen == provider.id ? decision.reason : "Fallback after prior provider failure for \(category.rawValue)"
             ))
 
+            let callStart = ContinuousClock.now
             do {
                 var responseText = ""
                 // Data minimization: credentials are redacted and size is
@@ -231,12 +262,13 @@ final class ProviderManager {
                 // provider. Local providers receive the context unmodified.
                 let dispatchMessages = ContextSanitizer.sanitizedForDispatch(
                     messages, isLocal: provider.id.hasPrefix("mlx"))
-                let stream = await provider.complete(messages: dispatchMessages, tools: nil, stream: false)
+                let stream = await provider.complete(messages: dispatchMessages, tools: nil, stream: onChunk != nil)
 
                 for try await chunk in stream {
                     switch chunk {
                     case .text(let text):
                         responseText += text
+                        onChunk?(text)
                     case .error(let errorMsg):
                         throw JarvisError.providerError(provider: provider.id, message: errorMsg)
                     default:
@@ -244,7 +276,11 @@ final class ProviderManager {
                     }
                 }
 
-                if !responseText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                let trimmed = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    let elapsed = callStart.duration(to: .now)
+                    let ms = Double(elapsed.components.seconds) * 1000.0 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000.0
+                    JarvisLogger.brain.info("Provider \(provider.id) completed in \(Int(ms))ms")
                     recordSuccess(providerID: provider.id)
                     return responseText
                 }
@@ -269,14 +305,11 @@ final class ProviderManager {
             }
         }
 
-        // Final local fallback
-        let fallbackStream = await localNormal.complete(messages: messages, tools: nil, stream: false)
-        var fallbackResponse = ""
-        for try await chunk in fallbackStream {
-            if case .text(let t) = chunk { fallbackResponse += t }
-        }
-
-        return fallbackResponse.isEmpty ? "All providers failed to respond." : fallbackResponse
+        // Truthful reporting: every provider in the ladder was unavailable or failed
+        throw JarvisError.providerError(
+            provider: "fallback-exhausted",
+            message: "All providers failed to respond for \(category.rawValue)."
+        )
     }
 
     /// Determines the fallback cascade for a given intent category.
@@ -284,13 +317,13 @@ final class ProviderManager {
         let defaultChain: [any LLMProvider]
         switch category {
         case .coding:
-            defaultChain = [claude, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, claude, openai, openrouter, localNormal, localReflex]
         case .deepReasoning:
-            defaultChain = [claude, gemini, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, claude, gemini, openai, openrouter, localNormal, localReflex]
         case .webSearch:
-            defaultChain = [groq, openrouter, gemini, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groq, openrouter, gemini, localNormal, localReflex]
         case .conversation, .systemQuery:
-            defaultChain = [localNormal, groq, openrouter, openai, localReflex]
+            defaultChain = [chatgptDesktop, claude, gemini, openai, groq, openrouter, localNormal, localReflex]
         }
 
         let prefs = PreferenceStore.shared.current

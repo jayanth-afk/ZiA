@@ -86,6 +86,7 @@ final class VoicePipeline {
 
         // Sync with current state
         handleStateTransition(to: AppState.shared.state)
+        TTSEngine.shared.warmup()
         JarvisLogger.voice.info("VoicePipeline initialized and active")
 
         // VOICE_TRACE: one-time startup evidence — environment + TCC reality.
@@ -138,11 +139,16 @@ final class VoicePipeline {
         // Partial hypotheses improve endpointing: complete commands can finish
         // quickly, while a clause ending in "and" / "to" gets a longer pause.
         EventBus.shared.subscribe(TranscriptPartialEvent.self) { event in
-            if !event.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let text = event.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
                 InteractionPhaseCenter.report(.listening)
             }
             Task { @MainActor in
                 VoiceActivityDetector.shared.updatePartialTranscript(event.text)
+                // Speculative preparation: overlap model readiness with remaining user speech
+                if text.split(separator: " ").count >= 2 {
+                    _ = await ProviderManager.shared.isProviderAvailable(ProviderManager.shared.chatgptDesktop)
+                }
             }
         }
 
@@ -167,6 +173,12 @@ final class VoicePipeline {
             JarvisLogger.voice.info("[VOICE_TRACE] VAD speech onset → engage recognition")
             if TTSEngine.shared.isSpeaking || AudioPlayer.shared.isPlaying {
                 EventBus.shared.publish(UserInterruptedEvent())
+            }
+            if let self {
+                for (_, task) in self.activeBackgroundTasks {
+                    task.cancel()
+                }
+                self.activeBackgroundTasks.removeAll()
             }
 
             // In SLEEP state, start speech recognition on speech onset to spot wake word and commands
@@ -377,9 +389,25 @@ final class VoicePipeline {
             return
         }
 
-        // 3. Deep / LLM task: Deterministic acknowledgement first (Requirement G)
-        JarvisLogger.voice.info("[VOICE_TRACE] no deterministic match — dispatching to AgentLoop (direct-answer / planner / tool path)")
-        TTSEngine.shared.speak("On it.", mode: .acknowledgement)
+        // 3. Deep / LLM task:
+        JarvisLogger.voice.info("[VOICE_TRACE] no deterministic match — evaluating direct vs planner routing")
+
+        // Cancel any lingering background voice task before starting new turn
+        for (_, task) in activeBackgroundTasks {
+            task.cancel()
+        }
+        activeBackgroundTasks.removeAll()
+
+        let decision = DirectAnswerRouter.decide(goal: cleaned)
+        let isDirect = (decision == .directAnswer)
+
+        if !isDirect {
+            // Autonomous multi-step tool execution: deterministic acknowledgement first
+            TTSEngine.shared.speak("On it.", mode: .acknowledgement)
+        } else {
+            // Conversational direct answer: start streaming TTS immediately (0ms artificial wait)
+            TTSEngine.shared.beginStreaming(mode: .conversational)
+        }
 
         // 4. Asynchronous task execution decoupled from voice loop (Requirement F & H)
         let taskID = UUID().uuidString
@@ -388,22 +416,40 @@ final class VoicePipeline {
                 self?.activeBackgroundTasks.removeValue(forKey: taskID)
             }
             do {
-                // Route every non-deterministic voice request through the same
-                // authoritative task loop used by the overlay and planner
-                // benchmarks. BrainRouter only composes provider text and
-                // bypasses Task IR, validation, permission, execution and
-                // verification, so it must not be the voice action path.
-                let response = try await AgentLoop.shared.run(goal: cleaned)
-                guard !Task.isCancelled else { return }
-                TTSEngine.shared.onSpeechFinished = {
-                    InteractionPhaseCenter.report(.success)
-                    TTSEngine.shared.onSpeechFinished = nil
+                if isDirect {
+                    // Streaming conversational path: stream real model text directly to TTS sentence chunking
+                    let response = try await DirectComposer().composeAnswer(
+                        goal: cleaned,
+                        observations: [],
+                        onChunk: { chunk in
+                            Task { @MainActor in
+                                TTSEngine.shared.appendStreamingChunk(chunk)
+                            }
+                        }
+                    )
+                    guard !Task.isCancelled else { return }
+                    TTSEngine.shared.finishStreaming()
+                    TTSEngine.shared.onSpeechFinished = {
+                        InteractionPhaseCenter.report(.success)
+                        TTSEngine.shared.onSpeechFinished = nil
+                    }
+                    JarvisLogger.voice.info("Direct answer streaming completed: '\(response, privacy: .public)'")
+                } else {
+                    // Route tool execution through the authoritative task loop
+                    let response = try await AgentLoop.shared.run(goal: cleaned)
+                    guard !Task.isCancelled else { return }
+                    TTSEngine.shared.onSpeechFinished = {
+                        InteractionPhaseCenter.report(.success)
+                        TTSEngine.shared.onSpeechFinished = nil
+                    }
+                    TTSEngine.shared.speak(response, mode: .conversational)
                 }
-                TTSEngine.shared.speak(response, mode: .conversational)
             } catch is CancellationError {
+                TTSEngine.shared.stop()
                 JarvisLogger.voice.info("Voice background task \(taskID) cancelled")
             } catch {
                 guard !Task.isCancelled else { return }
+                TTSEngine.shared.stop()
                 InteractionPhaseCenter.report(.error)
                 TTSEngine.shared.onSpeechFinished = {
                     InteractionPhaseCenter.report(.error)

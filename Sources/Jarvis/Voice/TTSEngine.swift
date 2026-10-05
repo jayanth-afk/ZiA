@@ -43,6 +43,10 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
     /// Measured latency for immediate barge-in halt from stop() invocation.
     private(set) var lastBargeInHaltLatencyMs: Double?
 
+    // Streaming state
+    private var streamingBuffer = ""
+    private var isStreamingActive = false
+
     // Callbacks
     var onSpeechFinished: (@MainActor @Sendable () -> Void)?
 
@@ -63,10 +67,21 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
 
     // MARK: - Public API
 
+    /// Pre-warm the speech synthesizer on startup so first audio starts in <50ms
+    func warmup() {
+        let dummy = AVSpeechUtterance(string: " ")
+        dummy.volume = 0.0
+        synthesizer.speak(dummy)
+        synthesizer.stopSpeaking(at: .immediate)
+        JarvisLogger.voice.info("TTSEngine warmed up")
+    }
+
     /// Speak text using the appropriate mode.
     func speak(_ text: String, mode: TTSMode = .acknowledgement) {
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         isExplicitlyStopped = false
+        isStreamingActive = false
+        streamingBuffer = ""
 
         // If currently speaking, stop immediately for new utterance
         if synthesizer.isSpeaking || synthesizer.isPaused {
@@ -75,18 +90,87 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
         }
 
         switch mode {
-        case .acknowledgement, .offline:
-            appleSpeak(text)
-        case .conversational:
-            // For Phase 2, Apple TTS is the verified, zero-dependency engine.
-            // Future phases add Cloud TTS adapters when configured.
+        case .acknowledgement, .offline, .conversational:
             appleSpeak(text)
         }
+    }
+
+    /// Begin a streaming TTS session.
+    func beginStreaming(mode: TTSMode = .conversational) {
+        isExplicitlyStopped = false
+        isStreamingActive = true
+        streamingBuffer = ""
+        if synthesizer.isSpeaking || synthesizer.isPaused {
+            currentUtteranceText = nil
+            synthesizer.stopSpeaking(at: .immediate)
+        }
+    }
+
+    /// Append incoming text delta, extracting and speaking complete sentences immediately.
+    func appendStreamingChunk(_ delta: String) {
+        guard isStreamingActive, !isExplicitlyStopped else { return }
+        streamingBuffer.append(delta)
+
+        // Split on sentence terminators: ". ", "? ", "! ", ".\n", "?\n", "!\n", "\n\n"
+        while let match = findFirstSentenceBoundary(in: streamingBuffer) {
+            let sentence = String(streamingBuffer[..<match.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+            streamingBuffer = String(streamingBuffer[match.upperBound...]).trimmingCharacters(in: .whitespaces)
+            if !sentence.isEmpty {
+                enqueueUtterance(sentence)
+            }
+        }
+    }
+
+    /// Finish the streaming session, flushing any remaining sentence in the buffer.
+    func finishStreaming() {
+        guard isStreamingActive else { return }
+        isStreamingActive = false
+        let remaining = streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        streamingBuffer = ""
+        if !remaining.isEmpty && !isExplicitlyStopped {
+            enqueueUtterance(remaining)
+        }
+    }
+
+    private func enqueueUtterance(_ text: String) {
+        guard !text.isEmpty, !isExplicitlyStopped else { return }
+        let utterance = AVSpeechUtterance(string: text)
+        utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.05
+        utterance.pitchMultiplier = 1.0
+        utterance.volume = 1.0
+        if let voice = AVSpeechSynthesisVoice(language: "en-US") {
+            utterance.voice = voice
+        }
+        currentUtteranceText = text
+        if speakDispatchTime == nil {
+            speakDispatchTime = CFAbsoluteTimeGetCurrent()
+        }
+        JarvisLogger.voice.info("Streaming TTS speaking chunk: '\(text, privacy: .public)'")
+        synthesizer.speak(utterance)
+    }
+
+    private func findFirstSentenceBoundary(in str: String) -> Range<String.Index>? {
+        let terminators: [String] = [". ", "? ", "! ", ".\n", "?\n", "!\n", "\n\n", ":\n", ";\n"]
+        var earliestRange: Range<String.Index>? = nil
+        for term in terminators {
+            if let r = str.range(of: term) {
+                if let current = earliestRange {
+                    if r.lowerBound < current.lowerBound {
+                        earliestRange = r
+                    }
+                } else {
+                    earliestRange = r
+                }
+            }
+        }
+        return earliestRange
     }
 
     /// Stop speech immediately (barge-in / interrupt).
     func stop() {
         isExplicitlyStopped = true
+        isStreamingActive = false
+        streamingBuffer = ""
         guard synthesizer.isSpeaking || synthesizer.isPaused else { return }
         let start = CFAbsoluteTimeGetCurrent()
         synthesizer.stopSpeaking(at: .immediate)
@@ -138,10 +222,12 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
             guard let self, text == self.currentUtteranceText else { return }
             self.currentUtteranceText = nil
             JarvisLogger.voice.debug("TTS finished speaking utterance")
-            let completion = self.onSpeechFinished
-            self.onSpeechFinished = nil
-            completion?()
-            InteractionPhaseCenter.speechFinished()
+            if !self.isStreamingActive && !self.synthesizer.isSpeaking {
+                let completion = self.onSpeechFinished
+                self.onSpeechFinished = nil
+                completion?()
+                InteractionPhaseCenter.speechFinished()
+            }
         }
     }
 

@@ -75,7 +75,8 @@ actor MLXProvider: LLMProvider {
     nonisolated private static var pythonInterpreter: String? {
         let candidates = [
             ".venv-mlx/bin/python",
-            "benchmarks/.venv-mlx/bin/python"
+            "benchmarks/.venv-mlx/bin/python",
+            "/Users/jayanthpranaykonada/Zia/.venv-mlx/bin/python"
         ]
         for candidate in candidates where FileManager.default.isExecutableFile(atPath: candidate) {
             return candidate
@@ -185,7 +186,8 @@ actor MLXProvider: LLMProvider {
     nonisolated private static func locateWorkerScript() -> String? {
         let candidates = [
             "Sources/Jarvis/Brain/Workers/mlx_worker.py",
-            "benchmarks/mlx_worker.py"
+            "benchmarks/mlx_worker.py",
+            "/Users/jayanthpranaykonada/Zia/Sources/Jarvis/Brain/Workers/mlx_worker.py"
         ]
         for candidate in candidates where FileManager.default.fileExists(atPath: candidate) {
             return candidate

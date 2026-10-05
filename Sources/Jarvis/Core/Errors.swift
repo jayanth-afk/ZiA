@@ -31,7 +31,7 @@ enum JarvisError: LocalizedError {
     case verificationFailed(action: String, expected: String, actual: String)
 
     // MARK: - Memory
-    case databaseError(operation: String, underlying: Error)
+    case databaseError(operation: String, underlying: any Error)
     case embeddingFailed(reason: String)
 
     // MARK: - Network / Auth

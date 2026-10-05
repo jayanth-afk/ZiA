@@ -789,7 +789,7 @@ actor MLXPlanner {
         // undeclared-argument gate until the shape is repaired).
         var extracted: ExtractedAction
         var wasStructurallyRepaired: Bool
-        var extractionError: Error?
+        var extractionError: (any Error)?
         switch PlannerExtraction.parse(raw.text) {
         case .success(let action):
             extracted = action

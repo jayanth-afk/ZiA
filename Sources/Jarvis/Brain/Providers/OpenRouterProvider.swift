@@ -26,7 +26,7 @@ actor OpenRouterProvider: LLMProvider {
         messages: [Message],
         tools: [ToolDefinition]?,
         stream: Bool
-    ) -> AsyncThrowingStream<StreamChunk, Error> {
+    ) -> AsyncThrowingStream<StreamChunk, any Error> {
         complete(messages: messages, tools: tools, stream: stream, options: [:])
     }
 
@@ -35,7 +35,7 @@ actor OpenRouterProvider: LLMProvider {
         tools: [ToolDefinition]?,
         stream: Bool,
         options: [String: any Sendable]
-    ) -> AsyncThrowingStream<StreamChunk, Error> {
+    ) -> AsyncThrowingStream<StreamChunk, any Error> {
         AsyncThrowingStream { continuation in
             Task {
                 guard await self.isAvailable else {

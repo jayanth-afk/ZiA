@@ -23,7 +23,7 @@ actor GroqProvider: LLMProvider {
         messages: [Message],
         tools: [ToolDefinition]?,
         stream: Bool
-    ) -> AsyncThrowingStream<StreamChunk, Error> {
+    ) -> AsyncThrowingStream<StreamChunk, any Error> {
         AsyncThrowingStream { continuation in
             Task {
                 guard await self.isAvailable else {

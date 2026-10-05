@@ -65,7 +65,7 @@ protocol LLMProvider: Actor {
         messages: [Message],
         tools: [ToolDefinition]?,
         stream: Bool
-    ) -> AsyncThrowingStream<StreamChunk, Error>
+    ) -> AsyncThrowingStream<StreamChunk, any Error>
 
     /// Optional per-request overrides (e.g. ["max_tokens": 384]). Default
     /// implementation ignores options and forwards to complete(messages:tools:stream:).
@@ -75,7 +75,7 @@ protocol LLMProvider: Actor {
         tools: [ToolDefinition]?,
         stream: Bool,
         options: [String: any Sendable]
-    ) -> AsyncThrowingStream<StreamChunk, Error>
+    ) -> AsyncThrowingStream<StreamChunk, any Error>
 }
 
 extension LLMProvider {
@@ -84,7 +84,7 @@ extension LLMProvider {
         tools: [ToolDefinition]?,
         stream: Bool,
         options: [String: any Sendable]
-    ) -> AsyncThrowingStream<StreamChunk, Error> {
+    ) -> AsyncThrowingStream<StreamChunk, any Error> {
         complete(messages: messages, tools: tools, stream: stream)
     }
 }

@@ -209,7 +209,7 @@ actor MLXProvider: LLMProvider {
         messages: [Message],
         tools: [ToolDefinition]?,
         stream: Bool
-    ) -> AsyncThrowingStream<StreamChunk, Error> {
+    ) -> AsyncThrowingStream<StreamChunk, any Error> {
         complete(messages: messages, tools: tools, stream: stream, options: [:])
     }
 
@@ -218,7 +218,7 @@ actor MLXProvider: LLMProvider {
         tools: [ToolDefinition]?,
         stream: Bool,
         options: [String: any Sendable]
-    ) -> AsyncThrowingStream<StreamChunk, Error> {
+    ) -> AsyncThrowingStream<StreamChunk, any Error> {
         // Per-request token budget (planner requests need more headroom than
         // the 256-token default; small direct requests can be tighter).
         let maxTokens = (options["max_tokens"] as? Int) ?? 256
@@ -396,7 +396,7 @@ private final class WorkerProcess: @unchecked Sendable {
     let pid: Int
     private let lock = NSLock()
     private var requestID = 0
-    private var pending: [Int: CheckedContinuation<WorkerReply, Error>] = [:]
+    private var pending: [Int: CheckedContinuation<WorkerReply, any Error>] = [:]
     private let readQueue = DispatchQueue(label: "jarvis.mlxworker.read")
     private var buffer = Data()
 

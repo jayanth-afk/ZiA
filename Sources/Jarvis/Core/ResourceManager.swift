@@ -51,7 +51,7 @@ final class ResourceManager {
 
     // MARK: - Private
 
-    private var pressureSource: DispatchSourceMemoryPressure?
+    private var pressureSource: (any DispatchSourceMemoryPressure)?
     private var pollingTimer: Timer?
 
     private init() {

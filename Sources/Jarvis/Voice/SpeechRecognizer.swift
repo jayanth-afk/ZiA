@@ -322,7 +322,7 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
         req?.append(buffer)
     }
 
-    private func handleRecognitionResult(_ result: SFSpeechRecognitionResult?, error: Error?) {
+    private func handleRecognitionResult(_ result: SFSpeechRecognitionResult?, error: (any Error)?) {
         if let error = error {
             // Error code 216 is recognition cancelled; ignore it cleanly
             let nsError = error as NSError

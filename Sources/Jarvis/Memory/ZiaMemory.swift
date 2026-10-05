@@ -19,12 +19,14 @@ enum MemoryKind: String, Codable, Sendable, CaseIterable {
     case episodic
     case semantic
     case procedural
+    case preference
+    case project
     case temporary
 
     /// Whether records of this kind survive beyond the current session.
     var isPermanent: Bool {
         switch self {
-        case .episodic, .semantic, .procedural: return true
+        case .episodic, .semantic, .procedural, .preference, .project: return true
         case .working, .temporary: return false
         }
     }

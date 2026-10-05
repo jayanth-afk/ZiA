@@ -11,10 +11,21 @@ enum SensitivePaths {
         ".aws",
         ".kube",
         ".config/gcloud",
+        ".azure",
         ".env",
         ".netrc",
         ".zsh_history",
-        ".bash_history"
+        ".bash_history",
+        ".git-credentials",
+        ".dockercfg",
+        ".docker/config.json",
+        "id_rsa",
+        "id_ed25519",
+        "id_ecdsa",
+        "id_dsa",
+        "oauth_credentials",
+        "credentials.json",
+        "service-account"
     ]
 
     /// Whether an (optionally tilde-prefixed) path lies in a sensitive location.

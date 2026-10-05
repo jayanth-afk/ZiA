@@ -26,6 +26,8 @@ struct Artifact: Identifiable, Codable, Sendable, Equatable {
     /// Whether the artifact's existence was independently verified.
     var verified: Bool
     var verificationNote: String?
+    /// Cryptographic or content checksum (e.g. SHA-256) when applicable.
+    var checksum: String?
 }
 
 /// Thread-safe, bounded, durable registry of produced artifacts.
@@ -86,11 +88,11 @@ final class ArtifactRegistry: @unchecked Sendable {
 
     @discardableResult
     func register(path: String, kind: ArtifactKind, provenance: String,
-                  description: String, taskID: UUID? = nil, now: Date = .now) -> Artifact {
+                  description: String, taskID: UUID? = nil, checksum: String? = nil, now: Date = .now) -> Artifact {
         let artifact = Artifact(
             id: UUID(), path: path, kind: kind, taskID: taskID,
             provenance: provenance, description: description,
-            createdAt: now, verified: false, verificationNote: nil)
+            createdAt: now, verified: false, verificationNote: nil, checksum: checksum)
         lock.lock()
         artifacts[artifact.id] = artifact
         pruneLocked()
@@ -100,11 +102,14 @@ final class ArtifactRegistry: @unchecked Sendable {
     }
 
     @discardableResult
-    func markVerified(id: UUID, note: String?) -> Bool {
+    func markVerified(id: UUID, note: String?, checksum: String? = nil) -> Bool {
         lock.lock()
         guard var artifact = artifacts[id] else { lock.unlock(); return false }
         artifact.verified = true
         artifact.verificationNote = note
+        if let checksum {
+            artifact.checksum = checksum
+        }
         artifacts[id] = artifact
         lock.unlock()
         persist()

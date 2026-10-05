@@ -11,9 +11,11 @@ struct ContextPackage: Sendable, Equatable {
     var failures: [String] = []
     var evidence: [String] = []
     var artifacts: [String] = []
+    var projectSummary: String? = nil
+    var preferences: [String] = []
 
     var isEmpty: Bool {
-        taskState == nil && memory.isEmpty && failures.isEmpty && evidence.isEmpty && artifacts.isEmpty
+        taskState == nil && memory.isEmpty && failures.isEmpty && evidence.isEmpty && artifacts.isEmpty && projectSummary == nil && preferences.isEmpty
     }
 
     /// Render a deterministic, bounded text package. Sections that carry no
@@ -21,6 +23,12 @@ struct ContextPackage: Sendable, Equatable {
     func render(maxCharacters: Int = 4_000) -> String {
         var lines: [String] = []
         lines.append("GOAL: \(goal)")
+        if let project = projectSummary {
+            lines.append("PROJECT: \(project)")
+        }
+        if !preferences.isEmpty {
+            lines.append("USER PREFERENCES: " + preferences.joined(separator: "; "))
+        }
         if !constraints.isEmpty {
             lines.append("CONSTRAINTS: " + constraints.joined(separator: "; "))
         }
@@ -60,6 +68,21 @@ final class ContextEngine {
 
     func assemble(goal: String, taskID: UUID? = nil, memoryLimit: Int = 5) -> ContextPackage {
         var package = ContextPackage(goal: goal)
+
+        // Project context (deterministic directory metadata)
+        let project = ProjectInspector.inspect(root: FileManager.default.currentDirectoryPath)
+        if project.isProject {
+            package.projectSummary = project.summary
+        }
+
+        // Active user preferences
+        let prefs = PreferenceStore.shared.current
+        var prefStrings: [String] = []
+        prefStrings.append("verbosity=\(prefs.verbosity.rawValue)")
+        prefStrings.append("style=\(prefs.style.rawValue)")
+        prefStrings.append("confirmation=\(prefs.confirmation.rawValue)")
+        if prefs.localOnly { prefStrings.append("localOnly=true") }
+        package.preferences = prefStrings
 
         // Task state — authoritative, never inferred from the transcript.
         let task = resolveTask(taskID: taskID, goal: goal)

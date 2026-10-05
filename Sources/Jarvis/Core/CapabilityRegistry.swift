@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 /// A description of something Zia can do, independent of how it is implemented.
 /// Enables Zia to reason about (and explain) its own capability surface.
@@ -21,13 +22,19 @@ enum CapabilityRegistry {
     /// subsystems Zia relies on.
     static func descriptors() -> [CapabilityDescriptor] {
         var result = ToolRegistry.shared.allTools.map { tool in
-            CapabilityDescriptor(
+            let avail: String
+            if ["inspect_ui", "click_element", "set_text"].contains(tool.name) {
+                avail = AXIsProcessTrusted() ? "available" : "permission blocked (Accessibility)"
+            } else {
+                avail = "available"
+            }
+            return CapabilityDescriptor(
                 name: tool.name,
                 purpose: tool.description,
                 category: category(for: tool.name),
                 impact: impactLabel(tool.impact),
                 requiresNetwork: requiresNetwork(tool.name),
-                availability: "available")
+                availability: avail)
         }
         result.append(CapabilityDescriptor(
             name: "intelligence.mlx", purpose: "Local on-device model inference",
@@ -45,6 +52,10 @@ enum CapabilityRegistry {
             name: "scheduler", purpose: "Durable scheduled and recurring goals",
             category: "autonomy", impact: "read-only", requiresNetwork: false,
             availability: "available"))
+        result.append(CapabilityDescriptor(
+            name: "voice", purpose: "Voice pipeline (transcription, wake-word, TTS)",
+            category: "voice", impact: "read-only", requiresNetwork: false,
+            availability: VoicePipeline.shared.isRunning ? "active" : "standby"))
         result.append(CapabilityDescriptor(
             name: "agent-bridge", purpose: "Optional external agent transport",
             category: "integration", impact: "read-only", requiresNetwork: true,

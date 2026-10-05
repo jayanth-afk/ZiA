@@ -54,11 +54,19 @@ Layered, cheap-first cognition:
 
 - **Task state machine** (`Agent/TaskStateMachine.swift`) — durable, persisted,
   schema-versioned. States: CREATED → PLANNING → RUNNING → VERIFYING →
-  COMPLETED, with FAILED → RECOVERING → REPLANNING and CANCELLED. Each step
-  carries an explicit `VerificationOutcome`
+  COMPLETED, with FAILED → RECOVERING → REPLANNING and CANCELLED. Each task
+  carries `parentTaskID`, `prerequisiteTaskIDs`, `priority`, and durable `result`.
+  Prerequisites must be satisfied before task execution begins; cancelling a
+  parent task cascades cancellation to all child tasks.
+  Each step carries an explicit `VerificationOutcome`
   (`passed`/`failed`/`inconclusive`/`unavailable`/`notApplicable`), a
   logical-action `StepIdentity`, and an argument fingerprint so replans preserve
   work by identity, not position.
+- **Execution Graph** (`Agent/ExecutionGraph.swift`) — converts linear or branched
+  plans into a directed acyclic graph (DAG) of typed nodes (`action`, `observation`,
+  `verification`, `decision`, `wait`, `userConfirmation`). Validates acyclicity
+  via Kahn's topological sort, tracks node dependencies, and gates downstream nodes
+  until all prerequisite nodes successfully verify.
 - **Coordinator** (`Agent/TaskExecutionCoordinator.swift`) — runs a goal,
   owns bounded recovery (`retryBudget`), and adopts validated replans.
 - **Workers** (`Agent/TaskWorker.swift`, `Agent/TaskWorkerPool.swift`) — off-
@@ -68,6 +76,11 @@ Layered, cheap-first cognition:
   FIFO by insertion sequence, so background work cannot starve.
 - **Continuity** (`Agent/TaskContinuity.swift`) — read-only handoff grounded
   only in recent authoritative state; it never resumes or infers a task.
+- **Crash Recovery** (`Agent/CrashRecovery.swift`) — auto-resume protocol on
+  startup: inspects persisted tasks, identifies uncompleted tasks, assesses step
+  safety (read-only vs side-effecting vs destructive), and safely resumes only
+  non-destructive, idempotently verifiable tasks while aborting or asking
+  confirmation for uncertain mutations.
 
 ## 4. Autonomy
 
@@ -81,10 +94,11 @@ Layered, cheap-first cognition:
   persisted, priority-aware. It produces due **goals**; it never executes logic.
 - **Background autonomy** (`BackgroundAutonomy`) — a bounded tick (≤5 jobs)
   that hands due goals to the normal task system (`AgentLoop`). Gated by the
-  autonomy level; every due goal still passes planning, validation, permission,
-  execution, observation, and verification.
+  autonomy level and explicit user preferences (`backgroundWork`); executes an
+  immediate startup tick to resume safe tasks, and routes completions to
+  `NotificationPolicy`.
 
-## 5. Tool system
+## 5. Tool system & Execution capabilities
 
 - **Contract** (`Brain/Tools/ToolDefinitions.swift`) — every tool declares name,
   description, `parameterSpec`, impact, and the execute → observe → verify
@@ -99,16 +113,24 @@ Layered, cheap-first cognition:
 - **Built-ins** (`Brain/Tools/BuiltinTools.swift`) — apps, volume, files, web,
   browser, accessibility/UI, and structured process execution
   (`run_program`/`run_shell`).
-- **Zia-native capabilities** (`Brain/Tools/SystemCapabilityTools.swift`) —
-  `project_info`, `check_health`, `schedule_task`, `list_schedule`,
-  `remember_fact`, `recall_memory`, `list_artifacts`.
+- **Zia-native capabilities** (`Brain/Tools/SystemCapabilityTools.swift`,
+  `Brain/Tools/AssistantCapabilityTools.swift`) — `project_info`, `check_health`,
+  `schedule_task`, `list_schedule`, `remember_fact`, `recall_memory`,
+  `list_artifacts`, `set_user_preference`, `show_user_preferences`,
+  `run_specialist_agent`.
 - **Filesystem / search / patch capabilities**
-  (`Brain/Tools/FileSystemCapabilityTools.swift`) — `list_directory`,
-  `file_metadata`, `search_files`, `grep_files` (read-only, sensitive
-  credential locations refused); `create_directory`, `append_file`,
-  `copy_path`, `move_path`, `replace_in_file` (low impact, exact replacement
-  by default); `delete_path` (destructive). All reuse the `FileManagerJarvis`
-  symlink-aware path boundary and verify by read-back.
+  (`Brain/Tools/FileSystemCapabilityTools.swift`, `Core/PatchEngine.swift`) —
+  `list_directory`, `file_metadata`, `search_files`, `grep_files` (read-only,
+  centralized `SensitivePaths` protection); `create_directory`, `append_file`,
+  `copy_path`, `move_path`, `replace_in_file`, `patch_file` (`PatchEngine` with
+  expected content hash verification, stale-file detection, and read-back
+  verification); `delete_path` (destructive).
+- **Deterministic Code Intelligence** (`Agent/CodeIntelligence.swift`) —
+  symbol search, TODO/FIXME markers, source file discovery, and regex code search.
+- **Deterministic Verification Engine** (`Core/VerificationEngine.swift`) —
+  reusable, rule-based verification evaluating file presence, exact content,
+  cryptographic SHA-256 digests, process exit codes, task outcomes, and artifact
+  integrity before any step or task is marked successful.
 
 ## 6. Execution authority
 
@@ -119,7 +141,7 @@ inertness checks, timeouts, and shell `zsh -f`. See `EXECUTION_AUTHORITY.md`.
 Autonomy is built **above** this layer; raising the autonomy level never removes
 an authority check.
 
-## 7. Memory
+## 7. Memory & Reflection
 
 - **Structured memory** (`Memory/ZiaMemory.swift`) — kinds
   (working/episodic/semantic/procedural/temporary) and **trust classes**
@@ -135,24 +157,34 @@ an authority check.
     true, a completed multi-step task (≥2 verified tool steps) is recorded as a
     reusable **procedural** memory with trusted task-result provenance. Off by
     default; never a silent background behavior.
+  - **Task Reflection** (`Agent/TaskReflection.swift`) — safely reflects on
+    completed/failed executions, recording step counts, failure reasons, and
+    saving reusable `LearnedProcedure` definitions with safety invariant checks
+    prior to replay.
   - **Retrieval:** blends lexical overlap, relevance, confidence, and recency;
     `retrieveTrusted` excludes untrusted records.
 - **Profile memory** (`Memory/UserProfile.swift`, `Memory/MemoryManager.swift`)
   — explicit user facts and (opt-in) inferred facts, mirrored into structured
   semantic memory only when explicit.
+- **User Preferences** (`Core/UserPreferences.swift`) — durable store
+  (`PreferenceStore`) maintaining user settings for verbosity, style, confirmation,
+  notifications, preferred providers, and local-only mode. Explicit preferences
+  always outrank inferred preferences.
 - **Conversation store** (`Memory/ConversationStore.swift`) — SQLite archive
   with a bounded context window and an independent age-based retention policy.
 
-## 8. Intelligence routing
+## 8. Intelligence routing & Circuit Breakers
 
 - **Providers** (`Brain/Providers/*`) conform to `LLMProvider` (availability,
   capabilities, streaming, optional per-request options) for MLX (local),
   Claude, Gemini, OpenAI, Groq, OpenRouter.
 - **ProviderManager** (`Brain/ProviderManager.swift`) — fallback chains per
-  intent category, plus **observational health accounting** (failure counts and
-  last error per provider). `healthSnapshot()` returns structured availability;
-  `isDegraded` means only a local provider is available, `isUnavailable` means
-  none is.
+  intent category, plus **observational health accounting and circuit breakers**
+  (consecutive failure thresholds, quarantine periods, automatic cooldown and
+  recovery).
+- **Preference Enforced Routing** — When `UserPreferences.localOnly` is enabled,
+  all cloud providers are excluded from selection; user's `preferredProviders`
+  are prioritized at matching intelligence tiers.
 - **Degraded mode** — no strong model → local model or deterministic tools; no
   provider at all → deterministic capabilities only; offline → local work; no
   permission → the exact blocker is reported.
@@ -171,7 +203,7 @@ completion report. Execution, timeout, verification, and unavailable failures
 are recoverable because recovery produces a *different validated plan* from the
 recorded failure context — never a blind re-run of the same action.
 
-## 10. Observability & health
+## 10. Observability, Health & Notifications
 
 - **Telemetry** (`Core/ExecutionTelemetry.swift`) — bounded, observational
   journal of lifecycle events with failure categories, verification outcomes,
@@ -182,26 +214,39 @@ recorded failure context — never a blind re-run of the same action.
 - **Health** (`Core/HealthService.swift`) — structured `HealthReport` across
   intelligence, task-state, storage, memory, task-queue, network, resources, and
   computer-control, with a degraded-capabilities list and a user-facing summary.
+- **Notification Policy** (`Core/NotificationPolicy.swift`) — rate-limited,
+  tiered notification engine (`critical`, `high`, `normal`, `low`) sending user
+  notifications for task completions, task failures, and provider degradation
+  without spamming.
 - **Logging** (`Core/Logger.swift`) — os.Logger categories; secrets are never
   logged.
 
-## 11. Security posture
+## 11. Security posture & Sensitive Paths
 
 Authority boundaries (all preserved): `PermissionGate` (impact + autonomy),
 `CommandSandbox` (shell analysis), `ProcessAuthority`/`ShellExecutor`
 (structured execution), `PlanValidator` (plan-time validation),
 `ReferenceResolver` (argument resolution), `DestructiveActionManager`
 (preview/commit gate), `DataClassifier` (sensitivity → cloud/on-device), and
-the memory **trust** boundary. Untrusted content — including repository
-content, web pages, tool output, and external-agent responses — remains data.
+the memory **trust** boundary.
+- **Centralized Sensitive Paths** (`Core/SensitivePaths.swift`) — single source
+  of truth protecting `.ssh`, `.gnupg`, `.aws`, `.azure`, `.kube`, `.env`,
+  keychains, private keys (`id_rsa`, `id_ed25519`, `id_ecdsa`), shell history,
+  and OAuth tokens across `PlanValidator`, `CommandSandbox`, and `FileManagerJarvis`.
+Untrusted content — including repository content, web pages, tool output, and
+external-agent responses — remains data.
 
-## 12. External agents (Agent Bridge / MCP)
+## 12. External agents & Multi-Agent Orchestration
 
-Agent Bridge is treated as an **optional transport/provider**, never the core
-intelligence architecture. Core autonomy does not depend on ChatGPT Desktop,
-Claude Desktop, Gemini GUI, Antigravity, or any API key. `mcp.json` configures
-the MCP server transport (agent-bridge); external responses stay DATA until
-validated.
+- **Specialist Agents** (`Agent/SpecialistAgent.swift`) — bounded multi-agent
+  system with explicit roles (researcher, coder, reviewer, verifier, planner).
+  Enforces a strict recursion depth limit (depth ≤ 2) and capability restrictions.
+- **Agent Bridge** (`Agent/ExternalAgentTransport.swift`) — adapter for MCP
+  server transports and external agents. Connects requests with request IDs,
+  correlation IDs, timeouts, and bounded task depth. If external bridge is not
+  configured or unreachable, it truthfully reports unavailable and falls back to
+  local specialist execution without pretending or faking responses.
+External agent responses are treated strictly as unverified DATA until validated.
 
 ## 13. Data flow (one turn)
 
@@ -213,8 +258,11 @@ input
   → DirectAnswerRouter / task continuity?  ──yes──▶ answer from state/evidence
         │ no
   → TaskStateMachine (durable task) → MLXPlanner → PlanValidator
+  → ExecutionGraph (DAG build & topological sequencing)
   → ToolExecutor (permission → execute → observe → verify)
+  → VerificationEngine (deterministic proof check)
   → TaskStateMachine (verified step) → Coordinator recovery/replan if needed
+  → TaskReflectionEngine (record outcome & workflow)
   → final response composed from authoritative state + evidence
 ```
 

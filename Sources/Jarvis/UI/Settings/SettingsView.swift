@@ -24,13 +24,25 @@ public struct SettingsView: View {
                     Label("API Keys", systemImage: "key")
                 }
 
+            // Preferences Tab
+            UserPreferencesSettingsView()
+                .tabItem {
+                    Label("Preferences", systemImage: "slider.horizontal.3")
+                }
+
             // Memory & Privacy Tab
             MemoryPrivacySettingsView()
                 .tabItem {
                     Label("Memory", systemImage: "brain")
                 }
+
+            // System Health & Diagnostics Tab
+            HealthDiagnosticsSettingsView()
+                .tabItem {
+                    Label("Diagnostics", systemImage: "cross.case")
+                }
         }
-        .frame(width: 540, height: 400)
+        .frame(width: 580, height: 440)
     }
 }
 
@@ -108,6 +120,111 @@ struct MemoryPrivacySettingsView: View {
                     MemoryManager.shared.clearAll()
                 }
                 .foregroundColor(.red)
+            }
+        }
+        .padding()
+    }
+}
+
+struct UserPreferencesSettingsView: View {
+    var body: some View {
+        Form {
+            Section(header: Text("Assistant Tone & Verbosity").font(.headline)) {
+                Picker("Verbosity", selection: Binding(
+                    get: { PreferenceStore.shared.current.verbosity },
+                    set: { val in PreferenceStore.shared.updateExplicit { $0.verbosity = val } }
+                )) {
+                    Text("Concise").tag(ResponseVerbosity.concise)
+                    Text("Normal").tag(ResponseVerbosity.normal)
+                    Text("Detailed").tag(ResponseVerbosity.detailed)
+                }
+
+                Picker("Style", selection: Binding(
+                    get: { PreferenceStore.shared.current.style },
+                    set: { val in PreferenceStore.shared.updateExplicit { $0.style = val } }
+                )) {
+                    Text("Direct").tag(ResponseStyle.direct)
+                    Text("Friendly").tag(ResponseStyle.friendly)
+                    Text("Technical").tag(ResponseStyle.technical)
+                }
+            }
+
+            Section(header: Text("Safety & Confirmation").font(.headline)) {
+                Picker("Confirmation Mode", selection: Binding(
+                    get: { PreferenceStore.shared.current.confirmation },
+                    set: { val in PreferenceStore.shared.updateExplicit { $0.confirmation = val } }
+                )) {
+                    Text("Ask for Destructive Actions").tag(ConfirmationPreference.askForDestructive)
+                    Text("Ask for All External Actions").tag(ConfirmationPreference.askForExternal)
+                    Text("Minimal / Strict Gate Only").tag(ConfirmationPreference.minimal)
+                }
+
+                Toggle("Local-Only Mode (Block all cloud egress)", isOn: Binding(
+                    get: { PreferenceStore.shared.current.localOnly },
+                    set: { val in PreferenceStore.shared.updateExplicit { $0.localOnly = val } }
+                ))
+            }
+
+            Section(header: Text("Notifications & Autonomy").font(.headline)) {
+                Toggle("Notify on Task Completion", isOn: Binding(
+                    get: { PreferenceStore.shared.current.notifyOnCompletion },
+                    set: { val in PreferenceStore.shared.updateExplicit { $0.notifyOnCompletion = val } }
+                ))
+
+                Toggle("Notify on Task Failure", isOn: Binding(
+                    get: { PreferenceStore.shared.current.notifyOnFailure },
+                    set: { val in PreferenceStore.shared.updateExplicit { $0.notifyOnFailure = val } }
+                ))
+            }
+        }
+        .padding()
+    }
+}
+
+struct HealthDiagnosticsSettingsView: View {
+    private var topCapabilities: [CapabilityDescriptor] {
+        Array(CapabilityRegistry.descriptors().prefix(8))
+    }
+
+    private var activeTaskCount: Int {
+        let all = TaskStateMachine.shared.allTasks
+        var active = 0
+        for t in all {
+            if t.state == TaskState.running || t.state == TaskState.planning {
+                active += 1
+            }
+        }
+        return active
+    }
+
+    var body: some View {
+        Form {
+            Section(header: Text("System Status").font(.headline)) {
+                HStack {
+                    Text("Overall Status:")
+                    Spacer()
+                    Text("Operational")
+                        .bold()
+                        .foregroundColor(.green)
+                }
+
+                HStack {
+                    Text("Active Tasks:")
+                    Spacer()
+                    Text(String(activeTaskCount))
+                }
+            }
+
+            Section(header: Text("Subsystems & Capabilities").font(.headline)) {
+                ForEach(topCapabilities, id: \CapabilityDescriptor.name) { (cap: CapabilityDescriptor) in
+                    HStack {
+                        Text(cap.name)
+                        Spacer()
+                        Text(cap.availability.capitalized)
+                            .font(.caption)
+                            .foregroundColor(cap.availability == "available" ? .green : .secondary)
+                    }
+                }
             }
         }
         .padding()

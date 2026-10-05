@@ -200,10 +200,7 @@ final class CommandSandbox {
         "/private", "/dev", "/volumes"
     ]
 
-    private let protectedHomeSubpaths: [String] = [
-        ".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud",
-        ".env", ".netrc", ".zsh_history", ".bash_history"
-    ]
+    private let protectedHomeSubpaths: [String] = SensitivePaths.subpaths
 
     // MARK: - Layer 5: Exfiltration verbs
 

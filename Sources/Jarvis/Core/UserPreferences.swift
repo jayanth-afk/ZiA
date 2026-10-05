@@ -93,6 +93,13 @@ final class PreferenceStore {
         return true
     }
 
+    /// Update preferences directly with closure and persist.
+    func updateExplicit(_ mutate: (inout UserPreferences) -> Void) {
+        mutate(&current)
+        current.updatedAt = .now
+        persist()
+    }
+
     func reset() {
         current = UserPreferences()
         persist()

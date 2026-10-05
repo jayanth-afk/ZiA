@@ -472,6 +472,19 @@ actor TaskExecutionCoordinator {
         telemetry(taskID: task.id, step: nil, kind: .taskCompleted, status: "completed")
         recordConversationTurn(goal: originalRequest, response: response)
 
+        let elapsed = Date().timeIntervalSince(finalTask.createdAt)
+        let capturedRoute = route?.rawValue
+        let capturedReplanCount = replanCount
+        await MainActor.run {
+            NotificationPolicy.shared.taskCompleted(goal: originalRequest, verified: true)
+            TaskReflectionEngine.shared.recordReflection(
+                task: finalTask,
+                durationSeconds: elapsed,
+                provider: capturedRoute,
+                replanCount: capturedReplanCount
+            )
+        }
+
         // Workflow learning (opt-in): a verified multi-step task may become a
         // reusable procedure. Gated by configuration so it is never a silent
         // background behavior, and only trusted task-result provenance is used.

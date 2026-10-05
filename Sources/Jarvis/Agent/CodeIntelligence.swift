@@ -16,6 +16,13 @@ struct CodeMarker: Sendable, Equatable {
     let text: String
 }
 
+/// A line match from code search.
+struct CodeMatch: Sendable, Equatable {
+    let file: String
+    let line: Int
+    let text: String
+}
+
 /// Deterministic code intelligence over a directory tree.
 ///
 /// This is text analysis, not compilation: it is fast, bounded, offline, and
@@ -76,6 +83,41 @@ enum CodeIntelligence {
                     break
                 }
                 if results.count >= maxResults { return false }
+            }
+            return true
+        }
+        return results
+    }
+
+    /// Discover source files under root, optionally filtered by file extension.
+    static func findSourceFiles(root: String, extensionFilter: String = "", maxResults: Int = 100) -> [String] {
+        var files: [String] = []
+        let filter = extensionFilter.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        enumerateSourceFiles(root: root) { url, _ in
+            if filter.isEmpty || url.pathExtension.lowercased() == filter {
+                files.append(url.path)
+            }
+            return files.count < maxResults
+        }
+        return files
+    }
+
+    /// Search for text across source files under root with line-level snippets.
+    static func searchCode(root: String, query: String, maxResults: Int = 50) -> [CodeMatch] {
+        guard !query.isEmpty else { return [] }
+        let needle = query.lowercased()
+        var results: [CodeMatch] = []
+        enumerateSourceFiles(root: root) { url, lines in
+            if results.count >= maxResults { return false }
+            for (index, line) in lines.enumerated() {
+                if line.lowercased().contains(needle) {
+                    results.append(CodeMatch(
+                        file: url.path,
+                        line: index + 1,
+                        text: String(line.trimmingCharacters(in: .whitespaces).prefix(200))
+                    ))
+                    if results.count >= maxResults { return false }
+                }
             }
             return true
         }

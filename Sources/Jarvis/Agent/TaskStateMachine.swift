@@ -143,6 +143,10 @@ struct JarvisTask: Identifiable, Sendable {
     var error: String?
     var resolutionRecords: [StepResolutionRecord]
     var environmentContext: TaskEnvironmentContext?
+    var parentTaskID: UUID?
+    var priority: Int
+    var result: String?
+    var prerequisiteTaskIDs: [UUID]
 
     init(
         id: UUID = UUID(),
@@ -158,7 +162,11 @@ struct JarvisTask: Identifiable, Sendable {
         completedAt: Date? = nil,
         error: String? = nil,
         resolutionRecords: [StepResolutionRecord] = [],
-        environmentContext: TaskEnvironmentContext? = nil
+        environmentContext: TaskEnvironmentContext? = nil,
+        parentTaskID: UUID? = nil,
+        priority: Int = 0,
+        result: String? = nil,
+        prerequisiteTaskIDs: [UUID] = []
     ) {
         self.id = id
         self.title = title
@@ -174,6 +182,10 @@ struct JarvisTask: Identifiable, Sendable {
         self.error = error
         self.resolutionRecords = resolutionRecords
         self.environmentContext = environmentContext
+        self.parentTaskID = parentTaskID
+        self.priority = priority
+        self.result = result
+        self.prerequisiteTaskIDs = prerequisiteTaskIDs
     }
 
     /// Progress completion percentage (0.0 to 1.0).
@@ -207,6 +219,10 @@ final class TaskStateMachine: @unchecked Sendable {
         /// age-checked at resolution time after restore, so persistence cannot
         /// make stale ambient data authoritative.
         let environmentContext: TaskEnvironmentContext?
+        var parentTaskID: UUID?
+        var priority: Int?
+        var result: String?
+        var prerequisiteTaskIDs: [UUID]?
 
         init(
             id: UUID,
@@ -222,7 +238,11 @@ final class TaskStateMachine: @unchecked Sendable {
             completedAt: Date?,
             error: String?,
             resolutionRecords: [StepResolutionRecord],
-            environmentContext: TaskEnvironmentContext?
+            environmentContext: TaskEnvironmentContext?,
+            parentTaskID: UUID? = nil,
+            priority: Int? = 0,
+            result: String? = nil,
+            prerequisiteTaskIDs: [UUID]? = nil
         ) {
             self.id = id
             self.title = title
@@ -238,6 +258,10 @@ final class TaskStateMachine: @unchecked Sendable {
             self.error = error
             self.resolutionRecords = resolutionRecords
             self.environmentContext = environmentContext
+            self.parentTaskID = parentTaskID
+            self.priority = priority
+            self.result = result
+            self.prerequisiteTaskIDs = prerequisiteTaskIDs
         }
 
         init(_ task: JarvisTask) {
@@ -255,6 +279,10 @@ final class TaskStateMachine: @unchecked Sendable {
             error = task.error
             resolutionRecords = task.resolutionRecords
             environmentContext = task.environmentContext
+            parentTaskID = task.parentTaskID
+            priority = task.priority
+            result = task.result
+            prerequisiteTaskIDs = task.prerequisiteTaskIDs
         }
 
         var task: JarvisTask {
@@ -262,7 +290,9 @@ final class TaskStateMachine: @unchecked Sendable {
                        currentStepIndex: currentStepIndex, maxRetries: maxRetries,
                        retryCount: retryCount, createdAt: createdAt, updatedAt: updatedAt,
                        completedAt: completedAt, error: error, resolutionRecords: resolutionRecords,
-                       environmentContext: environmentContext)
+                       environmentContext: environmentContext, parentTaskID: parentTaskID,
+                       priority: priority ?? 0, result: result,
+                       prerequisiteTaskIDs: prerequisiteTaskIDs ?? [])
         }
     }
 
@@ -833,12 +863,20 @@ final class TaskStateMachine: @unchecked Sendable {
         title: String,
         goal: String,
         steps: [TaskStep] = [],
-        environmentContext: TaskEnvironmentContext? = nil
+        environmentContext: TaskEnvironmentContext? = nil,
+        parentTaskID: UUID? = nil,
+        priority: Int = 0,
+        prerequisiteTaskIDs: [UUID] = []
     ) -> JarvisTask {
         lock.lock()
         defer { lock.unlock() }
 
-        let task = JarvisTask(id: id, title: title, goal: goal, steps: steps, environmentContext: environmentContext)
+        let task = JarvisTask(
+            id: id, title: title, goal: goal, steps: steps,
+            environmentContext: environmentContext,
+            parentTaskID: parentTaskID, priority: priority,
+            prerequisiteTaskIDs: prerequisiteTaskIDs
+        )
         tasks[task.id] = task
         stateHistory[task.id] = [(.created, Date())]
 
@@ -865,6 +903,26 @@ final class TaskStateMachine: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return Array(tasks.values)
+    }
+
+    /// Whether all prerequisites for a task have completed successfully.
+    func arePrerequisitesSatisfied(taskId: UUID) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let task = tasks[taskId] else { return false }
+        for prereqID in task.prerequisiteTaskIDs {
+            guard let prereq = tasks[prereqID], prereq.state == .completed else {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Child tasks spawned by a parent task.
+    func children(of parentID: UUID) -> [JarvisTask] {
+        lock.lock()
+        defer { lock.unlock() }
+        return tasks.values.filter { $0.parentTaskID == parentID }
     }
 
     /// Transition a task to a new state if valid.
@@ -898,6 +956,20 @@ final class TaskStateMachine: @unchecked Sendable {
 
         tasks[taskId] = task
         stateHistory[taskId, default: []].append((newState, Date()))
+
+        // Cancellation propagation: cancel active child tasks
+        if newState == .cancelled {
+            for (childID, child) in tasks where child.parentTaskID == taskId && !child.state.isTerminal {
+                var updatedChild = child
+                updatedChild.state = .cancelled
+                updatedChild.updatedAt = Date()
+                updatedChild.completedAt = Date()
+                updatedChild.error = "Cancelled due to parent task cancellation"
+                tasks[childID] = updatedChild
+                stateHistory[childID, default: []].append((.cancelled, Date()))
+            }
+        }
+
         persistIfEnabledLocked()
         if newState == .completed, wasPersisted, !persistenceHealthy {
             tasks[taskId] = previousTask

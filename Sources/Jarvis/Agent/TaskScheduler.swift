@@ -330,10 +330,17 @@ final class BackgroundAutonomy {
 
     private init() {}
 
+    private var isBackgroundExecutionAllowed: Bool {
+        if let explicit = PreferenceStore.shared.current.backgroundWork {
+            return explicit
+        }
+        return AutonomyPolicy.backgroundExecutionEnabled
+    }
+
     func start(interval: TimeInterval = 60) {
         guard !isRunning else { return }
-        guard AutonomyPolicy.backgroundExecutionEnabled else {
-            JarvisLogger.app.info("Background autonomy disabled at current autonomy level")
+        guard isBackgroundExecutionAllowed else {
+            JarvisLogger.app.info("Background autonomy disabled at current autonomy/preference level")
             return
         }
         isRunning = true
@@ -342,6 +349,10 @@ final class BackgroundAutonomy {
             Task { @MainActor [weak self] in
                 await self?.tick()
             }
+        }
+        // Immediate startup tick: inspect durable state and resume safe interrupted tasks without waiting 60s
+        Task { @MainActor [weak self] in
+            await self?.tick()
         }
         JarvisLogger.app.info("Background autonomy started (interval \(Int(safeInterval))s)")
     }
@@ -361,11 +372,12 @@ final class BackgroundAutonomy {
         defer { isTicking = false }
         lastTickAt = now
 
-        guard AutonomyPolicy.backgroundExecutionEnabled else { return 0 }
+        guard isBackgroundExecutionAllowed else { return 0 }
 
         let due = Array(TaskScheduler.shared.dueJobs(now: now).prefix(max(0, maxJobsPerTick)))
         var launched = 0
         for job in due {
+            NotificationPolicy.shared.scheduleFired(title: job.title)
             let outcome = await launch(job)
             TaskScheduler.shared.recordRun(id: job.id, at: now, outcome: outcome, didLaunch: true)
             launched += 1
@@ -381,7 +393,7 @@ final class BackgroundAutonomy {
     /// never resumes a task with an uncertain destructive side effect.
     @discardableResult
     func resumeInterruptedWork(now: Date = .now) async -> Int {
-        guard AutonomyPolicy.backgroundExecutionEnabled else { return 0 }
+        guard isBackgroundExecutionAllowed else { return 0 }
         let report = CrashRecovery.inspect(tasks: TaskStateMachine.shared.allTasks, now: now)
         var resumed = 0
         let interactiveTaskID = AgentLoop.shared.status.taskId

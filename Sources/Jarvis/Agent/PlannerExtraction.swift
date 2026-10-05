@@ -745,14 +745,8 @@ enum PlannerExtraction {
                 return nil
             }
         }
-        let blockedSubpaths = [
-            ".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud",
-            ".env", ".netrc", ".zsh_history", ".bash_history"
-        ]
-        for subpath in blockedSubpaths {
-            if lowerPath.contains(subpath) || expanded.contains(subpath) {
-                return nil
-            }
+        if SensitivePaths.contains(path) || SensitivePaths.contains(expanded) {
+            return nil
         }
 
         return ExtractedAction(
@@ -914,14 +908,8 @@ enum PlannerExtraction {
                 return nil
             }
         }
-        let blockedSubpaths = [
-            ".ssh", ".gnupg", ".aws", ".kube", ".config/gcloud",
-            ".env", ".netrc", ".zsh_history", ".bash_history"
-        ]
-        for subpath in blockedSubpaths {
-            if lowerPath.contains(subpath) || expanded.contains(subpath) {
-                return nil
-            }
+        if SensitivePaths.contains(path) || SensitivePaths.contains(expanded) {
+            return nil
         }
 
         return ExtractedAction(

@@ -110,6 +110,7 @@ final class ProviderManager {
             JarvisLogger.brain.warning("Provider \(providerID) quarantined after \(count) consecutive failures")
             EventBus.shared.publish(ProviderFailedEvent(
                 provider: providerID, error: error, fallbackProvider: "quarantined"))
+            NotificationPolicy.shared.providerDegraded(detail: "Provider \(providerID) quarantined after \(count) consecutive failures")
         }
         return count
     }
@@ -174,6 +175,9 @@ final class ProviderManager {
         messages: [Message],
         category: IntentClassifier.IntentCategory
     ) async throws -> String {
+        let decision = routingDecision(for: category)
+        JarvisLogger.brain.info("Routing decision: chosen=\(decision.chosen ?? "none"), reason=\(decision.reason), degraded=\(decision.degraded)")
+
         let chain = getFallbackChain(for: category)
 
         for provider in chain {
@@ -189,7 +193,7 @@ final class ProviderManager {
 
             EventBus.shared.publish(ProviderSelectedEvent(
                 provider: provider.id,
-                reason: "Matched for \(category.rawValue)"
+                reason: decision.chosen == provider.id ? decision.reason : "Fallback after prior provider failure for \(category.rawValue)"
             ))
 
             do {
@@ -239,15 +243,27 @@ final class ProviderManager {
 
     /// Determines the fallback cascade for a given intent category.
     func getFallbackChain(for category: IntentClassifier.IntentCategory) -> [any LLMProvider] {
+        let defaultChain: [any LLMProvider]
         switch category {
         case .coding:
-            return [claude, openai, openrouter, localNormal, localReflex]
+            defaultChain = [claude, openai, openrouter, localNormal, localReflex]
         case .deepReasoning:
-            return [claude, gemini, openai, openrouter, localNormal, localReflex]
+            defaultChain = [claude, gemini, openai, openrouter, localNormal, localReflex]
         case .webSearch:
-            return [groq, openrouter, gemini, localNormal, localReflex]
+            defaultChain = [groq, openrouter, gemini, localNormal, localReflex]
         case .conversation, .systemQuery:
-            return [localNormal, groq, openrouter, openai, localReflex]
+            defaultChain = [localNormal, groq, openrouter, openai, localReflex]
         }
+
+        let prefs = PreferenceStore.shared.current
+        if prefs.localOnly {
+            return [localNormal, localReflex]
+        }
+        if !prefs.preferredProviders.isEmpty {
+            let preferred = defaultChain.filter { prefs.preferredProviders.contains($0.id) }
+            let remaining = defaultChain.filter { !prefs.preferredProviders.contains($0.id) }
+            return preferred + remaining
+        }
+        return defaultChain
     }
 }

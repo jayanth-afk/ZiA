@@ -34,25 +34,72 @@ struct ProjectProfile: Sendable, Equatable {
     let markers: [String]
     let suggestedBuildCommand: String?
     let suggestedTestCommand: String?
+    let branch: String?
+    let importantDirectories: [String]
+    let entryPoints: [String]
+    let documentationFiles: [String]
+    let configurationFiles: [String]
+
+    init(
+        root: String,
+        kinds: [ProjectKind],
+        markers: [String],
+        suggestedBuildCommand: String?,
+        suggestedTestCommand: String?,
+        branch: String? = nil,
+        importantDirectories: [String] = [],
+        entryPoints: [String] = [],
+        documentationFiles: [String] = [],
+        configurationFiles: [String] = []
+    ) {
+        self.root = root
+        self.kinds = kinds
+        self.markers = markers
+        self.suggestedBuildCommand = suggestedBuildCommand
+        self.suggestedTestCommand = suggestedTestCommand
+        self.branch = branch
+        self.importantDirectories = importantDirectories
+        self.entryPoints = entryPoints
+        self.documentationFiles = documentationFiles
+        self.configurationFiles = configurationFiles
+    }
 
     var isProject: Bool { !kinds.isEmpty }
 
     var summary: String {
         guard isProject else { return "No recognized project markers at \(root)." }
         let names = kinds.map(\.displayName).joined(separator: ", ")
-        var text = "Project at \(root): \(names)."
+        var text = "Project at \(root): \(names)"
+        if let branch { text += " (branch: \(branch))" }
+        text += "."
         if let build = suggestedBuildCommand { text += " Build: `\(build)`." }
         if let test = suggestedTestCommand { text += " Test: `\(test)`." }
+        if !entryPoints.isEmpty { text += " Entry: \(entryPoints.joined(separator: ", "))." }
         return text
     }
 }
 
 /// Deterministic project awareness. Structurally incapable of executing code:
-/// it inspects directory entries by name and returns metadata.
+/// it inspects directory entries by name and returns metadata with mtime caching.
 enum ProjectInspector {
+    private static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: (mtime: Date, profile: ProjectProfile)] = [:]
+
     static func inspect(root: String) -> ProjectProfile {
         let expanded = (root as NSString).expandingTildeInPath
         let fm = FileManager.default
+
+        // Check cache with root directory modification time
+        let rootURL = URL(fileURLWithPath: expanded)
+        let rootMTime = (try? rootURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? Date()
+
+        cacheLock.lock()
+        if let cached = cache[expanded], cached.mtime >= rootMTime {
+            cacheLock.unlock()
+            return cached.profile
+        }
+        cacheLock.unlock()
+
         var kinds: [ProjectKind] = []
         var markers: [String] = []
 
@@ -89,12 +136,47 @@ enum ProjectInspector {
             kinds.append(.gitRepository); markers.append(".git")
         }
 
-        return ProjectProfile(
+        // Branch detection from .git/HEAD
+        var detectedBranch: String? = nil
+        let headPath = (expanded as NSString).appendingPathComponent(".git/HEAD")
+        if let headContent = try? String(contentsOfFile: headPath, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines) {
+            if headContent.hasPrefix("ref: refs/heads/") {
+                detectedBranch = String(headContent.dropFirst("ref: refs/heads/".count))
+            } else if headContent.count >= 7 {
+                detectedBranch = String(headContent.prefix(7))
+            }
+        }
+
+        let standardDirs = ["Sources", "Tests", "src", "tests", "docs", "pkg", "lib", "include", "bin"]
+        let importantDirs = standardDirs.filter { fileExists($0) }
+
+        let docCandidates = ["README.md", "README", "ARCHITECTURE.md", "ZIA_ARCHITECTURE.md", "AGENTS.md", "CONTRIBUTING.md", "LICENSE"]
+        let docs = docCandidates.filter { fileExists($0) }
+
+        let configCandidates = ["Package.swift", "Cargo.toml", "pyproject.toml", "package.json", "tsconfig.json", "go.mod", "Makefile", "docker-compose.yml"]
+        let configs = configCandidates.filter { fileExists($0) }
+
+        let entryCandidates = ["Sources/Jarvis/App/JarvisApp.swift", "src/index.ts", "src/main.rs", "main.go", "app.py", "main.py", "index.js", "src/App.tsx"]
+        let entriesFound = entryCandidates.filter { fileExists($0) }
+
+        let profile = ProjectProfile(
             root: expanded,
             kinds: kinds,
             markers: markers,
             suggestedBuildCommand: buildCommand(for: kinds),
-            suggestedTestCommand: testCommand(for: kinds))
+            suggestedTestCommand: testCommand(for: kinds),
+            branch: detectedBranch,
+            importantDirectories: importantDirs,
+            entryPoints: entriesFound,
+            documentationFiles: docs,
+            configurationFiles: configs
+        )
+
+        cacheLock.lock()
+        cache[expanded] = (mtime: rootMTime, profile: profile)
+        cacheLock.unlock()
+
+        return profile
     }
 
     /// A project is detected when any ecosystem marker is present.

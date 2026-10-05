@@ -162,9 +162,9 @@ final class HealthService {
         add("browser", .unknown, "Browser automation availability is determined per action.")
 
         let overall: HealthStatus
-        if components.contains(where: { $0.status == .unavailable || $0.status == .permissionBlocked }) {
+        if providerHealth.availableCount == 0 {
             overall = .unavailable
-        } else if components.contains(where: { $0.status == .degraded || $0.status == .disabled }) {
+        } else if components.contains(where: { $0.status.reducesCapability }) {
             overall = .degraded
         } else {
             overall = .healthy

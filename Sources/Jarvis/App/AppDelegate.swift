@@ -97,6 +97,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Transition to SLEEP (listening mode)
         appState.transition(to: .sleep)
 
+        // Diagnostic affordance: `--show-ui` presents the overlay and the main
+        // window at launch so both surfaces can be inspected in a live session.
+        // Never triggered by normal startup.
+        if CommandLine.arguments.contains("--show-ui") {
+            FloatingPanel.shared.show()
+            ZiaWindowController.shared.show()
+            let overlayFrame = FloatingPanel.shared.frame
+            let fitting = FloatingPanel.shared.contentFittingSize
+            JarvisLogger.app.info(
+                "[UI_TRACE] overlay visible=\(FloatingPanel.shared.isVisible, privacy: .public) x=\(overlayFrame.origin.x, privacy: .public) y=\(overlayFrame.origin.y, privacy: .public) w=\(overlayFrame.width, privacy: .public) h=\(overlayFrame.height, privacy: .public) fittingW=\(fitting.width, privacy: .public) fittingH=\(fitting.height, privacy: .public)")
+            if let window = NSApp.windows.first(where: { $0.title == "ZiA" }) {
+                let frame = window.frame
+                JarvisLogger.app.info(
+                    "[UI_TRACE] main visible=\(window.isVisible, privacy: .public) x=\(frame.origin.x, privacy: .public) y=\(frame.origin.y, privacy: .public) w=\(frame.width, privacy: .public) h=\(frame.height, privacy: .public) subviews=\(window.contentView?.subviews.count ?? 0, privacy: .public)")
+            } else {
+                JarvisLogger.app.error("[UI_TRACE] main window missing after show()")
+            }
+        }
+
         JarvisLogger.app.info("JARVIS initialized — \(ResourceManager.shared.totalMemoryMB)MB total memory")
     }
 

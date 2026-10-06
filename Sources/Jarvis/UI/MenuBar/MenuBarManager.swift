@@ -3,10 +3,13 @@ import SwiftUI
 
 /// Manages the NSStatusItem (menu bar icon) and its popover dropdown.
 ///
-/// The icon changes based on JARVIS state:
-///   OFF    → outline brain icon
-///   SLEEP  → outline brain icon (listening indicator)
-///   ACTIVE → filled brain icon
+/// The icon reflects the real interaction phase, not just enablement:
+///   disabled → outline sparkle
+///   idle     → filled sparkle
+///   listening→ waveform
+///   working  → sparkle (animated state shown in the popover)
+///   speaking → speaker
+///   error    → warning triangle
 @MainActor
 final class MenuBarManager {
     private var statusItem: NSStatusItem?
@@ -14,6 +17,9 @@ final class MenuBarManager {
     private let appState: AppState
     private let eventBus: EventBus
     private var stateSubscription: UUID?
+    private var phaseSubscription: UUID?
+
+    private var phase: InteractionPhase = .idle
 
     init(appState: AppState, eventBus: EventBus) {
         self.appState = appState
@@ -34,6 +40,7 @@ final class MenuBarManager {
 
         button.action = #selector(togglePopover)
         button.target = self
+        button.toolTip = "ZiA"
     }
 
     // MARK: - Popover
@@ -50,10 +57,12 @@ final class MenuBarManager {
         guard let button = statusItem?.button else { return }
 
         let pop = NSPopover()
-        pop.contentSize = NSSize(width: 280, height: 220)
+        pop.contentSize = NSSize(width: 320, height: 430)
         pop.behavior = .transient
+        pop.animates = !ZiaMotion.reduceMotion
         pop.contentViewController = NSHostingController(
             rootView: MenuBarView(appState: appState)
+                .preferredColorScheme(ZiaAppearanceStore.shared.appearance.colorScheme)
         )
 
         pop.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
@@ -66,6 +75,10 @@ final class MenuBarManager {
         stateSubscription = eventBus.subscribe(StateChangedEvent.self) { [weak self] _ in
             self?.updateIcon()
         }
+        phaseSubscription = eventBus.subscribe(InteractionPhaseChangedEvent.self) { [weak self] event in
+            self?.phase = event.phase
+            self?.updateIcon()
+        }
     }
 
     // MARK: - Icon
@@ -74,18 +87,23 @@ final class MenuBarManager {
         guard let button = statusItem?.button else { return }
 
         let symbolName: String
-        switch appState.state {
-        case .off:
-            symbolName = "brain.head.profile"
-        case .sleep:
-            symbolName = "brain.head.profile"
-        case .active:
-            symbolName = "brain.head.profile.fill"
+        if appState.state == .off {
+            symbolName = "sparkle"
+        } else {
+            switch phase {
+            case .listening: symbolName = "waveform"
+            case .speaking: symbolName = "speaker.wave.2.fill"
+            case .error: symbolName = "exclamationmark.triangle"
+            case .success: symbolName = "checkmark.circle"
+            case .understanding, .thinking, .executing: symbolName = "sparkles"
+            case .stopped: symbolName = "pause.circle"
+            case .idle: symbolName = "sparkle"
+            }
         }
 
         if let image = NSImage(
             systemSymbolName: symbolName,
-            accessibilityDescription: "JARVIS — \(appState.state.rawValue)"
+            accessibilityDescription: "ZiA — \(appState.state.rawValue)"
         ) {
             image.isTemplate = true
             button.image = image

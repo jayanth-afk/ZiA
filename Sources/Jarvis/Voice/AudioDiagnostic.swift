@@ -37,6 +37,15 @@ public final class AudioDiagnostic: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Cheap, lock-only level read for real-time UI metering. Deliberately does
+    /// NOT touch the VAD/recognizer/pipeline (unlike `snapshot()`), so it is safe
+    /// to call on a ~30 Hz rendering cadence without adding audio-path work.
+    public nonisolated func latestLevels() -> (rms: Float, peak: Float) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (latestRMS, latestPeak)
+    }
+
     @MainActor
     public func snapshot() -> Snapshot {
         lock.lock()

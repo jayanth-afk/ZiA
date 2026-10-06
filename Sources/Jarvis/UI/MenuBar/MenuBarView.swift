@@ -1,206 +1,327 @@
 import SwiftUI
+import AppKit
 
-/// The SwiftUI content shown in the menu bar dropdown popover.
+/// The menu bar dropdown.
 ///
-/// Displays:
-///   - JARVIS status (state, network, memory)
-///   - Recent conversation transcript (bounded, via HistoryService)
-///   - Enable/disable toggle
-///   - Quit button
+/// Compact by design: identity and status, then only the actions that can
+/// actually be taken. Health details are surfaced as a single line and only when
+/// something is actually wrong — the popover is not a dashboard.
 struct MenuBarView: View {
     let appState: AppState
+    @ObservedObject private var activity = ZiaActivityModel.shared
+    @ObservedObject private var providerModel = ZiaProviderModel.shared
+    @ObservedObject private var history = HistoryService.shared
+    @ObservedObject private var permissionModel = ZiaPermissionModel.shared
+    @StateObject private var status = MenuBarStatusModel()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header
-            HStack {
-                Image(systemName: "brain.head.profile.fill")
-                    .font(.title2)
-                    .foregroundStyle(.blue)
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            divider
+            actions
+            if !history.turns.isEmpty {
+                divider
+                MenuHistorySection()
+                    .padding(.horizontal, ZiaSpace.lg)
+                    .padding(.vertical, ZiaSpace.md)
+            }
+            if activity.hasActiveWork {
+                divider
+                activeTask
+            }
+            if let warning = systemWarning {
+                divider
+                warningRow(warning)
+            }
+            divider
+            footer
+        }
+        .background(ZiaColors.background)
+        .onAppear {
+            activity.refresh()
+            permissionModel.refresh()
+            status.start()
+            Task { await providerModel.refresh() }
+        }
+    }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("JARVIS")
-                        .font(.headline)
-                    Text(statusText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+    // MARK: - Header
 
-                Spacer()
+    private var header: some View {
+        HStack(spacing: ZiaSpace.sm) {
+            ZiaPresenceOrb(state: presence, size: 30)
 
-                Circle()
-                    .fill(statusColor)
-                    .frame(width: 8, height: 8)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("ZiA")
+                    .font(ZiaType.identity)
+                    .foregroundStyle(ZiaColors.textPrimary)
+                Text(presence.hint ?? presence.label)
+                    .font(ZiaType.caption)
+                    .foregroundStyle(ZiaColors.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, ZiaSpace.lg)
+        .padding(.vertical, ZiaSpace.md)
+    }
+
+    // MARK: - Actions
+
+    private var actions: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            menuButton("Ask ZiA", symbol: "sparkles", shortcut: "⌥Space") {
+                ZiaWindowController.shared.show()
             }
 
-            Divider()
-
-            // System info
-            VStack(alignment: .leading, spacing: 6) {
-                Label {
-                    Text(appState.isOnline ? "Online" : "Offline")
-                        .font(.caption)
-                } icon: {
-                    Image(systemName: appState.isOnline ? "wifi" : "wifi.slash")
-                        .foregroundStyle(appState.isOnline ? .green : .red)
+            if appState.state == .active {
+                menuButton("Stop listening", symbol: "stop.circle") {
+                    VoicePipeline.shared.handleUserStopAction()
                 }
-
-                Label {
-                    Text("Memory: \(appState.memoryPressure.rawValue)")
-                        .font(.caption)
-                } icon: {
-                    Image(systemName: "memorychip")
-                        .foregroundStyle(memoryColor)
-                }
-
-                Label {
-                    Text("Keys: \(KeychainManager.shared.availableServices().count)/\(KeychainManager.APIService.allCases.count)")
-                        .font(.caption)
-                } icon: {
-                    Image(systemName: "key")
-                        .foregroundStyle(.secondary)
+            } else {
+                menuButton("Start listening", symbol: "waveform") {
+                    if appState.state == .off { appState.transition(to: .sleep) }
+                    appState.transition(to: .active)
+                    FloatingPanel.shared.show()
                 }
             }
 
-            Divider()
-
-            // Recent conversation transcript (HistoryService boundary — never
-            // SQLite internals). Bounded window with older-page loading.
-            MenuHistorySection()
-
-            Divider()
-
-            // Controls
-            Button(action: {
+            menuButton("Open ZiA", symbol: "macwindow.on.rectangle") {
                 FloatingPanel.shared.toggle()
-            }) {
-                Label("Toggle Overlay", systemImage: "macwindow.on.rectangle")
             }
-            .buttonStyle(.plain)
 
-            Button(action: toggleState) {
-                Label(toggleLabel, systemImage: toggleIcon)
+            menuButton(appState.state == .off ? "Enable ZiA" : "Disable ZiA",
+                       symbol: appState.state == .off ? "play.fill" : "pause.fill") {
+                appState.transition(to: appState.state == .off ? .sleep : .off)
             }
-            .buttonStyle(.plain)
 
-            Button(action: {
+            menuButton("Settings…", symbol: "gearshape") {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
                 NSApp.activate(ignoringOtherApps: true)
-            }) {
-                Label("Settings…", systemImage: "gear")
             }
-            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, ZiaSpace.sm)
+        .padding(.vertical, ZiaSpace.sm)
+    }
 
-            Button(action: { NSApp.terminate(nil) }) {
-                Label("Quit JARVIS", systemImage: "power")
-                    .foregroundStyle(.red)
+    // MARK: - Active task (only when one exists)
+
+    @ViewBuilder
+    private var activeTask: some View {
+        if let task = activity.tasks.first {
+            VStack(alignment: .leading, spacing: ZiaSpace.sm) {
+                HStack {
+                    Text("CURRENT TASK")
+                        .font(ZiaType.metadata)
+                        .tracking(0.6)
+                        .foregroundStyle(ZiaColors.textTertiary)
+                    Spacer(minLength: 0)
+                    ZiaButton("View", variant: .ghost, size: .small) {
+                        ZiaWindowController.shared.show()
+                    }
+                }
+                Text(task.title)
+                    .font(ZiaType.body)
+                    .foregroundStyle(ZiaColors.textPrimary)
+                    .lineLimit(2)
+                if let step = task.steps.first(where: { $0.state != .completed }) {
+                    Text(step.description)
+                        .font(ZiaType.caption)
+                        .foregroundStyle(ZiaColors.textSecondary)
+                        .lineLimit(2)
+                }
             }
-            .buttonStyle(.plain)
-        }
-        .padding(16)
-        .frame(width: 260)
-        .onAppear {
-            HistoryService.shared.loadRecent()
+            .padding(.horizontal, ZiaSpace.lg)
+            .padding(.vertical, ZiaSpace.md)
         }
     }
 
-    // MARK: - Computed Properties
+    // MARK: - Truthful warning (only when something is actually wrong)
 
-    private var statusText: String {
-        switch appState.state {
-        case .off: return "Disabled"
-        case .sleep: return "Standby"
-        case .active: return "Processing…"
+    private struct SystemWarning {
+        let symbol: String
+        let text: String
+        let tint: Color
+    }
+
+    private var systemWarning: SystemWarning? {
+        if providerModel.totalCount > 0 && providerModel.availableCount == 0 {
+            return SystemWarning(symbol: "exclamationmark.triangle.fill",
+                                 text: "No model available — open Settings › AI Providers.",
+                                 tint: ZiaColors.error)
         }
-    }
-
-    private var statusColor: Color {
-        switch appState.state {
-        case .off: return .gray
-        case .sleep: return .orange
-        case .active: return .green
+        if !appState.isOnline {
+            return SystemWarning(symbol: "wifi.slash",
+                                 text: "Offline — local work continues.",
+                                 tint: ZiaColors.warning)
         }
-    }
-
-    private var memoryColor: Color {
-        switch appState.memoryPressure {
-        case .nominal: return .green
-        case .warning: return .orange
-        case .critical: return .red
+        if appState.memoryPressure == .critical {
+            return SystemWarning(symbol: "memorychip",
+                                 text: "Memory pressure critical — local models may be paused.",
+                                 tint: ZiaColors.warning)
         }
-    }
-
-    private var toggleLabel: String {
-        appState.state == .off ? "Enable JARVIS" : "Disable JARVIS"
-    }
-
-    private var toggleIcon: String {
-        appState.state == .off ? "play.fill" : "stop.fill"
-    }
-
-    private func toggleState() {
-        switch appState.state {
-        case .off:
-            appState.transition(to: .sleep)
-        case .sleep, .active:
-            appState.transition(to: .off)
+        if !permissionModel.allGranted {
+            let missing = permissionModel.items.filter { !$0.enabled }.count
+            return SystemWarning(symbol: "lock.fill",
+                                 text: "\(missing) permission\(missing == 1 ? "" : "s") not granted — voice or computer control is limited.",
+                                 tint: ZiaColors.warning)
         }
+        return nil
+    }
+
+    private func warningRow(_ warning: SystemWarning) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: ZiaSpace.sm) {
+            Image(systemName: warning.symbol)
+                .font(.system(size: ZiaMetric.iconSm))
+                .foregroundStyle(warning.tint)
+                .frame(width: 14)
+            Text(warning.text)
+                .font(ZiaType.caption)
+                .foregroundStyle(ZiaColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.horizontal, ZiaSpace.lg)
+        .padding(.vertical, ZiaSpace.md)
+    }
+
+    private var footer: some View {
+        HStack {
+            ZiaButton("Quit ZiA", symbol: "power", variant: .ghost, size: .small) {
+                NSApp.terminate(nil)
+            }
+            Spacer(minLength: 0)
+            Text(ZiaBuildInfo.shortVersion)
+                .font(ZiaType.metadata)
+                .foregroundStyle(ZiaColors.textTertiary)
+        }
+        .padding(.horizontal, ZiaSpace.lg)
+        .padding(.vertical, ZiaSpace.sm)
+    }
+
+    private var divider: some View {
+        Rectangle().fill(ZiaColors.separator).frame(height: 1)
+    }
+
+    // MARK: - Helpers
+
+    private func menuButton(_ title: String, symbol: String, shortcut: String? = nil, action: @escaping () -> Void) -> some View {
+        MenuRowButton(title: title, symbol: symbol, shortcut: shortcut, action: action)
+    }
+
+    private var presence: ZiaPresenceState {
+        ZiaPresenceState.resolve(phase: status.phase, appEnabled: appState.state != .off)
     }
 }
 
-/// Minimal transcript section (Phase 3 foundation): bounded recent history
-/// through the HistoryService boundary, with one older-page affordance. Not
-/// the final Zia conversation UI — this proves the data boundary end to end.
+/// Observes the real interaction phase so the popover header is never stale.
 @MainActor
-private final class MenuHistorySectionModel: ObservableObject {
-    @Published var showAll = false
+private final class MenuBarStatusModel: ObservableObject {
+    @Published var phase: InteractionPhase = InteractionPhaseCenter.backendPhase
+    private var subscription: UUID?
+
+    func start() {
+        guard subscription == nil else { return }
+        phase = InteractionPhaseCenter.backendPhase
+        subscription = EventBus.shared.subscribe(InteractionPhaseChangedEvent.self) { [weak self] event in
+            Task { @MainActor in self?.phase = event.phase }
+        }
+    }
 }
 
-struct MenuHistorySection: View {
-    @ObservedObject private var history = HistoryService.shared
-    @StateObject private var model = MenuHistorySectionModel()
+/// A menu row with hover feedback and an optional shortcut hint.
+private struct MenuRowButton: View {
+    let title: String
+    let symbol: String
+    let shortcut: String?
+    let action: () -> Void
+
+    @StateObject private var hovering = ZiaState(false)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        Button(action: action) {
+            HStack(spacing: ZiaSpace.sm) {
+                Image(systemName: symbol)
+                    .font(.system(size: ZiaMetric.iconMd))
+                    .foregroundStyle(ZiaColors.textSecondary)
+                    .frame(width: 16)
+                Text(title)
+                    .font(ZiaType.body)
+                    .foregroundStyle(ZiaColors.textPrimary)
+                Spacer(minLength: 0)
+                if let shortcut {
+                    Text(shortcut)
+                        .font(ZiaType.metadata)
+                        .foregroundStyle(ZiaColors.textTertiary)
+                }
+            }
+            .padding(.horizontal, ZiaSpace.sm)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: ZiaRadius.xs, style: .continuous)
+                    .fill(hovering.value ? ZiaColors.surfaceHover : .clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering.value = $0 }
+    }
+}
+
+/// Bounded recent transcript through the HistoryService boundary — never SQLite
+/// internals. Only what has really been said appears here.
+struct MenuHistorySection: View {
+    @ObservedObject private var history = HistoryService.shared
+    @StateObject private var showAll = ZiaState(false)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ZiaSpace.sm) {
             HStack {
-                Label("Recent conversation", systemImage: "bubble.left.and.bubble.right")
-                    .font(.caption.weight(.semibold))
-                Spacer()
-                if model.showAll {
+                Text("RECENT")
+                    .font(ZiaType.metadata)
+                    .tracking(0.6)
+                    .foregroundStyle(ZiaColors.textTertiary)
+                Spacer(minLength: 0)
+                if showAll.value {
                     Button("Show less") {
-                        model.showAll = false
+                        showAll.value = false
                         history.loadRecent()
                     }
                     .buttonStyle(.plain)
-                    .font(.caption2)
-                } else if history.turns.count > 4 {
+                    .font(ZiaType.caption)
+                    .foregroundStyle(ZiaColors.textTertiary)
+                } else if history.turns.count > 3 {
                     Button("Older") {
-                        model.showAll = true
-                        history.loadOlder()
+                        showAll.value = true
+                        _ = history.loadOlder()
                     }
                     .buttonStyle(.plain)
-                    .font(.caption2)
+                    .font(ZiaType.caption)
+                    .foregroundStyle(ZiaColors.textTertiary)
                 }
             }
 
             if history.turns.isEmpty {
-                Text("No conversation yet.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text("No conversation yet. Ask ZiA anything to get started.")
+                    .font(ZiaType.caption)
+                    .foregroundStyle(ZiaColors.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
-                ForEach((model.showAll ? history.turns : Array(history.turns.suffix(4)))) { turn in
-                    HStack(alignment: .top, spacing: 4) {
-                        Image(systemName: turn.isFromUser ? "person.fill" : "brain.head.profile")
-                            .font(.caption2)
-                            .foregroundStyle(turn.isFromUser ? Color.secondary : Color.blue)
-                            .frame(width: 14)
-                        Text(turn.text)
-                            .font(.caption2)
-                            .lineLimit(2)
-                            .foregroundStyle(.primary)
+                VStack(alignment: .leading, spacing: ZiaSpace.sm) {
+                    ForEach((showAll.value ? history.turns : Array(history.turns.suffix(3)))) { turn in
+                        HStack(alignment: .top, spacing: ZiaSpace.sm) {
+                            Image(systemName: turn.isFromUser ? "person.fill" : "sparkle")
+                                .font(.system(size: ZiaMetric.iconSm))
+                                .foregroundStyle(turn.isFromUser ? ZiaColors.textTertiary : ZiaColors.presence)
+                                .frame(width: 14)
+                            Text(turn.text)
+                                .font(ZiaType.caption)
+                                .lineLimit(2)
+                                .foregroundStyle(ZiaColors.textSecondary)
+                        }
                     }
                 }
             }
         }
+        .onAppear { history.loadRecent() }
     }
 }

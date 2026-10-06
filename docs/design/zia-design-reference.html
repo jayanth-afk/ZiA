@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ZiA — Design Reference Board</title>
+<style>
+  :root {
+    /* Mirrors Sources/Jarvis/UI/Theme/ZiaTheme.swift (ZiaColors, dark values) */
+    --background:#0e1016; --background-secondary:#14171e; --surface:#191c24;
+    --surface-elevated:#1f232d; --surface-hover:#262b37; --surface-pressed:#2d3340;
+    --border:rgba(255,255,255,.10); --border-strong:rgba(255,255,255,.18);
+    --separator:rgba(255,255,255,.07);
+    --text-primary:#f0f2f7; --text-secondary:#a8aebb; --text-tertiary:#787f8d;
+    --accent:#708aff; --accent-soft:rgba(112,138,255,.16);
+    --success:#48c784; --warning:#f0bd4a; --error:#f07070; --info:#60a8f5;
+    --presence:#8298ff;
+    --space-xs:4px; --space-sm:8px; --space-md:12px; --space-lg:16px;
+    --space-xl:20px; --space-xxl:24px; --space-xxxl:32px;
+    --radius-xs:5px; --radius-sm:8px; --radius-md:12px; --radius-lg:16px;
+    --radius-xl:20px; --radius-panel:24px;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding:40px;
+    background:var(--background); color:var(--text-primary);
+    font:14px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1 { font-size:30px; font-weight:600; letter-spacing:-.02em; margin:0 0 6px; }
+  h2 { font-size:17px; font-weight:600; margin:44px 0 14px; padding-bottom:10px;
+       border-bottom:1px solid var(--separator); }
+  h3 { font-size:13px; font-weight:600; margin:20px 0 8px; color:var(--text-secondary);
+       text-transform:uppercase; letter-spacing:.06em; }
+  p.lede { color:var(--text-secondary); max-width:78ch; margin:0 0 8px; }
+  code, .mono { font-family:"SF Mono", ui-monospace, Menlo, monospace; font-size:12px; }
+  .grid { display:grid; gap:14px; }
+  .g4 { grid-template-columns:repeat(auto-fill, minmax(170px,1fr)); }
+  .g3 { grid-template-columns:repeat(auto-fill, minmax(230px,1fr)); }
+  .g2 { grid-template-columns:repeat(auto-fill, minmax(340px,1fr)); }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);
+          padding:16px; }
+  .swatch { height:64px; border-radius:var(--radius-md); border:1px solid var(--border);
+            margin-bottom:8px; }
+  .label { font-size:11px; color:var(--text-secondary); }
+  .token { font-size:11px; color:var(--text-tertiary); font-family:"SF Mono",Menlo,monospace; }
+  .row { display:flex; align-items:center; gap:10px; padding:10px 0;
+         border-bottom:1px solid var(--separator); }
+  .row:last-child { border-bottom:0; }
+  .dot { width:8px; height:8px; border-radius:50%; flex:none; }
+  .badge { font-size:10.5px; font-weight:600; padding:2px 6px; border-radius:999px;
+           background:var(--accent-soft); color:var(--accent); }
+  .btn { display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 12px;
+         border-radius:var(--radius-sm); font-size:13px; font-weight:500; border:1px solid transparent; }
+  .btn.primary { background:var(--accent); color:#fff; }
+  .btn.secondary { background:var(--surface-elevated); border-color:var(--border); }
+  .btn.destructive { background:rgba(240,112,112,.08); border-color:rgba(240,112,112,.28); color:var(--error); }
+  .orb { width:64px; height:64px; border-radius:50%;
+         background:radial-gradient(circle at 34% 28%, var(--c) 0%, var(--c2) 55%, transparent 72%); }
+  .shot { width:100%; border-radius:var(--radius-md); border:1px solid var(--border); display:block; }
+  .states { display:flex; gap:24px; flex-wrap:wrap; }
+  .state { text-align:center; width:110px; }
+  .state .label { color:var(--text-primary); font-weight:600; font-size:12px; display:block; margin-top:8px; }
+  .state .token { display:block; margin-top:2px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--separator); }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--text-tertiary); font-weight:600; }
+  .note { color:var(--text-tertiary); font-size:12px; margin-top:10px; max-width:80ch; }
+</style>
+</head>
+<body>
+
+<h1>ZiA — Design Reference Board</h1>
+<p class="lede">
+  The single source of truth for ZiA's visual language. Every token below is defined in
+  <code>Sources/Jarvis/UI/Theme/ZiaTheme.swift</code> and consumed by the components in
+  <code>Sources/Jarvis/UI/Components/</code>. The state images are renderings of the
+  <em>actual</em> SwiftUI views (<code>Jarvis --render-ui</code>), so this board cannot drift
+  from the shipped UI without a test noticing.
+</p>
+
+<h2>1. Colour system</h2>
+<div class="grid g4">
+  <div class="card"><div class="swatch" style="background:var(--background)"></div><div class="label">background</div><div class="token">ZiaColors.background</div></div>
+  <div class="card"><div class="swatch" style="background:var(--background-secondary)"></div><div class="label">backgroundSecondary</div><div class="token">ZiaColors.backgroundSecondary</div></div>
+  <div class="card"><div class="swatch" style="background:var(--surface)"></div><div class="label">surface</div><div class="token">ZiaColors.surface</div></div>
+  <div class="card"><div class="swatch" style="background:var(--surface-elevated)"></div><div class="label">surfaceElevated</div><div class="token">ZiaColors.surfaceElevated</div></div>
+  <div class="card"><div class="swatch" style="background:var(--surface-hover)"></div><div class="label">surfaceHover</div><div class="token">ZiaColors.surfaceHover</div></div>
+  <div class="card"><div class="swatch" style="background:var(--surface-pressed)"></div><div class="label">surfacePressed</div><div class="token">ZiaColors.surfacePressed</div></div>
+  <div class="card"><div class="swatch" style="background:var(--accent)"></div><div class="label">accent</div><div class="token">ZiaColors.accent</div></div>
+  <div class="card"><div class="swatch" style="background:var(--accent-soft)"></div><div class="label">accentSoft</div><div class="token">ZiaColors.accentSoft</div></div>
+  <div class="card"><div class="swatch" style="background:var(--success)"></div><div class="label">success</div><div class="token">ZiaColors.success</div></div>
+  <div class="card"><div class="swatch" style="background:var(--warning)"></div><div class="label">warning</div><div class="token">ZiaColors.warning</div></div>
+  <div class="card"><div class="swatch" style="background:var(--error)"></div><div class="label">error</div><div class="token">ZiaColors.error</div></div>
+  <div class="card"><div class="swatch" style="background:var(--info)"></div><div class="label">info</div><div class="token">ZiaColors.info</div></div>
+  <div class="card"><div class="swatch" style="background:var(--text-primary)"></div><div class="label">textPrimary</div><div class="token">ZiaColors.textPrimary</div></div>
+  <div class="card"><div class="swatch" style="background:var(--text-secondary)"></div><div class="label">textSecondary</div><div class="token">ZiaColors.textSecondary</div></div>
+  <div class="card"><div class="swatch" style="background:var(--text-tertiary)"></div><div class="label">textTertiary</div><div class="token">ZiaColors.textTertiary</div></div>
+  <div class="card"><div class="swatch" style="background:var(--presence)"></div><div class="label">presence</div><div class="token">ZiaColors.presence</div></div>
+</div>
+<p class="note">
+  All colours are dynamic <code>NSColor</code>s with distinct light and dark values
+  (<code>ZiaDesignSystemTests.semanticColorsResolveInBothAppearances</code> asserts they
+  differ). Light mode is a warm off-white (<code>#F6F7F9</code>) rather than pure white.
+</p>
+
+<h2>2. Typography</h2>
+<div class="card">
+  <table>
+    <tr><th>Token</th><th>Size / weight / design</th><th>Sample</th></tr>
+    <tr><td class="token">ZiaType.display</td><td>30 · semibold · rounded</td><td style="font-size:30px;font-weight:600">ZiA</td></tr>
+    <tr><td class="token">ZiaType.largeTitle</td><td>22 · semibold</td><td style="font-size:22px;font-weight:600">Settings</td></tr>
+    <tr><td class="token">ZiaType.title</td><td>17 · semibold</td><td style="font-size:17px;font-weight:600">Voice</td></tr>
+    <tr><td class="token">ZiaType.sectionTitle</td><td>13 · semibold</td><td style="font-size:13px;font-weight:600">Microphone</td></tr>
+    <tr><td class="token">ZiaType.body</td><td>13.5 · regular</td><td>Ask ZiA anything, or say a command.</td></tr>
+    <tr><td class="token">ZiaType.secondary</td><td>12 · regular</td><td style="color:var(--text-secondary)">Recognition runs entirely on this Mac.</td></tr>
+    <tr><td class="token">ZiaType.caption</td><td>11 · regular</td><td style="font-size:11px;color:var(--text-secondary)">Applies immediately.</td></tr>
+    <tr><td class="token">ZiaType.metadata</td><td>10.5 · medium</td><td style="font-size:10.5px;font-weight:500">LISTENING</td></tr>
+    <tr><td class="token">ZiaType.code</td><td>12 · regular · monospaced</td><td class="mono">mlx-community/Qwen2.5-0.5B-Instruct-4bit</td></tr>
+  </table>
+  <p class="note">System faces only. The rounded design is reserved for ZiA's identity, never body copy.</p>
+</div>
+
+<h2>3. Spacing, radius, motion</h2>
+<div class="grid g3">
+  <div class="card">
+    <h3>Spacing</h3>
+    <div class="token">xxs 2 · xs 4 · sm 8 · md 12 · lg 16 · xl 20 · xxl 24 · xxxl 32</div>
+    <p class="note">Content inset 20 · readable prose width 640.</p>
+  </div>
+  <div class="card">
+    <h3>Radius</h3>
+    <div class="token">xs 5 · sm 8 · md 12 · lg 16 · xl 20 · panel 24</div>
+    <p class="note">Continuous corner style everywhere. Panel radius is contractually 24 (asserted by SelfTest).</p>
+  </div>
+  <div class="card">
+    <h3>Motion</h3>
+    <div class="token">micro 0.12 · quick 0.20 · standard 0.30 · slow 0.50</div>
+    <p class="note">Every animation is routed through <code>ZiaMotion.respectingReduceMotion</code>, which returns nil when macOS Reduce Motion is on.</p>
+  </div>
+</div>
+
+<h2>4. Presence language</h2>
+<p class="lede">
+  ZiA's state is communicated by one sphere whose motion changes meaning per state. Idle is
+  static by design — nothing animates when nothing is happening, so idle costs no CPU.
+</p>
+<div class="states">
+  <div class="state"><div class="orb" style="--c:#8298ff;--c2:rgba(130,152,255,.5)"></div><span class="label">Idle</span><span class="token">static · calm</span></div>
+  <div class="state"><div class="orb" style="--c:#f0bd4a;--c2:rgba(240,189,74,.5)"></div><span class="label">Listening</span><span class="token">outward sonar rings</span></div>
+  <div class="state"><div class="orb" style="--c:#60a8f5;--c2:rgba(96,168,245,.5)"></div><span class="label">Understanding</span><span class="token">converging ring</span></div>
+  <div class="state"><div class="orb" style="--c:#60a8f5;--c2:rgba(96,168,245,.5)"></div><span class="label">Thinking</span><span class="token">rotating arc</span></div>
+  <div class="state"><div class="orb" style="--c:#60a8f5;--c2:rgba(96,168,245,.5)"></div><span class="label">Working</span><span class="token">orbiting satellite</span></div>
+  <div class="state"><div class="orb" style="--c:#8298ff;--c2:rgba(130,152,255,.5)"></div><span class="label">Speaking</span><span class="token">amplitude halo</span></div>
+  <div class="state"><div class="orb" style="--c:#48c784;--c2:rgba(72,199,132,.5)"></div><span class="label">Done</span><span class="token">static</span></div>
+  <div class="state"><div class="orb" style="--c:#f07070;--c2:rgba(240,112,112,.5)"></div><span class="label">Error</span><span class="token">static</span></div>
+  <div class="state"><div class="orb" style="--c:#f0bd4a;--c2:rgba(240,189,74,.5)"></div><span class="label">Stopped</span><span class="token">static</span></div>
+</div>
+<p class="note">
+  Mapping rule: <code>ZiaPresenceState.resolve(phase:appEnabled:stopped:)</code> maps the real
+  <code>InteractionPhase</code> reported by the agent/voice pipeline. An explicit user stop
+  always wins over a stale backend phase.
+</p>
+
+<h2>5. Component inventory</h2>
+<div class="card">
+  <table>
+    <tr><th>Component</th><th>Purpose</th><th>File</th></tr>
+    <tr><td class="mono">ZiaSurface / ZiaCard / ZiaSection</td><td>Layered surfaces and titled row groups — the only card vocabulary</td><td class="token">UI/Components/ZiaSurfaces.swift</td></tr>
+    <tr><td class="mono">ZiaButton / ZiaIconButton / ZiaPressStyle / ZiaBadge / ZiaStatusDot</td><td>Controls, feedback and status lights</td><td class="token">UI/Components/ZiaControls.swift</td></tr>
+    <tr><td class="mono">ZiaSettingRow / ZiaToggleRow</td><td>Preference rows bound to real values</td><td class="token">UI/Components/ZiaControls.swift</td></tr>
+    <tr><td class="mono">ZiaEmptyState / ZiaErrorView</td><td>Empty and failure surfaces (no stack traces by default)</td><td class="token">UI/Components/ZiaControls.swift</td></tr>
+    <tr><td class="mono">ZiaPresenceOrb / ZiaPresenceState / ZiaPresenceProfile</td><td>ZiA itself: a bead of light in glass, with one profile of physics per state</td><td class="token">UI/Components/ZiaPresence.swift</td></tr>
+    <tr><td class="mono">ZiaAudioMeter / ZiaEnergyField</td><td>Measured microphone energy rendered as a fluid field, not an equaliser</td><td class="token">UI/Components/ZiaPresence.swift</td></tr>
+    <tr><td class="mono">ZiaTranscript</td><td>Floating transcript typography — no card, no border</td><td class="token">UI/Components/ZiaPresence.swift</td></tr>
+    <tr><td class="mono">ZiaComposer</td><td>One capsule carrying text, voice and send, in two tones (HUD glass / window surface)</td><td class="token">UI/Components/ZiaComposer.swift</td></tr>
+    <tr><td class="mono">ZiaHUDVisibility</td><td>Publishes whether the HUD is on screen so the presence never renders hidden</td><td class="token">UI/Overlay/ZiaHUDVisibility.swift</td></tr>
+    <tr><td class="mono">ZiaProviderCard / ZiaProviderModel</td><td>Live provider health (never claims a disconnected provider is ready)</td><td class="token">UI/Components/ZiaStatusCards.swift</td></tr>
+    <tr><td class="mono">ZiaPermissionCard / ZiaPermissionModel</td><td>Real TCC state with System Settings deep links</td><td class="token">UI/Components/ZiaStatusCards.swift</td></tr>
+    <tr><td class="mono">ZiaTaskCard / ZiaActivityStrip / ZiaActivityModel</td><td>Background work with true step/verification state</td><td class="token">UI/Components/ZiaStatusCards.swift</td></tr>
+    <tr><td class="mono">ZiaState&lt;Value&gt;</td><td>Observable box replacing <code>@State</code> on this toolchain</td><td class="token">UI/Theme/ZiaTheme.swift</td></tr>
+  </table>
+</div>
+
+<h2>6. Surfaces &amp; controls</h2>
+<div class="grid g2">
+  <div class="card">
+    <h3>Buttons</h3>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <span class="btn primary">Send</span>
+      <span class="btn secondary">Open Settings</span>
+      <span class="btn destructive">Stop</span>
+    </div>
+    <p class="note">One shape, one hit area, height 22 (small) / 28 (regular). Hover and press are the only animations.</p>
+  </div>
+  <div class="card">
+    <h3>Status rows</h3>
+    <div class="row"><span class="dot" style="background:var(--success)"></span><span>ChatGPT Desktop</span><span class="badge">Ready</span></div>
+    <div class="row"><span class="dot" style="background:var(--text-tertiary)"></span><span>OpenAI</span><span class="label">Not configured</span></div>
+    <div class="row"><span class="dot" style="background:var(--warning)"></span><span>Working in background</span><span class="btn secondary" style="height:22px;font-size:11px">View</span></div>
+  </div>
+</div>
+
+<h2>7. Screen references</h2>
+<p class="lede">Rendered from the shipping views with <code>Jarvis --render-ui build/ui-references</code>.
+Each state has a light and a dark variant; <code>Scripts/ui_reference_stats.py</code> verifies none is blank.</p>
+<div class="grid g3">
+  <div><img class="shot" src="../../build/ui-references/01-presence-states.png" alt="Presence states"><p class="label">Presence state language (all ten states)</p></div>
+  <div><img class="shot" src="../../build/ui-references/02-hud-idle.png" alt="HUD idle"><p class="label">HUD · idle — presence, one word of identity, nothing else</p></div>
+  <div><img class="shot" src="../../build/ui-references/02b-hud-disabled.png" alt="HUD disabled"><p class="label">HUD · disabled</p></div>
+  <div><img class="shot" src="../../build/ui-references/03-hud-listening.png" alt="HUD listening"><p class="label">HUD · listening — floating transcript + measured energy field</p></div>
+  <div><img class="shot" src="../../build/ui-references/04-hud-understanding.png" alt="HUD understanding"><p class="label">HUD · understanding — energy folds inward, transcript settles</p></div>
+  <div><img class="shot" src="../../build/ui-references/05-hud-thinking.png" alt="HUD thinking"><p class="label">HUD · thinking — one quiet word, no spinner</p></div>
+  <div><img class="shot" src="../../build/ui-references/06-hud-working.png" alt="HUD working"><p class="label">HUD · working</p></div>
+  <div><img class="shot" src="../../build/ui-references/07-hud-speaking.png" alt="HUD speaking"><p class="label">HUD · speaking</p></div>
+  <div><img class="shot" src="../../build/ui-references/08-hud-long-response.png" alt="HUD long response"><p class="label">HUD · long answer truncates toward the window</p></div>
+  <div><img class="shot" src="../../build/ui-references/09-hud-error.png" alt="HUD error"><p class="label">HUD · error — user-facing wording only</p></div>
+  <div><img class="shot" src="../../build/ui-references/10-hud-stopped.png" alt="HUD stopped"><p class="label">HUD · stopped</p></div>
+  <div><img class="shot" src="../../build/ui-references/18-conversation.png" alt="Conversation"><p class="label">Conversation column + composer</p></div>
+  <div><img class="shot" src="../../build/ui-references/19-real-window.png" alt="Window"><p class="label">Main window surface</p></div>
+  <div><img class="shot" src="../../build/ui-references/20-active-work.png" alt="Active work"><p class="label">Active work card (only while work exists)</p></div>
+  <div><img class="shot" src="../../build/ui-references/11-menu-bar.png" alt="Menu bar"><p class="label">Menu bar (compacted)</p></div>
+  <div><img class="shot" src="../../build/ui-references/12-settings-general.png" alt="Settings general"><p class="label">Settings · General</p></div>
+  <div><img class="shot" src="../../build/ui-references/13-settings-voice.png" alt="Settings voice"><p class="label">Settings · Voice</p></div>
+  <div><img class="shot" src="../../build/ui-references/14-settings-appearance.png" alt="Settings appearance"><p class="label">Settings · Appearance</p></div>
+  <div><img class="shot" src="../../build/ui-references/15-providers.png" alt="Providers"><p class="label">Settings · AI Providers</p></div>
+  <div><img class="shot" src="../../build/ui-references/16-permissions.png" alt="Permissions"><p class="label">Settings · Permissions</p></div>
+  <div><img class="shot" src="../../build/ui-references/17-diagnostics.png" alt="Diagnostics"><p class="label">Settings · Advanced</p></div>
+  <div><img class="shot" src="../../build/ui-references/21-states-empty-error.png" alt="Empty and error"><p class="label">Empty + error states</p></div>
+  <div><img class="shot" src="../../build/ui-references/22-onboarding.png" alt="Onboarding"><p class="label">First-run onboarding</p></div>
+  <div><img class="shot" src="../../build/ui-references/03-hud-listening-light.png" alt="HUD listening light"><p class="label">HUD · listening (light appearance)</p></div>
+</div>
+<p class="note">
+  <strong>How the live surfaces were checked.</strong> <code>open build/Jarvis.app --args --show-ui</code>
+  presents both surfaces and logs their real frames: <code>[UI_TRACE] overlay visible=true w=400 h=175</code>
+  (exactly 400 pt, no clamping) and <code>[UI_TRACE] main visible=true w=980 h=680</code>. A
+  <code>screencapture</code> of that session was then read back with
+  <code>Scripts/ui_reference_ocr.swift</code>, which recovered the live wording — the HUD's
+  "ZiA" + "Say “ZiA …” or hold ⌥Space", the window's "ZiA" + "· Ready", the real conversation
+  history, and the composer's "Ask ZiA…" placeholder.
+</p>
+
+<h2>8. Rules this board encodes</h2>
+<div class="card">
+  <table>
+    <tr><th>Rule</th><th>How it is enforced</th></tr>
+    <tr><td>No fake state</td><td>Every status surface reads live state (provider probe, TCC status, task state machine, mic RMS).</td></tr>
+    <tr><td>No fake motion</td><td>The energy field renders measured microphone energy only; the idle presence is a 12 fps breath, and the presence freezes entirely while the HUD is hidden.</td></tr>
+    <tr><td>Focus is never stolen</td><td>The overlay is a non-activating panel; the main window opens only from an explicit user action.</td></tr>
+    <tr><td>Reduced motion</td><td>All animation passes through <code>ZiaMotion.respectingReduceMotion</code>.</td></tr>
+    <tr><td>Light and dark parity</td><td>Semantic dynamic colours; a test asserts they differ per appearance.</td></tr>
+    <tr><td>No magic numbers</td><td>Spacing, radius, typography, motion and metrics come from the token namespaces.</td></tr>
+  </table>
+</div>
+
+</body>
+</html>

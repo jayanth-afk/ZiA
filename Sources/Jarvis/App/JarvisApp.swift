@@ -41,6 +41,26 @@ struct JarvisApp: App {
             exit(0)
         }
 
+        // Handle --render-ui [dir]: render the real SwiftUI surfaces to PNG
+        // reference images. Static capture only — used to inspect and diff the
+        // visual language without a live session.
+        if let renderIdx = CommandLine.arguments.firstIndex(of: "--render-ui") {
+            setbuf(stdout, nil)
+            let directory = CommandLine.arguments.count > renderIdx + 1
+                ? CommandLine.arguments[renderIdx + 1]
+                : "build/ui-references"
+            let exitCode = LockedValue<Int32>(1)
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                exitCode.value = await UIRenderHarness.run(outputDirectory: directory)
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(exitCode.value)
+        }
+
         // Handle --self-test flag before app launches
         if CommandLine.arguments.contains("--self-test") {
             SelfTest.runAll()

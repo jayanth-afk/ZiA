@@ -167,6 +167,23 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
 
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        request.taskHint = .dictation
+        var contextual = Config.shared.wakeAliases
+        contextual.append(contentsOf: [
+            "Safari", "Terminal", "Finder", "Google", "ChatGPT", "Jarvis", "Zia",
+            "weather", "search", "open", "volume", "battery", "brightness",
+            "mute", "unmute", "stop", "close", "explain", "help"
+        ])
+        request.contextualStrings = Array(Set(contextual))
+        if #available(macOS 13.0, *) {
+            request.addsPunctuation = true
+        }
+
+        // Feed pre-roll audio buffers immediately so opening words/syllables are never clipped
+        let preRoll = AudioCapture.shared.getPreRollBuffers()
+        for buf in preRoll {
+            request.append(buf)
+        }
 
         // Session mode: forced on-device first (zero-cloud). If a dead session
         // is ever proven (see handleDeadSession), the fallback ladder rebuilds
@@ -442,6 +459,7 @@ final class SpeechRecognizer: NSObject, @unchecked Sendable {
         guard let result = result else { return }
         let transcript = result.bestTranscription.formattedString
         latestPartialTranscript = transcript
+        VoiceActivityDetector.shared.updatePartialTranscript(transcript)
 
         if result.isFinal {
             finalizationTask?.cancel()

@@ -2,7 +2,7 @@ import Foundation
 import AVFoundation
 
 /// Captures microphone audio using AVAudioEngine and distributes PCM buffers.
-/// Standardized for speech recognition and VAD at 16kHz mono PCM.
+/// Standardized for speech recognition and VAD with adaptive software AGC and pre-roll buffering.
 final class AudioCapture: @unchecked Sendable {
     static let shared = AudioCapture()
 
@@ -14,8 +14,20 @@ final class AudioCapture: @unchecked Sendable {
     private nonisolated(unsafe) var bufferHandlers: [UUID: @Sendable (AVAudioPCMBuffer) -> Void] = [:]
     private let handlerLock = NSLock()
 
+    // Pre-roll ring buffer storing the last ~350ms of audio (up to 16 buffers at 1024 frames)
+    private nonisolated(unsafe) var preRollBuffers: [AVAudioPCMBuffer] = []
+    private let preRollLock = NSLock()
+    private let maxPreRollBuffers = 16
+
+    // Adaptive Automatic Gain Control state (thread-safe on audio tap thread)
+    private nonisolated(unsafe) var currentGain: Float = 1.0
+
     // Target format: 16kHz, 1 channel (mono)
     private let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false)
+
+    var engineInputNode: AVAudioInputNode? {
+        engine.inputNode
+    }
 
     private init() {}
 
@@ -37,6 +49,13 @@ final class AudioCapture: @unchecked Sendable {
         handlerLock.lock()
         defer { handlerLock.unlock() }
         bufferHandlers.removeValue(forKey: id)
+    }
+
+    /// Retrieve the recent pre-roll audio buffers to prevent clipping off the start of speech.
+    nonisolated func getPreRollBuffers() -> [AVAudioPCMBuffer] {
+        preRollLock.lock()
+        defer { preRollLock.unlock() }
+        return preRollBuffers
     }
 
     // MARK: - Authorization State
@@ -93,7 +112,7 @@ final class AudioCapture: @unchecked Sendable {
 
     /// Inject a synthetic PCM buffer to all registered handlers (used for automated testing and offline verification).
     nonisolated func injectBuffer(_ buffer: AVAudioPCMBuffer) {
-        distributeBuffer(buffer)
+        processAndDistribute(buffer)
     }
 
     /// Start capturing audio from the default input device.
@@ -128,10 +147,8 @@ final class AudioCapture: @unchecked Sendable {
 
     private nonisolated func makeTapBlock() -> (AVAudioPCMBuffer, AVAudioTime) -> Void {
         return { [weak self] buffer, _ in
-            // VOICE_TRACE: prove mic audio is flowing (first buffer only — no
-            // continuous audio logging for privacy).
             VoiceTraceState.shared.markAudioReceived(buffer)
-            self?.distributeBuffer(buffer)
+            self?.processAndDistribute(buffer)
         }
     }
 
@@ -146,9 +163,65 @@ final class AudioCapture: @unchecked Sendable {
         JarvisLogger.voice.info("Audio capture stopped")
     }
 
-    // MARK: - Private
+    // MARK: - Audio Processing & Distribution
 
-    private nonisolated func distributeBuffer(_ buffer: AVAudioPCMBuffer) {
+    private nonisolated func processAndDistribute(_ buffer: AVAudioPCMBuffer) {
+        let frameCount = Int(buffer.frameLength)
+        let channelCount = Int(buffer.format.channelCount)
+        guard frameCount > 0, channelCount > 0 else { return }
+
+        // 1. Calculate raw RMS and Peak
+        var sumSquares: Float = 0.0
+        var peak: Float = 0.0
+
+        for ch in 0..<channelCount {
+            if let samples = buffer.floatChannelData?[ch] {
+                for i in 0..<frameCount {
+                    let s = abs(samples[i])
+                    if s > peak { peak = s }
+                    sumSquares += s * s
+                }
+            }
+        }
+
+        let totalSamples = Float(frameCount * channelCount)
+        let rms = sqrt(sumSquares / totalSamples)
+
+        // 2. Adaptive Automatic Gain Control (AGC) calculation
+        // Target speech RMS is ~0.040. If input volume is low (e.g. 39% macOS setting or quiet speech),
+        // gently boost quiet-to-normal speech while avoiding noise-pumping during silence.
+        if rms > 0.0012 {
+            let desiredGain = min(3.5, max(1.0, 0.042 / max(rms, 0.005)))
+            currentGain = 0.95 * currentGain + 0.05 * desiredGain
+        } else {
+            // Decay gain slowly towards 1.0 during silence to prevent background noise boost
+            currentGain = 0.995 * currentGain + 0.005 * 1.0
+        }
+
+        let appliedGain = currentGain
+
+        // 3. Apply smooth software gain with soft limiter to prevent clipping
+        for ch in 0..<channelCount {
+            if let samples = buffer.floatChannelData?[ch] {
+                for i in 0..<frameCount {
+                    var val = samples[i] * appliedGain
+                    if val > 0.85 {
+                        val = 0.85 + 0.14 * tanh((val - 0.85) / 0.14)
+                    } else if val < -0.85 {
+                        val = -0.85 + 0.14 * tanh((val + 0.85) / 0.14)
+                    }
+                    samples[i] = val
+                }
+            }
+        }
+
+        // Update diagnostic metrics with post-gain stats
+        AudioDiagnostic.shared.updateMetrics(rms: rms * appliedGain, peak: min(1.0, peak * appliedGain))
+
+        // 4. Record to pre-roll ring buffer
+        appendPreRoll(buffer)
+
+        // 5. Distribute to registered tap handlers
         handlerLock.lock()
         let handlers = Array(bufferHandlers.values)
         handlerLock.unlock()
@@ -156,5 +229,28 @@ final class AudioCapture: @unchecked Sendable {
         for handler in handlers {
             handler(buffer)
         }
+    }
+
+    private nonisolated func appendPreRoll(_ buffer: AVAudioPCMBuffer) {
+        guard let copy = copyBuffer(buffer) else { return }
+        preRollLock.lock()
+        preRollBuffers.append(copy)
+        if preRollBuffers.count > maxPreRollBuffers {
+            preRollBuffers.removeFirst(preRollBuffers.count - maxPreRollBuffers)
+        }
+        preRollLock.unlock()
+    }
+
+    private nonisolated func copyBuffer(_ buffer: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+        guard let copy = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: buffer.frameLength) else { return nil }
+        copy.frameLength = buffer.frameLength
+        let channels = Int(buffer.format.channelCount)
+        let frames = Int(buffer.frameLength)
+        for ch in 0..<channels {
+            if let src = buffer.floatChannelData?[ch], let dst = copy.floatChannelData?[ch] {
+                dst.initialize(from: src, count: frames)
+            }
+        }
+        return copy
     }
 }

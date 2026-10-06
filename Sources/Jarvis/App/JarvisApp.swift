@@ -19,6 +19,28 @@ struct JarvisApp: App {
             exit(exitCode.value)
         }
 
+        // Handle --audio-diag flag for real-time microphone & audio telemetry
+        if CommandLine.arguments.contains("--audio-diag") {
+            setbuf(stdout, nil)
+            let semaphore = DispatchSemaphore(value: 0)
+            let duration: Int
+            if let idx = CommandLine.arguments.firstIndex(of: "--audio-diag"),
+               CommandLine.arguments.count > idx + 1,
+               let secs = Int(CommandLine.arguments[idx + 1]) {
+                duration = secs
+            } else {
+                duration = 5
+            }
+            Task { @MainActor in
+                await AudioDiagnostic.runLiveDiagnostic(durationSeconds: duration)
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(0)
+        }
+
         // Handle --self-test flag before app launches
         if CommandLine.arguments.contains("--self-test") {
             SelfTest.runAll()

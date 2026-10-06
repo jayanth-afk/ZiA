@@ -128,6 +128,7 @@ public final class DeterministicRouter: @unchecked Sendable {
         guard !text.isEmpty else { return nil }
         while let last = text.last, ".?!".contains(last) { text.removeLast() }
         if let wake = WakeWordDetector.findWakeMatch(in: text) { text = wake.strippedCommand }
+
         let compound = [" and ", " then ", " & ", ";", " also "].contains(where: text.contains)
         let forbiddenDestructive = ["delete everything", "shut down", "shutdown", "rm -rf", "format the disk", "wipe the disk"]
         if forbiddenDestructive.contains(where: text.contains) { return nil }

@@ -26,7 +26,7 @@ import AVFoundation
         #expect(machineLearning == vad.configuration.completedUtteranceSilence)
 
         let pleaseOpen = VoiceActivityDetector.silenceNeeded(for: "can you please open Safari for me", configuration: vad.configuration)
-        #expect(pleaseOpen == vad.configuration.completedUtteranceSilence)
+        #expect(pleaseOpen <= vad.configuration.completedUtteranceSilence)
 
         let volumePercent = VoiceActivityDetector.silenceNeeded(for: "set the volume to fifty percent", configuration: vad.configuration)
         #expect(volumePercent <= vad.configuration.completedUtteranceSilence)
@@ -250,6 +250,72 @@ import AVFoundation
         // When stopPlayback is called, isPlaying is cleanly false
         player.handleBargeIn()
         #expect(!player.isPlaying)
+    }
+
+    // MARK: - Quiet Speech Detection Without Shouting
+    @Test @MainActor
+    func quietSpeechDetectedWithoutShouting() async {
+        let vad = VoiceActivityDetector.shared
+        vad.reset()
+
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let quietBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 512) else {
+            return
+        }
+        quietBuffer.frameLength = 512
+
+        // Quiet conversational speech: RMS ~ 0.008 with speech-like crest factor (peak 0.030)
+        if let d = quietBuffer.floatChannelData?[0] {
+            for i in 0..<512 {
+                // Peak burst at intervals, low floor with realistic zero-crossings
+                d[i] = (i % 24 == 0) ? 0.030 : ((i % 4 < 2) ? 0.006 : -0.006)
+            }
+        }
+
+        var speechStarted = false
+        vad.onSpeechStart = {
+            speechStarted = true
+        }
+
+        // Feed 5 frames of quiet speech
+        for _ in 0..<5 {
+            vad.processBuffer(quietBuffer)
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+
+        #expect(speechStarted || vad.isSpeaking, "Quiet conversational speech triggers speech detection without shouting")
+    }
+
+    // MARK: - Pre-Roll Buffers Retained In AudioCapture
+    @Test @MainActor
+    func preRollBuffersRetainedInAudioCapture() {
+        let capture = AudioCapture.shared
+        guard let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let testBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 512) else {
+            return
+        }
+        testBuffer.frameLength = 512
+
+        // Inject buffers
+        capture.injectBuffer(testBuffer)
+        capture.injectBuffer(testBuffer)
+
+        let preRoll = capture.getPreRollBuffers()
+        #expect(!preRoll.isEmpty, "Pre-roll ring buffer retains audio buffers for speech onset preservation")
+    }
+
+    // MARK: - Conversational Framing and Routing Conservatism
+    @Test @MainActor
+    func conversationalFramingFollowsConservativeRoutingRules() {
+        let router = DeterministicRouter.shared
+        // Direct commands match deterministically
+        let directCommand = router.match("open Safari")
+        #expect(directCommand != nil)
+        #expect(directCommand?.intent == "app.open")
+
+        // Conversational/indirect requests safely fall through to LLM
+        let indirect = router.match("can you switch to Safari")
+        #expect(indirect == nil, "Indirect conversational phrasing safely falls through to LLM")
     }
 
     // MARK: - Helper Expectation

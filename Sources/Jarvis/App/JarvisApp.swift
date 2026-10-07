@@ -67,6 +67,24 @@ struct JarvisApp: App {
             exit(0)
         }
 
+        // Handle --validate-intelligence: comprehensive live intelligence validation
+        if CommandLine.arguments.contains("--validate-intelligence") {
+            setbuf(stdout, nil)
+            let semaphore = DispatchSemaphore(value: 0)
+            let exitCode = LockedValue<Int32>(0)
+            Task { @MainActor in
+                let results = await ZiaIntelligenceValidator.runAll()
+                if results.contains(where: { !$0.passed }) {
+                    exitCode.value = 1
+                }
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(exitCode.value)
+        }
+
         // Handle --chatgpt-bench: measured, capped ChatGPT brain benchmark (C5).
         if CommandLine.arguments.contains("--chatgpt-bench") {
             setbuf(stdout, nil)

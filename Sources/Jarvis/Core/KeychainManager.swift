@@ -82,40 +82,82 @@ final class KeychainManager: @unchecked Sendable {
     // MARK: - CRUD
 
     func getAPIKey(for service: APIService) -> String? {
+        if backend is KeychainAccessBackend {
+            if let env = environmentKey(for: service), !env.isEmpty {
+                return env
+            }
+        }
+
         if let key = boundedRead(service.rawValue), !key.isEmpty {
             return key
         }
+
         if backend is KeychainAccessBackend {
             if service == .agentBridge {
                 if let bridgeKey = try? Keychain(service: "agent-bridge").get("control_plane_api_key"),
                    !bridgeKey.isEmpty {
                     return bridgeKey
                 }
-                if let envKey = ProcessInfo.processInfo.environment["AGENT_BRIDGE_API_KEY"]
-                    ?? ProcessInfo.processInfo.environment["CONTROL_PLANE_API_KEY"],
-                   !envKey.isEmpty {
-                    return envKey
+                if let cliBridgeKey = readViaSecurityCLI(service: "agent-bridge", account: "control_plane_api_key"),
+                   !cliBridgeKey.isEmpty {
+                    return cliBridgeKey
+                }
+            } else {
+                if let cliKey = readViaSecurityCLI(service: "com.jarvis.app", account: service.rawValue),
+                   !cliKey.isEmpty {
+                    return cliKey
                 }
             }
-            switch service {
-            case .anthropic:
-                return ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]
-            case .openai:
-                return ProcessInfo.processInfo.environment["OPENAI_API_KEY"]
-            case .google:
-                return ProcessInfo.processInfo.environment["GEMINI_API_KEY"] ?? ProcessInfo.processInfo.environment["GOOGLE_API_KEY"]
-            case .groq:
-                return ProcessInfo.processInfo.environment["GROQ_API_KEY"]
-            case .elevenlabs:
-                return ProcessInfo.processInfo.environment["ELEVENLABS_API_KEY"]
-            case .tavily:
-                return ProcessInfo.processInfo.environment["TAVILY_API_KEY"]
-            case .openrouter:
-                return ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]
-            case .agentBridge:
-                break
-            }
         }
+        return nil
+    }
+
+    private func environmentKey(for service: APIService) -> String? {
+        if service == .agentBridge {
+            return ProcessInfo.processInfo.environment["AGENT_BRIDGE_API_KEY"]
+                ?? ProcessInfo.processInfo.environment["CONTROL_PLANE_API_KEY"]
+        }
+        switch service {
+        case .anthropic:
+            return ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]
+        case .openai:
+            return ProcessInfo.processInfo.environment["OPENAI_API_KEY"]
+        case .google:
+            return ProcessInfo.processInfo.environment["GEMINI_API_KEY"] ?? ProcessInfo.processInfo.environment["GOOGLE_API_KEY"]
+        case .groq:
+            return ProcessInfo.processInfo.environment["GROQ_API_KEY"]
+        case .elevenlabs:
+            return ProcessInfo.processInfo.environment["ELEVENLABS_API_KEY"]
+        case .tavily:
+            return ProcessInfo.processInfo.environment["TAVILY_API_KEY"]
+        case .openrouter:
+            return ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]
+        case .agentBridge:
+            return nil
+        }
+    }
+
+    private func readViaSecurityCLI(service: String, account: String) -> String? {
+        #if os(macOS)
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", service, "-a", account, "-w"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+        do {
+            try process.run()
+            process.waitUntilExit()
+            if process.terminationStatus == 0 {
+                let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                if let str = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !str.isEmpty {
+                    return str
+                }
+            }
+        } catch {
+            return nil
+        }
+        #endif
         return nil
     }
 

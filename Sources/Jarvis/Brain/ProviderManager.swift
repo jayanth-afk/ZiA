@@ -63,6 +63,7 @@ final class ProviderManager {
     let openai = OpenAIProvider()
     let groqFast = GroqProvider(id: "groq", modelSlot: "fast")
     let groqStrong = GroqProvider(id: "groq-strong", modelSlot: "strong")
+    let cerebras = CerebrasProvider()
     var groq: GroqProvider { groqFast }
     let openrouter = OpenRouterProvider()
     let chatgptDesktop = ChatGPTDesktopProvider()

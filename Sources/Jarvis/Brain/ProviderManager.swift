@@ -534,7 +534,7 @@ final class ProviderManager {
         case .deepReasoning:
             defaultChain = [chatgptDesktop, groqStrong, cerebras, claude, gemini, openai, openrouter, localNormal, localReflex]
         case .webSearch:
-            defaultChain = [chatgptDesktop, groqFast, groqStrong, openrouter, gemini, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqFast, groqStrong, cerebras, openrouter, gemini, localNormal, localReflex]
         case .conversation, .systemQuery:
             defaultChain = [chatgptDesktop, groqFast, groqStrong, claude, gemini, openai, openrouter, localNormal, localReflex]
         }

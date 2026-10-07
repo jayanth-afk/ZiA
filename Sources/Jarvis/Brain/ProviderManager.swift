@@ -327,6 +327,7 @@ final class ProviderManager {
         let chainIDs = chain.map(\.id)
         var skippedQuarantined: [String] = []
         var skippedRateLimited: [String] = []
+        var skippedBudget: [String] = []
         var skippedUnavailable: [String] = []
         var skippedPolicy: [String] = []
         var chatgptFallbackReason: String?
@@ -340,6 +341,10 @@ final class ProviderManager {
             }
             if isRateLimited(provider.id) {
                 skippedRateLimited.append(provider.id)
+                continue
+            }
+            if !BudgetPolicy.shared.eligibility(forProviderID: provider.id).isAllowed {
+                skippedBudget.append(provider.id)
                 continue
             }
             if let context, HybridRoutingPolicy.isEnabled, provider.id == "chatgpt-desktop" {
@@ -374,6 +379,9 @@ final class ProviderManager {
             if !skippedRateLimited.isEmpty {
                 reasons.append("rate-limited: \(skippedRateLimited.joined(separator: ", "))")
             }
+            if !skippedBudget.isEmpty {
+                reasons.append("budget: \(skippedBudget.joined(separator: ", "))")
+            }
             if !skippedUnavailable.isEmpty {
                 reasons.append("unavailable: \(skippedUnavailable.joined(separator: ", "))")
             }
@@ -385,6 +393,7 @@ final class ProviderManager {
 
         let skipped = chainIDs.filter {
             $0 != chosen.id && (skippedQuarantined.contains($0) || skippedRateLimited.contains($0)
+                                || skippedBudget.contains($0)
                                 || skippedUnavailable.contains($0) || skippedPolicy.contains($0))
         }
         let degraded = chosen.id.hasPrefix("mlx") || !skipped.isEmpty
@@ -609,12 +618,14 @@ final class ProviderManager {
         if prefs.localOnly {
             return [localNormal, localReflex]
         }
+        // Cost ordering: free → reserve → paid → local. Local always trails.
+        let ordered = BudgetPolicy.normalizedByCost(defaultChain)
         if !prefs.preferredProviders.isEmpty {
-            let preferred = defaultChain.filter { prefs.preferredProviders.contains($0.id) }
-            let remaining = defaultChain.filter { !prefs.preferredProviders.contains($0.id) }
+            let preferred = ordered.filter { prefs.preferredProviders.contains($0.id) }
+            let remaining = ordered.filter { !prefs.preferredProviders.contains($0.id) }
             return preferred + remaining
         }
-        return defaultChain
+        return ordered
     }
 
     /// Determines the fallback cascade for a specific target BrainTier.
@@ -638,11 +649,13 @@ final class ProviderManager {
             defaultChain = [localNormal, localReflex]
         }
 
+        // Cost ordering: free → reserve → paid → local. Local always trails.
+        let ordered = BudgetPolicy.normalizedByCost(defaultChain)
         if !prefs.preferredProviders.isEmpty {
-            let preferred = defaultChain.filter { prefs.preferredProviders.contains($0.id) }
-            let remaining = defaultChain.filter { !prefs.preferredProviders.contains($0.id) }
+            let preferred = ordered.filter { prefs.preferredProviders.contains($0.id) }
+            let remaining = ordered.filter { !prefs.preferredProviders.contains($0.id) }
             return preferred + remaining
         }
-        return defaultChain
+        return ordered
     }
 }

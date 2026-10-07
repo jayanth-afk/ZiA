@@ -563,7 +563,7 @@ final class ProviderManager {
         case .reflex:
             return []
         case .fast:
-            defaultChain = [groqFast, groqStrong, localNormal, localReflex]
+            defaultChain = [groqFast, groqStrong, cerebras, localNormal, localReflex]
         case .strong:
             defaultChain = [groqStrong, chatgptDesktop, claude, openai, openrouter, localNormal, localReflex]
         case .deep:

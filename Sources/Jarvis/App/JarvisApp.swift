@@ -230,6 +230,21 @@ struct JarvisApp: App {
             exit(0)
         }
 
+        // Handle --local-vs-groq flag: bounded local-MLX vs Groq comparison on
+        // standard macOS intent tasks (raw evidence for the routing policy).
+        if CommandLine.arguments.contains("--local-vs-groq") {
+            setbuf(stdout, nil)
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                await LocalVsGroqBenchmark.run()
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(0)
+        }
+
         // Handle --schema-experiment flag: Change A+B schema-contract
         // experiment protocol (reporting-only; same production path as the audit).
         // Optional segment argument: DA | DF | DIRECT | CONTROLS — runs just

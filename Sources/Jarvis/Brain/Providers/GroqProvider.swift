@@ -2,12 +2,33 @@ import Foundation
 
 /// Groq LPU provider for ultra-low latency inference (~300 tokens/sec).
 actor GroqProvider: LLMProvider {
-    nonisolated let id = "groq"
+    nonisolated let id: String
     nonisolated let capabilities: Set<Capability> = [
         .textGeneration,
         .toolCalling
     ]
     nonisolated let currentLatencyMs = 150
+
+    /// Production fallback when the `fast` config slot is unset.
+    static let fallbackModel = "llama-3.3-70b-versatile"
+
+    /// Model id injected by a caller (benchmark/test). When nil, the model is
+    /// read from the configured `fast` slot at request time. Injection exists so
+    /// callers can measure a specific model WITHOUT mutating persisted config.
+    private let modelOverride: String?
+
+    init(id: String = "groq", model: String? = nil) {
+        self.id = id
+        self.modelOverride = model
+    }
+
+    /// The model this provider will actually request.
+    var resolvedModel: String {
+        get async {
+            if let modelOverride { return modelOverride }
+            return await Config.shared.modelName(for: "fast") ?? Self.fallbackModel
+        }
+    }
 
     private let endpoint = URL(string: "https://api.groq.com/openai/v1/chat/completions")!
 
@@ -38,7 +59,7 @@ actor GroqProvider: LLMProvider {
                     return
                 }
 
-                let modelName = await Config.shared.modelName(for: "fast") ?? "llama-3.3-70b-versatile"
+                let modelName = await self.resolvedModel
 
                 var request = URLRequest(url: endpoint)
                 request.httpMethod = "POST"

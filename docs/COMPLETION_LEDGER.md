@@ -28,7 +28,8 @@ Baseline at ledger creation (`77a5799`):
 | 1.2 | Repo hygiene classification | DONE | `4f979f2` | build OK · 254/0 · 1067/0/0 | `docs/REPO_HYGIENE.md`, `.gitignore` |
 | 1.3 | Stale branch diff (read-only) | DONE | `2bc8cf4` | build OK · 254/0 · 1067/0/0 | `docs/STALE_BRANCHES.md` |
 | 1.4 | Model config truth (cached-only models, no download) | DONE | `242413d` | build OK · 263/0 · 1067/0/0 · no `@State` | `Sources/Jarvis/Brain/LocalModelCatalog.swift`, `Tests/JarvisTests/LocalModelCatalogTests.swift` |
-| 1.5 | Test health / deterministic self-test | DONE | _(this commit)_ | build OK · 263/0 ×2 · 1067/0/0 ×2 | `Sources/Jarvis/Core/SelfTest.swift` (median-of-5 halt latency) |
+| 1.5 | Test health / deterministic self-test | DONE | `70f1b4e` | build OK · 263/0 ×2 · 1067/0/0 ×2 | `Sources/Jarvis/Core/SelfTest.swift` (median-of-5 halt latency) |
+| 2.1 | Local vs Groq benchmark (executor R1) | DONE | _(this commit)_ | build OK · 270/0 · self-test 1067/0/0 · no `@State` | `Sources/Jarvis/Core/LocalVsGroqBenchmark.swift`, `Tests/JarvisTests/LocalVsGroqBenchmarkScoringTests.swift`, `build/local-vs-groq-benchmark.{md,raw.txt}` |
 
 ## APPROVAL QUEUE (owner-only destructive/licence-sensitive actions)
 

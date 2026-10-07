@@ -1,0 +1,62 @@
+╔══════════════════════════════════════════════════════════════╗
+║   ZiA — LOCAL (Qwen2.5-0.5B) vs GROQ (openai/gpt-oss-120b) BENCH
+╚══════════════════════════════════════════════════════════════╝
+tasks: 8 · per-task timeout: 45s · wall cap: 420s
+groq model requested: openai/gpt-oss-120b (configured default llama-3.3-70b-versatile is unavailable to this account)
+local available: true · groq available: true
+  [open-app/local] toolMISS argMISS tool=open_browser ttft=322ms total=3444ms FABRICATED=http://safari.com
+        raw: {"tool": "open_browser", "arguments": {"url": "http://safari.com"}, "literal": "open Safari"}
+  [open-app/groq] toolMISS argMISS tool=none ttft=n/ams total=1873ms
+        raw: {"tool": null, "arguments": {}, "literal": ""}
+  [open-app/groq-neutral] toolOK argOK tool=open_app ttft=n/ams total=1388ms
+        raw: {"tool":"open_app","arguments":{"app_name":"Safari"},"literal":""}
+  [volume/local] toolOK argOK tool=set_volume ttft=294ms total=836ms
+        raw: {"tool": "set_volume", "arguments": {"level": 40}, "literal": "set the volume to 40"}
+  [volume/groq] toolOK argOK tool=set_volume ttft=n/ams total=2077ms
+        raw: {"tool": "set_volume", "arguments": {"level": 40}, "literal": "set the volume to 40"}
+  [volume/groq-neutral] toolOK argOK tool=set_volume ttft=n/ams total=1284ms
+        raw: {"tool": "set_volume", "arguments": {"level": 40}, "literal": ""}
+  [search/local] toolOK argMISS tool=web_search ttft=310ms total=854ms
+        raw: {"tool": "web_search", "arguments": {"query": "weather in Paris"}, "literal": "weather in Paris"}
+  [search/groq] toolMISS argMISS tool=none ttft=n/ams total=1483ms
+        raw: {"tool": null, "arguments": {}, "literal": ""}
+  [search/groq-neutral] toolOK argMISS tool=web_search ttft=n/ams total=1285ms
+        raw: {"tool": "web_search", "arguments": {"query": "Paris weather", "max_results": 5}, "literal": ""}
+  [fetch/local] toolOK argOK tool=fetch_url ttft=320ms total=865ms
+        raw: {"tool": "fetch_url", "arguments": {"url": "https://example.com"}, "literal": "fetch the url https://example.com"}
+  [fetch/groq] toolMISS argMISS tool=none ttft=n/ams total=1523ms
+        raw: {"tool": null, "arguments": {}, "literal": ""}
+  [fetch/groq-neutral] toolOK argOK tool=fetch_url ttft=n/ams total=1474ms
+        raw: {"tool": "fetch_url", "arguments": {"url": "https://example.com"}, "literal": ""}
+  [shell/local] toolOK argOK tool=run_shell ttft=276ms total=838ms
+        raw: {"tool": "run_shell", "arguments": {"command": "echo hello_benchmark"}, "literal": "hello_benchmark"}
+  [shell/groq] toolMISS argMISS tool=none ttft=n/ams total=1456ms
+        raw: {"tool": null, "arguments": {}, "literal": ""}
+  [shell/groq-neutral] toolOK argOK tool=run_shell ttft=n/ams total=1663ms
+        raw: {⏎  "tool": "run_shell",⏎  "arguments": {⏎    "command": "echo hello_benchmark"⏎  },⏎  "literal": "hello_benchmark"⏎}
+  [read/local] toolOK argMISS tool=read_file ttft=258ms total=836ms FABRICATED=/home/user/note.txt
+        raw: {"tool": "read_file", "arguments": {"path": "/home/user/note.txt"}, "literal": "read the file ~/notes.txt"}
+  [read/groq] toolMISS argMISS tool=none ttft=n/ams total=1549ms
+        raw: {"tool": null, "arguments": {}, "literal": ""}
+  [read/groq-neutral] toolOK argOK tool=read_file ttft=n/ams total=1302ms
+        raw: {"tool": "read_file", "arguments": {"path": "~/notes.txt"}, "literal": ""}
+  [list/local] toolMISS argOK tool=open_directory ttft=260ms total=822ms
+        raw: {"tool": "open_directory", "arguments": {"path": "Downloads"}, "literal": "list the files in your Downloads folder"}
+  [list/groq] toolMISS argMISS tool=none ttft=n/ams total=1452ms
+        raw: {"tool": null, "arguments": {}, "literal": ""}
+  [list/groq-neutral] toolOK argOK tool=list_directory ttft=n/ams total=1449ms
+        raw: {"tool": "list_directory", "arguments": {"path": "/Users/$(whoami)/Downloads", "include_hidden": 0}, "literal": ""}
+  [direct/local] toolMISS arg- tool=web_search ttft=248ms total=828ms
+        raw: {"tool": "web_search", "arguments": {"query": "capital of France"}, "literal": "capital of France"}
+  [direct/groq] toolMISS arg- tool=web_search ttft=n/ams total=1662ms
+        raw: {"tool": "web_search", "arguments": {"query": "what is the capital of France?"}, "literal": "what is the capital of France?"}
+  [direct/groq-neutral] toolOK arg- tool=none ttft=n/ams total=1656ms
+        raw: {"tool": null, "arguments": {}, "literal": "Paris"}
+
+──────────── SUMMARY ────────────
+local: tool-correct 5/8 · arg-fidelity 4/7 · fabricated-args 2/8 · avg total 1165ms · avg TTFT 286ms
+groq: tool-correct 1/8 · arg-fidelity 1/7 · fabricated-args 0/8 · avg total 1634ms · avg TTFT n/a
+groq-neutral: tool-correct 8/8 · arg-fidelity 6/7 · fabricated-args 0/8 · avg total 1438ms · avg TTFT n/a
+local worker peak RSS: 527 MB (real, from the mlx_lm worker)
+total wall: 53.1s
+RC=0

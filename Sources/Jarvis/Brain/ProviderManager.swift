@@ -530,7 +530,7 @@ final class ProviderManager {
         let defaultChain: [any LLMProvider]
         switch category {
         case .coding:
-            defaultChain = [chatgptDesktop, groqStrong, claude, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqStrong, cerebras, claude, openai, openrouter, localNormal, localReflex]
         case .deepReasoning:
             defaultChain = [chatgptDesktop, groqStrong, claude, gemini, openai, openrouter, localNormal, localReflex]
         case .webSearch:

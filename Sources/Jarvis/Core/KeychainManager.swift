@@ -61,6 +61,7 @@ final class KeychainManager: @unchecked Sendable {
         case tavily = "jarvis.tavily.api_key"
         case openrouter = "jarvis.openrouter.api_key"
         case cerebras = "jarvis.cerebras.api_key"
+        case sambanova = "jarvis.sambanova.api_key"
         /// Control-plane key for the local Agent Bridge. The bridge's ChatGPT
         /// brain endpoints (`/api/chatgpt/*`) require it; absent ⇒ the brain is
         /// unavailable rather than open to any local caller.
@@ -76,6 +77,7 @@ final class KeychainManager: @unchecked Sendable {
             case .tavily: return "Tavily Search"
             case .openrouter: return "OpenRouter"
             case .cerebras: return "Cerebras"
+            case .sambanova: return "SambaNova"
             case .agentBridge: return "Agent Bridge (ChatGPT brain)"
             }
         }
@@ -138,6 +140,8 @@ final class KeychainManager: @unchecked Sendable {
             return ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]
         case .cerebras:
             return ProcessInfo.processInfo.environment["CEREBRAS_API_KEY"]
+        case .sambanova:
+            return ProcessInfo.processInfo.environment["SAMBANOVA_API_KEY"]
         case .agentBridge:
             return nil
         }

@@ -136,6 +136,8 @@ final class KeychainManager: @unchecked Sendable {
             return ProcessInfo.processInfo.environment["TAVILY_API_KEY"]
         case .openrouter:
             return ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]
+        case .cerebras:
+            return ProcessInfo.processInfo.environment["CEREBRAS_API_KEY"]
         case .agentBridge:
             return nil
         }

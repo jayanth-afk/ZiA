@@ -35,6 +35,16 @@ enum ZiaIntelligenceValidator {
         print("║   ZiA — MASTER INTELLIGENCE ARCHITECTURE VALIDATION HARNESS  ║")
         print("╚══════════════════════════════════════════════════════════════╝\n")
 
+        let originalChatGPTSetting = UserDefaults.standard.object(forKey: "jarvis.chatgpt.allowBrain")
+        UserDefaults.standard.set(true, forKey: "jarvis.chatgpt.allowBrain")
+        defer {
+            if let original = originalChatGPTSetting {
+                UserDefaults.standard.set(original, forKey: "jarvis.chatgpt.allowBrain")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "jarvis.chatgpt.allowBrain")
+            }
+        }
+
         var results: [ValidationResult] = []
 
         // 1. Deterministic Reflex (Brain 0)

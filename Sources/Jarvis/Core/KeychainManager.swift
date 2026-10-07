@@ -86,6 +86,17 @@ final class KeychainManager: @unchecked Sendable {
             if let env = environmentKey(for: service), !env.isEmpty {
                 return env
             }
+            if service == .agentBridge {
+                if let cliBridgeKey = readViaSecurityCLI(service: "agent-bridge", account: "control_plane_api_key"),
+                   !cliBridgeKey.isEmpty {
+                    return cliBridgeKey
+                }
+            } else {
+                if let cliKey = readViaSecurityCLI(service: "com.jarvis.app", account: service.rawValue),
+                   !cliKey.isEmpty {
+                    return cliKey
+                }
+            }
         }
 
         if let key = boundedRead(service.rawValue), !key.isEmpty {
@@ -97,15 +108,6 @@ final class KeychainManager: @unchecked Sendable {
                 if let bridgeKey = try? Keychain(service: "agent-bridge").get("control_plane_api_key"),
                    !bridgeKey.isEmpty {
                     return bridgeKey
-                }
-                if let cliBridgeKey = readViaSecurityCLI(service: "agent-bridge", account: "control_plane_api_key"),
-                   !cliBridgeKey.isEmpty {
-                    return cliBridgeKey
-                }
-            } else {
-                if let cliKey = readViaSecurityCLI(service: "com.jarvis.app", account: service.rawValue),
-                   !cliKey.isEmpty {
-                    return cliKey
                 }
             }
         }

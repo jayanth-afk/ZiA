@@ -17,7 +17,7 @@ import Testing
     }
 
     @Test func providerWithoutKeyIsUnavailableWithExactReason() async {
-        let provider = ChatGPTDesktopProvider(apiKeyProvider: { nil })
+        let provider = ChatGPTDesktopProvider(apiKeyProvider: { nil }, isEnabledProvider: { true })
         let availability = await provider.verifiedAvailability(probe: false)
         #expect(!availability.isAvailable)
         #expect(!availability.isUsable)
@@ -25,7 +25,7 @@ import Testing
     }
 
     @Test func providerWithoutKeyFailsClosedOnCompletion() async {
-        let provider = ChatGPTDesktopProvider(apiKeyProvider: { nil })
+        let provider = ChatGPTDesktopProvider(apiKeyProvider: { nil }, isEnabledProvider: { true })
         let stream = await provider.complete(
             messages: [Message(role: .user, content: "hello")], tools: nil, stream: false)
 
@@ -44,7 +44,7 @@ import Testing
 
     @Test func configuredKeyIsUnverifiedNotAvailable() async {
         // A key that is present but not probed must not read as available.
-        let provider = ChatGPTDesktopProvider(apiKeyProvider: { "bridge-secret" })
+        let provider = ChatGPTDesktopProvider(apiKeyProvider: { "bridge-secret" }, isEnabledProvider: { true })
         let availability = await provider.verifiedAvailability(probe: false)
         #expect(!availability.isAvailable)
         if case .unverified = availability {} else {

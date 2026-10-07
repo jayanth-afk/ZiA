@@ -167,7 +167,7 @@ struct ModelSettingsView: View {
             ) {
                 routingRow(1, "Deterministic actions", "No model · under a millisecond", ZiaColors.success, "bolt.fill")
                 ZiaDivider()
-                routingRow(2, "ChatGPT Desktop", "Primary brain for reasoning", ZiaColors.accent, "sparkles")
+                routingRow(2, "ChatGPT Desktop", "Opt-in reasoning brain — off by default", ZiaColors.accent, "sparkles")
                 ZiaDivider()
                 routingRow(3, "Local models (MLX)", "On-device fallback, works offline", ZiaColors.info, "cpu")
                 ZiaDivider()
@@ -241,6 +241,8 @@ struct ProviderSettingsView: View {
             }
 
             APIKeysView(embedded: true)
+
+            ChatGPTBrainSettingsView()
         }
     }
 }

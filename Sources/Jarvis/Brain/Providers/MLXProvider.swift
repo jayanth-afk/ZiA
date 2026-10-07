@@ -48,7 +48,7 @@ actor MLXProvider: LLMProvider {
 
     private let modelSlot: String // "reflex" or "normal"
 
-    private static let defaultModel = "mlx-community/Qwen2.5-0.5B-Instruct-4bit"
+    private static let defaultModel = LocalModelCatalog.defaultModelID
     private static let estimatedMB = 600
 
     private var worker: WorkerProcess?
@@ -61,10 +61,16 @@ actor MLXProvider: LLMProvider {
 
     var isAvailable: Bool {
         get async {
-            // Available when the Python MLX runtime and local weights exist.
-            // (ResourceManager admission control is applied at load time via
-            // canLoadModel; the resident footprint of the 0.5B model is small.)
-            Self.pythonInterpreter != nil && Self.modelSnapshotDirectory() != nil
+            // Available only when the Python MLX runtime exists AND the model
+            // this slot will actually load is already cached on disk. ZiA never
+            // downloads weights at runtime, so an uncached model is honestly
+            // reported as unavailable instead of fetched on demand.
+            // Deliberately pure and synchronous: no MainActor hop. Health checks
+            // run while the main runloop is pumped by a semaphore wait, so an
+            // availability probe must not await MainActor. The exact model this
+            // slot resolves to is chosen at load time in `ensureLoaded` (which is
+            // already allowed to await Config) and reported by the health service.
+            Self.pythonInterpreter != nil && !LocalModelCatalog.cachedModelIDs().isEmpty
         }
     }
 
@@ -84,54 +90,17 @@ actor MLXProvider: LLMProvider {
         return nil
     }
 
-    /// Resolve the local HF snapshot directory for the model (weights already on disk).
+    /// Resolve the local HF snapshot directory for a model (weights on disk).
+    /// Delegates to the single source of truth, `LocalModelCatalog`.
     nonisolated private static func modelSnapshotDirectory(modelID: String = defaultModel) -> URL? {
-        let hub = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".cache/huggingface/hub")
-        let repoDirName = "models--" + modelID.replacingOccurrences(of: "/", with: "--")
-        let repoDir = hub.appendingPathComponent(repoDirName)
-
-        // Prefer the revision pointed to by refs/main
-        let refsMain = repoDir.appendingPathComponent("refs/main")
-        if let revision = try? String(contentsOf: refsMain, encoding: .utf8)
-            .trimmingCharacters(in: .whitespacesAndNewlines), !revision.isEmpty {
-            let snapshot = repoDir.appendingPathComponent("snapshots/\(revision)")
-            if isValidModelDirectory(snapshot) { return snapshot }
-        }
-
-        // Fallback: most recently modified snapshot directory
-        let snapshots = repoDir.appendingPathComponent("snapshots")
-        if let contents = try? FileManager.default.contentsOfDirectory(
-            at: snapshots, includingPropertiesForKeys: [.contentModificationDateKey]) {
-            let latest = contents
-                .filter { $0.hasDirectoryPath && isValidModelDirectory($0) }
-                .sorted {
-                    ((try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
-                        > ((try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast)
-                }
-                .first
-            return latest
-        }
-        return nil
+        LocalModelCatalog.snapshotDirectory(for: modelID)
     }
 
-    /// A directory counts as loadable when config.json and a real safetensors
-    /// weight file are present. HF snapshot caches store weights as symlinks into
-    /// the blob store, so sizes are taken from the resolved target — the symlink
-    /// itself is only ~76 bytes.
-    nonisolated private static func isValidModelDirectory(_ url: URL) -> Bool {
-        let fm = FileManager.default
-        guard fm.fileExists(atPath: url.appendingPathComponent("config.json").path) else { return false }
-        let contents = (try? fm.contentsOfDirectory(at: url, includingPropertiesForKeys: [.fileSizeKey])) ?? []
-        return contents.contains {
-            $0.pathExtension == "safetensors" &&
-            ((try? $0.resolvingSymlinksInPath().resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) > 1_000_000
-        }
-    }
-
+    /// The model id this slot will actually load: the configured model when it
+    /// is cached, otherwise the first cached local model (never a download).
     private var modelName: String {
         get async {
-            await Config.shared.modelName(for: modelSlot) ?? Self.defaultModel
+            LocalModelCatalog.resolveModelID(configured: await Config.shared.modelName(for: modelSlot))
         }
     }
 
@@ -163,8 +132,17 @@ actor MLXProvider: LLMProvider {
                 Task { await self?.handleWorkerExit(slot: slot) }
             })
 
-        // Load the model eagerly (real Metal inference happens inside this call)
+        // Load the model eagerly (real Metal inference happens inside this call).
+        // Fail closed if the weights are not already cached: mlx_lm would
+        // otherwise download them, and ZiA must never download at runtime.
         let modelID = await modelName
+        guard LocalModelCatalog.isCached(modelID) else {
+            let cached = LocalModelCatalog.cachedModelIDs()
+            let list = cached.isEmpty ? "none" : cached.joined(separator: ", ")
+            throw JarvisError.actionFailed(
+                action: "mlx.load",
+                reason: "local model '\(modelID)' is not cached; ZiA never downloads models at runtime. Cached local models: \(list)")
+        }
         let loadStart = Date()
         let reply = try await worker.request(["op": "load", "model": modelID])
         guard reply["ok"] as? Bool == true else {

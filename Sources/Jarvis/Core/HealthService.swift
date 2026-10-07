@@ -103,6 +103,21 @@ final class HealthService {
                 degradation: "some providers quarantined after repeated failures")
         }
 
+        // 1b. Local models — only cached weights count. ZiA never downloads a
+        // model at runtime, so an empty cache is reported honestly rather than
+        // promised as available.
+        let cachedLocal = LocalModelCatalog.cachedModelIDs()
+        if cachedLocal.isEmpty {
+            add("local-models", .degraded,
+                "No local model weights are cached; on-device reasoning is unavailable.",
+                degradation: "local model unavailable (no cached weights)")
+        } else {
+            let reflex = LocalModelCatalog.resolveModelID(configured: Config.shared.localReflexModel)
+            let normal = LocalModelCatalog.resolveModelID(configured: Config.shared.localNormalModel)
+            add("local-models", .healthy,
+                "Cached: \(cachedLocal.joined(separator: ", ")). Effective reflex/normal: \(reflex)/\(normal).")
+        }
+
         // 2. Durable task state.
         if TaskStateMachine.shared.isPersistenceAvailable {
             add("task-state", .healthy, "Durable task state loaded.")

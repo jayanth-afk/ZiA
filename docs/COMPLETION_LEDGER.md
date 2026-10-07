@@ -26,7 +26,8 @@ Baseline at ledger creation (`77a5799`):
 | 0.2 | Capability audit of ToolRegistry | DONE | `12c4298` | build OK · 254/0 · 1067/0/0 | `docs/CAPABILITY_AUDIT.md` |
 | 1.1 | Docs truth refresh | DONE | `229d149` | build OK · 254/0 · 1067/0/0 · no `@State` | `PROJECT_CONTEXT.md`, `ZIA_ARCHITECTURE.md` |
 | 1.2 | Repo hygiene classification | DONE | `4f979f2` | build OK · 254/0 · 1067/0/0 | `docs/REPO_HYGIENE.md`, `.gitignore` |
-| 1.3 | Stale branch diff (read-only) | DONE | _(this commit)_ | build OK · 254/0 · 1067/0/0 | `docs/STALE_BRANCHES.md` |
+| 1.3 | Stale branch diff (read-only) | DONE | `2bc8cf4` | build OK · 254/0 · 1067/0/0 | `docs/STALE_BRANCHES.md` |
+| 1.4 | Model config truth (cached-only models, no download) | DONE | _(this commit)_ | build OK · 263/0 · 1067/0/0 · no `@State` | `Sources/Jarvis/Brain/LocalModelCatalog.swift`, `Tests/JarvisTests/LocalModelCatalogTests.swift` |
 
 ## APPROVAL QUEUE (owner-only destructive/licence-sensitive actions)
 
@@ -43,6 +44,16 @@ Baseline at ledger creation (`77a5799`):
 | ID | Item | Why |
 |---|---|---|
 | — | (populated in Phase 9) | |
+
+## Operational hazard discovered (Phase 1.4)
+
+A stale `Jarvis --audit` process (58 minutes old) plus two orphaned `mlx_worker.py`
+processes were left over from an earlier session. While they lived, **every** new
+`Jarvis --self-test` run deadlocked inside `Security`/`securityd` during
+`GroqProvider.isAvailable → KeychainManager.getAPIKey → SecItemCopyMatching`
+(main thread pumping the runloop in `ZiaSubsystemSelfTests.wait`). Killing the
+stale processes restored the self-test (now 1067/0/0 in ~101s). Mitigation:
+before running gates, clear stale `Jarvis`/`mlx_worker.py` processes.
 
 ## Baseline deltas vs the stated verified state
 

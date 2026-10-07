@@ -201,13 +201,19 @@ final class Config {
         JarvisLogger.app.info("Provider for \(slot) set to: \(name)")
     }
 
+    /// The reflex model ZiA actually runs. Defaults to the model that is cached
+    /// on disk (see `LocalModelCatalog`), never to an uncached name. `MLXProvider`
+    /// refuses to load a model whose weights are absent, so this default is
+    /// honest rather than aspirational.
     var localReflexModel: String {
-        get { modelName(for: "reflex") ?? "qwen2.5-3b" }
+        get { modelName(for: "reflex") ?? LocalModelCatalog.defaultModelID }
         set { setModelName(newValue, for: "reflex") }
     }
 
+    /// The normal (general local) model. Defaults to the cached model id for the
+    /// same reason as `localReflexModel`.
     var localNormalModel: String {
-        get { modelName(for: "normal") ?? "qwen2.5-7b" }
+        get { modelName(for: "normal") ?? LocalModelCatalog.defaultModelID }
         set { setModelName(newValue, for: "normal") }
     }
 

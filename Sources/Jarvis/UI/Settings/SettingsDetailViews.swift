@@ -148,6 +148,8 @@ final class IntelligenceSettingsModel: ObservableObject {
     @Published var reflex = Config.shared.localReflexModel
     @Published var normal = Config.shared.localNormalModel
     @Published var budget = Config.shared.dailyBudgetUSD
+    /// Models already present in the local cache. Only these can be loaded.
+    @Published var cachedLocalModels = LocalModelCatalog.cachedModelIDs()
 
     func commitReflex() { Config.shared.localReflexModel = reflex }
     func commitNormal() { Config.shared.localNormalModel = normal }
@@ -174,7 +176,7 @@ struct ModelSettingsView: View {
 
             ZiaSection(
                 "Local models",
-                footnote: "Model names are configuration, not code. Changing one never changes ZiA's architecture or its safety gates."
+                footnote: "ZiA only ever loads a model whose weights are already cached on disk — it never downloads one at runtime. A name that is not cached is ignored in favour of a cached model."
             ) {
                 ZiaSettingRow("Reflex model", detail: "Small, fast intent classification.", symbol: "bolt") {
                     TextField("", text: $model.reflex)
@@ -190,6 +192,15 @@ struct ModelSettingsView: View {
                         .font(ZiaType.code)
                         .frame(width: 230)
                         .onSubmit { model.commitNormal() }
+                }
+                ZiaDivider()
+                ZiaSettingRow("Cached on disk", detail: "Only cached models can run.", symbol: "internaldrive") {
+                    Text(model.cachedLocalModels.isEmpty ? "none" : model.cachedLocalModels.joined(separator: ", "))
+                        .font(ZiaType.code)
+                        .foregroundStyle(model.cachedLocalModels.isEmpty ? ZiaColors.warning : ZiaColors.textSecondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
+                        .frame(maxWidth: 240, alignment: .trailing)
                 }
             }
 

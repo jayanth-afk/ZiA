@@ -41,7 +41,7 @@ actor ClaudeProvider: LLMProvider {
         stream: Bool
     ) -> AsyncThrowingStream<StreamChunk, any Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 guard await self.isAvailable else {
                     continuation.yield(.error("Claude provider is unavailable (offline or missing API key)"))
                     continuation.finish()
@@ -92,7 +92,11 @@ actor ClaudeProvider: LLMProvider {
                     guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
                         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                         let errorMsg = String(data: data, encoding: .utf8) ?? "HTTP \(status)"
-                        continuation.yield(.error("Claude API error: \(errorMsg)"))
+                        if status == 429 {
+                            continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: httpResponse)))
+                        } else {
+                            continuation.yield(.error("Claude API error: \(errorMsg)"))
+                        }
                         continuation.finish()
                         return
                     }
@@ -115,6 +119,7 @@ actor ClaudeProvider: LLMProvider {
                     continuation.finish()
                 }
             }
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 

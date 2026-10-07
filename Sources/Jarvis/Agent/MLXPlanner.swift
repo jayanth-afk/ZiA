@@ -908,6 +908,8 @@ actor MLXPlanner {
             switch chunk {
             case .text(let t): text += t
             case .error(let e): throw JarvisError.providerError(provider: "mlx-planner", message: e)
+            case .rateLimited(let retryAfter):
+                throw JarvisError.providerRateLimited(provider: "mlx-planner", retryAfter: retryAfter)
             case .done: continue
             case .toolCall: continue
             }

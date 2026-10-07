@@ -267,6 +267,7 @@ enum LocalVsGroqBenchmark {
                     switch chunk {
                     case .text(let t): out += t
                     case .error(let e): return (out, e)
+                    case .rateLimited(let r): return (out, "rate limited (retryAfter: \(r.map { String(Int($0)) } ?? "unknown"))")
                     case .done, .toolCall: break
                     }
                 }

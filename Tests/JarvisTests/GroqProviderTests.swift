@@ -47,6 +47,7 @@ final class MockURLProtocol: URLProtocol {
                 switch chunk {
                 case .text(let t): text += t
                 case .error(let e): return (text, e)
+                case .rateLimited: return (text, "rate limited")
                 case .done, .toolCall: break
                 }
             }

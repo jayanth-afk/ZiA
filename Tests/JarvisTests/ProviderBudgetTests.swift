@@ -101,7 +101,7 @@ actor FakeProvider: LLMProvider {
             CerebrasProvider(),
             GroqProvider(id: "groq-strong", modelSlot: "strong")
         ]).map(\.id)
-        #expect(ordered == ["groq-strong", "cerebras", "claude", "mlx-normal"])
+        #expect(ordered == ["groq-strong", "cerebras", "anthropic", "mlx-normal"])
     }
 }
 

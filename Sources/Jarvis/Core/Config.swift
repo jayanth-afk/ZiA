@@ -45,6 +45,8 @@ final class Config {
             // Cloud provider assignments
             Keys.deepProvider: "anthropic",
             Keys.deepModel: "",
+            Keys.strongProvider: "groq",
+            Keys.strongModel: "llama-3.3-70b-versatile",
             Keys.visionProvider: "google",
             Keys.visionModel: "",
             Keys.speedProvider: "groq",
@@ -82,6 +84,8 @@ final class Config {
 
         static let deepProvider = "jarvis.provider.deep.provider"
         static let deepModel = "jarvis.provider.deep.model"
+        static let strongProvider = "jarvis.provider.strong.provider"
+        static let strongModel = "jarvis.provider.strong.model"
         static let visionProvider = "jarvis.provider.vision.provider"
         static let visionModel = "jarvis.provider.vision.model"
         static let speedProvider = "jarvis.provider.speed.provider"

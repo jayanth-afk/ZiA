@@ -39,10 +39,9 @@ actor GroqProvider: LLMProvider {
         }
     }
 
-    /// Model id injected by a caller (benchmark/test). When nil, the model is
-    /// read from the configured `fast` slot at request time. Injection exists so
-    /// callers can measure a specific model WITHOUT mutating persisted config.
+    /// When nil, the model is read from the configured slot at request time.
     private let modelOverride: String?
+    private let modelSlot: String
     /// API key injected by a caller (test). When nil, the keychain is consulted.
     private let apiKeyOverride: String?
     /// When false, the keychain is never consulted (tests that pin the
@@ -57,11 +56,12 @@ actor GroqProvider: LLMProvider {
     private let chatTimeout: TimeInterval = 20
     private let modelsTimeout: TimeInterval = 5
 
-    init(id: String = "groq", model: String? = nil,
+    init(id: String = "groq", model: String? = nil, modelSlot: String = "fast",
          session: URLSession = .shared, apiKey: String? = nil,
          usesKeychain: Bool = true) {
         self.id = id
         self.modelOverride = model
+        self.modelSlot = modelSlot
         self.session = session
         self.apiKeyOverride = apiKey
         self.usesKeychain = usesKeychain
@@ -71,7 +71,13 @@ actor GroqProvider: LLMProvider {
     var resolvedModel: String {
         get async {
             if let modelOverride { return modelOverride }
-            return await Config.shared.modelName(for: "fast") ?? Self.fallbackModel
+            if let configured = await Config.shared.modelName(for: modelSlot) {
+                return configured
+            }
+            if modelSlot == "strong" {
+                return "llama-3.3-70b-versatile"
+            }
+            return Self.fallbackModel
         }
     }
 

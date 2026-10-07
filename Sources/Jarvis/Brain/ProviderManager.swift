@@ -61,7 +61,9 @@ final class ProviderManager {
     let claude = ClaudeProvider()
     let gemini = GeminiProvider()
     let openai = OpenAIProvider()
-    let groq = GroqProvider()
+    let groqFast = GroqProvider(id: "groq", modelSlot: "fast")
+    let groqStrong = GroqProvider(id: "groq-strong", modelSlot: "strong")
+    var groq: GroqProvider { groqFast }
     let openrouter = OpenRouterProvider()
     let chatgptDesktop = ChatGPTDesktopProvider()
     let localNormal = MLXProvider(id: "mlx-normal", modelSlot: "normal")
@@ -167,7 +169,7 @@ final class ProviderManager {
 
     /// All registered providers in deterministic order.
     var allProviders: [any LLMProvider] {
-        [claude, gemini, openai, groq, openrouter, chatgptDesktop, localNormal, localReflex]
+        [claude, gemini, openai, groqFast, groqStrong, openrouter, chatgptDesktop, localNormal, localReflex]
     }
 
     /// Record an observed provider failure. Trips the circuit breaker once the
@@ -435,19 +437,48 @@ final class ProviderManager {
         let defaultChain: [any LLMProvider]
         switch category {
         case .coding:
-            defaultChain = [chatgptDesktop, claude, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqStrong, claude, openai, openrouter, localNormal, localReflex]
         case .deepReasoning:
-            defaultChain = [chatgptDesktop, claude, gemini, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqStrong, claude, gemini, openai, openrouter, localNormal, localReflex]
         case .webSearch:
-            defaultChain = [chatgptDesktop, groq, openrouter, gemini, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqFast, groqStrong, openrouter, gemini, localNormal, localReflex]
         case .conversation, .systemQuery:
-            defaultChain = [chatgptDesktop, claude, gemini, openai, groq, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqFast, groqStrong, claude, gemini, openai, openrouter, localNormal, localReflex]
         }
 
         let prefs = PreferenceStore.shared.current
         if prefs.localOnly {
             return [localNormal, localReflex]
         }
+        if !prefs.preferredProviders.isEmpty {
+            let preferred = defaultChain.filter { prefs.preferredProviders.contains($0.id) }
+            let remaining = defaultChain.filter { !prefs.preferredProviders.contains($0.id) }
+            return preferred + remaining
+        }
+        return defaultChain
+    }
+
+    /// Determines the fallback cascade for a specific target BrainTier.
+    func getFallbackChain(for tier: BrainTier) -> [any LLMProvider] {
+        let prefs = PreferenceStore.shared.current
+        if prefs.localOnly {
+            return [localNormal, localReflex]
+        }
+
+        let defaultChain: [any LLMProvider]
+        switch tier {
+        case .reflex:
+            return []
+        case .fast:
+            defaultChain = [groqFast, groqStrong, localNormal, localReflex]
+        case .strong:
+            defaultChain = [groqStrong, chatgptDesktop, claude, openai, openrouter, localNormal, localReflex]
+        case .deep:
+            defaultChain = [chatgptDesktop, groqStrong, claude, gemini, openai, openrouter, localNormal, localReflex]
+        case .localFallback:
+            defaultChain = [localNormal, localReflex]
+        }
+
         if !prefs.preferredProviders.isEmpty {
             let preferred = defaultChain.filter { prefs.preferredProviders.contains($0.id) }
             let remaining = defaultChain.filter { !prefs.preferredProviders.contains($0.id) }

@@ -75,6 +75,29 @@ enum MemoryTrust: String, Codable, Sendable, CaseIterable {
     }
 }
 
+// MARK: - Memory Retention Level
+//
+// Not everything deserves permanent memory. Levels categorize persistence priority:
+//   critical  — architectural decisions, persistent project constraints.
+//   important — project goals, stable preferences, primary user facts.
+//   relevant  — context useful to current tasks, recent observations.
+//   transient — temporary conversational details, ephemeral session state.
+enum MemoryRetentionLevel: String, Codable, Sendable, CaseIterable {
+    case critical
+    case important
+    case relevant
+    case transient
+
+    var defaultRelevance: Double {
+        switch self {
+        case .critical: return 1.0
+        case .important: return 0.8
+        case .relevant: return 0.5
+        case .transient: return 0.2
+        }
+    }
+}
+
 // MARK: - Records
 
 /// Input description of a memory to be written. The store decides whether the
@@ -89,6 +112,8 @@ struct MemoryDraft: Sendable {
     var tags: [String]
     var taskID: UUID?
     var expiresAt: Date?
+    var retentionLevel: MemoryRetentionLevel
+    var supersedesID: UUID?
 
     init(
         kind: MemoryKind,
@@ -99,7 +124,9 @@ struct MemoryDraft: Sendable {
         relevance: Double = 1.0,
         tags: [String] = [],
         taskID: UUID? = nil,
-        expiresAt: Date? = nil
+        expiresAt: Date? = nil,
+        retentionLevel: MemoryRetentionLevel = .relevant,
+        supersedesID: UUID? = nil
     ) {
         self.kind = kind
         self.trust = trust
@@ -110,6 +137,8 @@ struct MemoryDraft: Sendable {
         self.tags = tags
         self.taskID = taskID
         self.expiresAt = expiresAt
+        self.retentionLevel = retentionLevel
+        self.supersedesID = supersedesID
     }
 }
 
@@ -128,6 +157,70 @@ struct MemoryRecord: Identifiable, Codable, Sendable, Equatable {
     var lastAccessedAt: Date
     var expiresAt: Date?
     var accessCount: Int
+    var retentionLevel: MemoryRetentionLevel
+    var supersedesID: UUID?
+    var supersededByID: UUID?
+
+    init(
+        id: UUID,
+        kind: MemoryKind,
+        trust: MemoryTrust,
+        content: String,
+        source: String,
+        confidence: Double,
+        relevance: Double,
+        tags: [String],
+        taskID: UUID?,
+        createdAt: Date,
+        lastAccessedAt: Date,
+        expiresAt: Date?,
+        accessCount: Int,
+        retentionLevel: MemoryRetentionLevel = .relevant,
+        supersedesID: UUID? = nil,
+        supersededByID: UUID? = nil
+    ) {
+        self.id = id
+        self.kind = kind
+        self.trust = trust
+        self.content = content
+        self.source = source
+        self.confidence = confidence
+        self.relevance = relevance
+        self.tags = tags
+        self.taskID = taskID
+        self.createdAt = createdAt
+        self.lastAccessedAt = lastAccessedAt
+        self.expiresAt = expiresAt
+        self.accessCount = accessCount
+        self.retentionLevel = retentionLevel
+        self.supersedesID = supersedesID
+        self.supersededByID = supersededByID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, kind, trust, content, source, confidence, relevance, tags, taskID
+        case createdAt, lastAccessedAt, expiresAt, accessCount, retentionLevel, supersedesID, supersededByID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        kind = try container.decode(MemoryKind.self, forKey: .kind)
+        trust = try container.decode(MemoryTrust.self, forKey: .trust)
+        content = try container.decode(String.self, forKey: .content)
+        source = try container.decode(String.self, forKey: .source)
+        confidence = try container.decode(Double.self, forKey: .confidence)
+        relevance = try container.decode(Double.self, forKey: .relevance)
+        tags = try container.decode([String].self, forKey: .tags)
+        taskID = try container.decodeIfPresent(UUID.self, forKey: .taskID)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        lastAccessedAt = try container.decode(Date.self, forKey: .lastAccessedAt)
+        expiresAt = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
+        accessCount = try container.decode(Int.self, forKey: .accessCount)
+        retentionLevel = try container.decodeIfPresent(MemoryRetentionLevel.self, forKey: .retentionLevel) ?? .relevant
+        supersedesID = try container.decodeIfPresent(UUID.self, forKey: .supersedesID)
+        supersededByID = try container.decodeIfPresent(UUID.self, forKey: .supersededByID)
+    }
 }
 
 /// Reasons a write is refused. The store fails CLOSED: an inadmissible write

@@ -202,7 +202,7 @@ struct MemoryRecord: Identifiable, Codable, Sendable, Equatable {
         case createdAt, lastAccessedAt, expiresAt, accessCount, retentionLevel, supersedesID, supersededByID
     }
 
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
         kind = try container.decode(MemoryKind.self, forKey: .kind)

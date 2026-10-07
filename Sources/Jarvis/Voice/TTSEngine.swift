@@ -81,7 +81,8 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
 
     /// Speak text using the appropriate mode.
     func speak(_ text: String, mode: TTSMode = .acknowledgement) {
-        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let cleaned = SpokenResponseLayer.cleanForSpeech(text)
+        guard !cleaned.isEmpty else { return }
         isExplicitlyStopped = false
         isStreamingActive = false
         streamingBuffer = ""
@@ -94,7 +95,7 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
 
         switch mode {
         case .acknowledgement, .offline, .conversational:
-            appleSpeak(text)
+            appleSpeak(cleaned)
         }
     }
 
@@ -137,8 +138,9 @@ final class TTSEngine: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     private func enqueueUtterance(_ text: String) {
-        guard !text.isEmpty, !isExplicitlyStopped else { return }
-        let utterance = AVSpeechUtterance(string: text)
+        let cleaned = SpokenResponseLayer.cleanForSpeech(text)
+        guard !cleaned.isEmpty, !isExplicitlyStopped else { return }
+        let utterance = AVSpeechUtterance(string: cleaned)
         utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.05
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0

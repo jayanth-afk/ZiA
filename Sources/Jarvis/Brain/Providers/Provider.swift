@@ -50,6 +50,47 @@ enum StreamChunk: Sendable {
     case toolCall(ToolCall)
     case done(usage: TokenUsage)
     case error(String)
+    /// The provider was rejected by a quota/rate limit (HTTP 429 or equivalent).
+    ///
+    /// This is deliberately distinct from `.error`: a rate limit is a
+    /// *temporary* condition with a server-known duration, so the router cools
+    /// the worker down for exactly that long instead of counting it toward the
+    /// hard-failure circuit breaker (which would quarantine a perfectly healthy
+    /// provider for minutes over a momentary throttle). `retryAfter` is the
+    /// server-provided delay in seconds when present.
+    case rateLimited(retryAfter: TimeInterval?)
+}
+
+/// Parses HTTP rate-limit signals into a bounded cooldown.
+///
+/// Kept provider-agnostic so every OpenAI-compatible backend emits the same
+/// typed signal. `Retry-After` is interpreted in its delta-seconds form; the
+/// HTTP-date form (rare for these APIs) is ignored, falling back to the default.
+enum ProviderRateLimit {
+    /// Cooldown applied when the server does not say how long to wait.
+    static let defaultCooldown: TimeInterval = 30
+    /// Hard upper bound so a hostile or buggy `Retry-After` can never park a
+    /// worker indefinitely.
+    static let maxCooldown: TimeInterval = 900
+
+    /// `Retry-After` (delta-seconds) from a response, clamped to a sane range.
+    /// Returns nil when absent or unparseable, so callers fall back to the default.
+    static func retryAfter(from response: HTTPURLResponse?) -> TimeInterval? {
+        guard let raw = response?.value(forHTTPHeaderField: "Retry-After")?
+            .trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        if let seconds = TimeInterval(raw) { return clamp(seconds) }
+        return nil
+    }
+
+    /// Resolve a server hint (or nil) to the cooldown actually applied.
+    static func cooldown(for retryAfter: TimeInterval?) -> TimeInterval {
+        guard let retryAfter else { return defaultCooldown }
+        return clamp(retryAfter)
+    }
+
+    static func clamp(_ seconds: TimeInterval) -> TimeInterval {
+        min(max(seconds, 1), maxCooldown)
+    }
 }
 
 // MARK: - Provider Protocol

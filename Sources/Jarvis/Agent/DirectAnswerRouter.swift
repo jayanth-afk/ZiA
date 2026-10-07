@@ -66,16 +66,33 @@ public final class DirectAnswerRouter: @unchecked Sendable {
                 return "Today is \(formatter.string(from: Date()))."
             }
             if lower.contains("who") || lower.contains("name") {
-                return "I am Jarvis, your ultra-fast desktop assistant."
+                return "I am ZiA, your intelligent desktop assistant."
             }
             if lower.contains("version") {
-                return "Jarvis v1.0.0 (Gemini 3.6 Flash Fast Mode)."
+                return "ZiA v1.0.0."
             }
         }
 
-        let nsRange = NSRange(trimmed.startIndex..<trimmed.endIndex, in: trimmed)
-        if trimmed.count > 2 && Self.mathRegex.firstMatch(in: trimmed, options: [], range: nsRange) != nil {
-            let expr = NSExpression(format: trimmed)
+        // Deterministic math / calculator path (Brain 0)
+        var mathCandidate = lower
+        if mathCandidate.hasPrefix("what is ") {
+            mathCandidate = String(mathCandidate.dropFirst(8))
+        } else if mathCandidate.hasPrefix("calculate ") {
+            mathCandidate = String(mathCandidate.dropFirst(10))
+        } else if mathCandidate.hasPrefix("evaluate ") {
+            mathCandidate = String(mathCandidate.dropFirst(9))
+        }
+        if mathCandidate.hasSuffix("?") {
+            mathCandidate = String(mathCandidate.dropLast())
+        }
+        mathCandidate = mathCandidate.replacingOccurrences(of: "×", with: "*")
+        mathCandidate = mathCandidate.replacingOccurrences(of: "x", with: "*")
+        mathCandidate = mathCandidate.replacingOccurrences(of: "÷", with: "/")
+        let mathTrimmed = mathCandidate.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let nsRange = NSRange(mathTrimmed.startIndex..<mathTrimmed.endIndex, in: mathTrimmed)
+        if mathTrimmed.count >= 3 && Self.mathRegex.firstMatch(in: mathTrimmed, options: [], range: nsRange) != nil {
+            let expr = NSExpression(format: mathTrimmed)
             if let result = expr.expressionValue(with: nil, context: nil) as? NSNumber {
                 return "Result: \(result)"
             }

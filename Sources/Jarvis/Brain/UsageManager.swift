@@ -9,14 +9,25 @@ final class UsageManager {
     private(set) var totalTokensToday: Int = 0
     private var lastResetDate: Date = .now
 
-    // Approximate cost per million tokens ($/1M)
-    private let pricingPer1M: [String: (input: Double, output: Double)] = [
-        "anthropic": (input: 3.0, output: 15.0),
-        "openai": (input: 2.5, output: 10.0),
-        "gemini": (input: 0.10, output: 0.40),
-        "groq": (input: 0.59, output: 0.79),
-        "mlx-local": (input: 0.0, output: 0.0)
-    ]
+    /// Cost per million tokens ($/1M), resolved by the provider's *runtime* id.
+    ///
+    /// Rule 10: never invent a price. Providers whose published price we do not
+    /// actually know contribute 0 to the spend total rather than a fabricated
+    /// number. Local inference has no marginal cost.
+    private func rates(for provider: String) -> (input: Double, output: Double) {
+        if provider.hasPrefix("mlx") { return (0, 0) }
+        switch provider {
+        case "anthropic": return (3.0, 15.0)
+        case "openai": return (2.5, 10.0)
+        case "gemini": return (0.10, 0.40)
+        case "groq", "groq-strong": return (0.59, 0.79)
+        // Priced only from known figures; otherwise unknown (0, not invented).
+        // Trial/promotional (cerebras), entitlement (sambanova), free-model
+        // (openrouter) and the user's own desktop app (chatgpt-desktop) have no
+        // dependable per-token ZiA cost here.
+        default: return (0, 0)
+        }
+    }
 
     private init() {}
 
@@ -27,7 +38,7 @@ final class UsageManager {
         checkDailyReset()
 
         totalTokensToday += usage.totalTokens
-        let rates = pricingPer1M[provider] ?? (input: 1.0, output: 2.0)
+        let rates = rates(for: provider)
         let cost = (Double(usage.promptTokens) / 1_000_000.0 * rates.input) +
                    (Double(usage.completionTokens) / 1_000_000.0 * rates.output)
 

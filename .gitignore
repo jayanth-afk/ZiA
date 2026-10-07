@@ -24,3 +24,18 @@ build/zia-cross-turn-*.txt
 Secrets.swift
 .freebuff/
 .aider*
+
+# Local Python (MLX worker) environment and bytecode
+.venv-mlx/
+__pycache__/
+*.pyc
+
+# Editor state
+.vscode/
+
+# Installer / toolchain packages
+*.pkg
+
+# Tool-output and sandbox-test residue
+output.txt
+forbidden.txt

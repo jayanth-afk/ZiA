@@ -24,13 +24,18 @@ Baseline at ledger creation (`77a5799`):
 |---|---|---|---|---|---|
 | 0.1 | Orient & baseline | DONE | — | build OK · 254/0 · 1067/0/0 · no `@State` | baseline tail captured this session (see summary) |
 | 0.2 | Capability audit of ToolRegistry | DONE | `12c4298` | build OK · 254/0 · 1067/0/0 | `docs/CAPABILITY_AUDIT.md` |
-| 1.1 | Docs truth refresh | DONE | _(this commit)_ | build OK · 254/0 · 1067/0/0 · no `@State` | `PROJECT_CONTEXT.md`, `ZIA_ARCHITECTURE.md` |
+| 1.1 | Docs truth refresh | DONE | `229d149` | build OK · 254/0 · 1067/0/0 · no `@State` | `PROJECT_CONTEXT.md`, `ZIA_ARCHITECTURE.md` |
+| 1.2 | Repo hygiene classification | DONE | _(this commit)_ | build OK · 254/0 · 1067/0/0 | `docs/REPO_HYGIENE.md`, `.gitignore` |
 
 ## APPROVAL QUEUE (owner-only destructive/licence-sensitive actions)
 
 | ID | Action | Why | Status |
 |---|---|---|---|
-| — | (populated in Phase 1.2 / 1.3) | | |
+| AQ-1 | `git rm --cached swiftly.pkg` (then consider history rewrite) | 10.9 MB installer binary tracked in git | PENDING OWNER |
+| AQ-2 | `git rm --cached output.txt forbidden.txt "..."` | tool/test residue tracked at repo root | PENDING OWNER |
+| AQ-3 | `git rm --cached PolicyEvaluator.swift` | orphan, unreferenced, fails-open policy engine at repo root | PENDING OWNER |
+| AQ-4 | remove/relocate `.continuerules` from tracking | AI-agent prompt file that self-grants destructive authority | PENDING OWNER |
+| AQ-5 | stale branch delete: `freebuff/verification-subsystem`, `gemini/milestone4-verification` | superseded (see Phase 1.3) | PENDING OWNER |
 
 ## OWNER-ONLY (needs Jayanth's hands at the Mac)
 

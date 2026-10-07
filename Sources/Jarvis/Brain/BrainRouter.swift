@@ -346,7 +346,7 @@ final class BrainRouter {
         environment: TaskEnvironmentContext? = nil
     ) -> AsyncThrowingStream<String, any Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 do {
                     _ = try await self.routeUnified(
                         transcript,
@@ -360,6 +360,9 @@ final class BrainRouter {
                 } catch {
                     continuation.finish(throwing: error)
                 }
+            }
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
             }
         }
     }

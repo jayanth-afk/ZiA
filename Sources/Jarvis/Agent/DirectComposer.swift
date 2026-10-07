@@ -88,15 +88,30 @@ actor DirectComposer {
             isScheduledOrBackground: false,
             sensitivity: sensitivity
         )
+        // Track whether any of the answer already reached the caller. A fallback
+        // after partial output would append a SECOND answer, so we only fall back
+        // when nothing was emitted yet and otherwise surface the failure.
+        let emittedVisibleText = LockedValue<Bool>(false)
+        let trackedChunk: (@Sendable (String) -> Void)?
+        if let onChunk {
+            trackedChunk = { @Sendable text in
+                if !text.isEmpty { emittedVisibleText.value = true }
+                onChunk(text)
+            }
+        } else {
+            trackedChunk = nil
+        }
+
         let rawAnswer: String
         do {
             rawAnswer = try await ProviderManager.shared.executeWithStreamingFallback(
                 messages: dispatchMessage,
                 category: .conversation,
                 context: context,
-                onChunk: onChunk
+                onChunk: trackedChunk
             )
         } catch {
+            if emittedVisibleText.value { throw error }
             // Failsafe local fallback if the supervisor throws
             let fallbackStream = await provider.complete(
                 messages: dispatchMessage,

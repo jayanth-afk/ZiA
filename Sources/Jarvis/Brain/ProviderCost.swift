@@ -164,7 +164,9 @@ final class BudgetPolicy {
     /// while every paid provider in the fleet is declared explicitly.
     static func defaultProfile(for id: String) -> ProviderCostProfile {
         switch id {
-        case "claude":
+        // NOTE: the Claude provider's runtime id is "anthropic" (its keychain
+        // service); map both spellings so it can never be mistaken for free.
+        case "anthropic", "claude":
             return ProviderCostProfile(id: id, costClass: .paid)
         case "openai":
             return ProviderCostProfile(id: id, costClass: .paid)

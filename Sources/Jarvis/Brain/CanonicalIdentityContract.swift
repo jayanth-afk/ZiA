@@ -20,13 +20,13 @@ import Foundation
 /// - system-wide truth
 ///
 /// ZiA owns all of those. Models are interchangeable reasoning workers serving ZiA.
-public enum OutputDestination: String, Sendable {
+enum OutputDestination: String, Sendable {
     case voice
     case visual
 }
 
 /// The target Brain Fleet tiers for ZiA.
-public enum BrainTier: String, Sendable, CaseIterable {
+enum BrainTier: String, Sendable, CaseIterable {
     /// Brain 0: Deterministic Local Reflex Layer (zero-LLM).
     case reflex
     /// Brain 1: Fast Normal Reasoning (Groq 20B candidate).
@@ -38,14 +38,14 @@ public enum BrainTier: String, Sendable, CaseIterable {
     /// Brain 4: Local MLX Model (offline/privacy fallback).
     case localFallback
 
-    public var isLocal: Bool {
+    var isLocal: Bool {
         switch self {
         case .reflex, .localFallback: return true
         case .fast, .strong, .deep: return false
         }
     }
 
-    public var maxContextCharacters: Int {
+    var maxContextCharacters: Int {
         switch self {
         case .reflex: return 0
         case .fast: return 3_000
@@ -55,7 +55,7 @@ public enum BrainTier: String, Sendable, CaseIterable {
         }
     }
 
-    public var memoryLimit: Int {
+    var memoryLimit: Int {
         switch self {
         case .reflex: return 0
         case .fast: return 3
@@ -67,12 +67,12 @@ public enum BrainTier: String, Sendable, CaseIterable {
 }
 
 /// Canonical contract enforced across all reasoning workers.
-public enum ZiaIdentity: Sendable {
-    public static let assistantName = "ZiA"
-    public static let legacyName = "JARVIS"
+enum ZiaIdentity: Sendable {
+    static let assistantName = "ZiA"
+    static let legacyName = "JARVIS"
 
     /// The canonical identity contract that every reasoning worker must receive.
-    public static func systemPrompt(for tier: BrainTier, destination: OutputDestination = .visual) -> String {
+    static func systemPrompt(for tier: BrainTier, destination: OutputDestination = .visual) -> String {
         var prompt = """
         You are a reasoning worker operating as \(assistantName).
         \(assistantName) is a persistent macOS assistant.

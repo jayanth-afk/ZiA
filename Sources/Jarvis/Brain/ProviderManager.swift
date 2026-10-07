@@ -24,6 +24,12 @@ struct RoutingDecision: Sendable, Equatable {
     let chosen: String?
     let reason: String
     let degraded: Bool
+    /// ChatGPT transport the bridge reported for the chosen answer, when known.
+    var transport: String? = nil
+    /// Verified availability (N1) of the chosen provider, when known.
+    var availability: String? = nil
+    /// Why the ChatGPT deep tier was skipped for this request (never silent).
+    var fallbackReason: String? = nil
 }
 
 /// Aggregate provider health used by HealthService and degraded-mode decisions.
@@ -225,27 +231,56 @@ final class ProviderManager {
     /// itself truthful; execution does not silently reinterpret an unavailable
     /// provider as healthy.
     func routingDecision(for category: IntentClassifier.IntentCategory) async -> RoutingDecision {
+        await routingDecision(for: category, context: nil)
+    }
+
+    /// Deterministic routing decision with the hybrid ChatGPT policy applied when
+    /// a request context is supplied. The ChatGPT deep tier is skipped (with a
+    /// recorded reason) unless every policy rule passes.
+    func routingDecision(
+        for category: IntentClassifier.IntentCategory,
+        context: ChatGPTRequestContext?
+    ) async -> RoutingDecision {
         let chain = getFallbackChain(for: category)
         let chainIDs = chain.map(\.id)
         var skippedQuarantined: [String] = []
         var skippedUnavailable: [String] = []
+        var skippedPolicy: [String] = []
+        var chatgptFallbackReason: String?
         var chosen: (any LLMProvider)?
+        var chosenAvailability: ProviderAvailability?
 
         for provider in chain {
             if isQuarantined(provider.id) {
                 skippedQuarantined.append(provider.id)
                 continue
             }
+            if let context, HybridRoutingPolicy.isEnabled, provider.id == "chatgpt-desktop" {
+                let availability = await reportedAvailability(for: provider)
+                let decision = ChatGPTBrainPolicy.evaluate(
+                    context, availability: availability,
+                    isQuarantined: false,
+                    dailyCapReached: ChatGPTBrain.isDailyCapReached())
+                if !decision.isEligible {
+                    chatgptFallbackReason = decision.reason
+                    skippedPolicy.append(provider.id)
+                    continue
+                }
+            }
             if await !isProviderAvailable(provider) {
                 skippedUnavailable.append(provider.id)
                 continue
             }
             chosen = provider
+            chosenAvailability = await reportedAvailability(for: provider)
             break
         }
 
         guard let chosen else {
             var reasons: [String] = []
+            if !skippedPolicy.isEmpty {
+                reasons.append("policy: \(chatgptFallbackReason ?? skippedPolicy.joined(separator: ", "))")
+            }
             if !skippedQuarantined.isEmpty {
                 reasons.append("quarantined: \(skippedQuarantined.joined(separator: ", "))")
             }
@@ -255,11 +290,12 @@ final class ProviderManager {
             let detail = reasons.isEmpty ? "no providers configured" : reasons.joined(separator: "; ")
             return RoutingDecision(category: category.rawValue, chain: chainIDs, chosen: nil,
                                    reason: "no healthy provider for \(category.rawValue) (\(detail))",
-                                   degraded: true)
+                                   degraded: true, fallbackReason: chatgptFallbackReason)
         }
 
         let skipped = chainIDs.filter {
-            $0 != chosen.id && (skippedQuarantined.contains($0) || skippedUnavailable.contains($0))
+            $0 != chosen.id && (skippedQuarantined.contains($0) || skippedUnavailable.contains($0)
+                                || skippedPolicy.contains($0))
         }
         let degraded = chosen.id.hasPrefix("mlx") || !skipped.isEmpty
         let reason: String
@@ -269,7 +305,9 @@ final class ProviderManager {
             reason = "selected \(chosen.id) for \(category.rawValue); skipped \(skipped.joined(separator: ", "))"
         }
         return RoutingDecision(category: category.rawValue, chain: chainIDs, chosen: chosen.id,
-                               reason: reason, degraded: degraded)
+                               reason: reason, degraded: degraded,
+                               availability: chosenAvailability?.label,
+                               fallbackReason: chatgptFallbackReason)
     }
 
     /// Select the best available provider for an intent category and execute with fallback.
@@ -280,15 +318,22 @@ final class ProviderManager {
         try await executeWithStreamingFallback(messages: messages, category: category, onChunk: nil)
     }
 
+    /// Execute with fallback, applying the hybrid ChatGPT policy when a request
+    /// context is supplied.
+
     /// Select the best available provider for an intent category and execute with streaming fallback.
     /// Delivers real-time incremental tokens to `onChunk` as they arrive from the active provider.
     func executeWithStreamingFallback(
         messages: [Message],
         category: IntentClassifier.IntentCategory,
+        context: ChatGPTRequestContext? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
-        let decision = await routingDecision(for: category)
+        let decision = await routingDecision(for: category, context: context)
         JarvisLogger.brain.info("Routing decision: chosen=\(decision.chosen ?? "none"), reason=\(decision.reason), degraded=\(decision.degraded)")
+        if let fallbackReason = decision.fallbackReason {
+            JarvisLogger.brain.info("ChatGPT deep tier skipped: \(fallbackReason)")
+        }
 
         let chain = getFallbackChain(for: category)
 
@@ -299,6 +344,18 @@ final class ProviderManager {
             if isQuarantined(provider.id) {
                 JarvisLogger.brain.warning("Skipping \(provider.id): \(self.quarantineReason(provider.id) ?? "quarantined")")
                 continue
+            }
+            // Hybrid policy: the ChatGPT deep tier must earn every eligible rule.
+            if let context, HybridRoutingPolicy.isEnabled, provider.id == "chatgpt-desktop" {
+                let availability = await reportedAvailability(for: provider)
+                let policy = ChatGPTBrainPolicy.evaluate(
+                    context, availability: availability,
+                    isQuarantined: false,
+                    dailyCapReached: ChatGPTBrain.isDailyCapReached())
+                if !policy.isEligible {
+                    JarvisLogger.brain.info("Skipping ChatGPT brain: \(policy.reason ?? "ineligible")")
+                    continue
+                }
             }
             let available = await isProviderAvailable(provider)
             guard available else { continue }
@@ -336,6 +393,13 @@ final class ProviderManager {
                     let ms = Double(elapsed.components.seconds) * 1000.0 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000.0
                     JarvisLogger.brain.info("Provider \(provider.id) completed in \(Int(ms))ms")
                     recordSuccess(providerID: provider.id)
+                    // User-visible provenance: which brain actually answered.
+                    if provider.id == "chatgpt-desktop" {
+                        let transport = await self.chatgptDesktop.lastTransport()
+                        ChatGPTBrainProvenance.shared.recordChatGPT(transport: transport)
+                    } else {
+                        ChatGPTBrainProvenance.shared.clear()
+                    }
                     return responseText
                 }
 

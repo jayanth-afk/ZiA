@@ -309,6 +309,8 @@ struct OverlayView: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: 320)
 
+            ChatGPTProvenanceBadge()
+
             if isResponseTruncated {
                 // Long answers belong in the conversation window, not in a HUD.
                 Button {
@@ -340,6 +342,21 @@ struct OverlayView: View {
     }
 
     private var isResponseTruncated: Bool { viewModel.lastResponse.count > 320 }
+
+    /// Small, honest indicator of which brain produced the answer just shown.
+    /// Hidden unless the last answer actually came from ChatGPT.
+    private struct ChatGPTProvenanceBadge: View {
+        @ObservedObject private var provenance = ChatGPTBrainProvenance.shared
+
+        var body: some View {
+            if let answer = provenance.lastAnswer {
+                Text("Answered by \(answer)")
+                    .font(.system(size: 10.5, weight: .medium))
+                    .tracking(0.2)
+                    .foregroundStyle(.white.opacity(0.45))
+            }
+        }
+    }
     private var displayedResponse: String {
         guard isResponseTruncated else { return viewModel.lastResponse }
         return String(viewModel.lastResponse.prefix(320)).trimmingCharacters(in: .whitespacesAndNewlines) + "…"

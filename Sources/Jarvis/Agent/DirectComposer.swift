@@ -63,11 +63,24 @@ actor DirectComposer {
         prompt.append("Answer: ")
 
         let dispatchMessage = [Message(role: .user, content: prompt)]
+        // Hybrid policy context: a direct answer is always user-present, so the
+        // ChatGPT brain is a candidate only when the request needs real
+        // reasoning/writing and the data class allows it — never an extraction
+        // prompt, never scheduled/background work.
+        let sensitivity = await MainActor.run { DataClassifier.shared.classify(goal) }
+        let context = ChatGPTRequestContext(
+            isUserPresent: true,
+            needsDeepReasoning: ChatGPTBrainPolicy.looksLikeDeepRequest(goal),
+            isExtractionPrompt: false,
+            isScheduledOrBackground: false,
+            sensitivity: sensitivity
+        )
         let rawAnswer: String
         do {
             rawAnswer = try await ProviderManager.shared.executeWithStreamingFallback(
                 messages: dispatchMessage,
                 category: .conversation,
+                context: context,
                 onChunk: onChunk
             )
         } catch {

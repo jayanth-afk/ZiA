@@ -567,7 +567,7 @@ final class ProviderManager {
         case .strong:
             defaultChain = [groqStrong, cerebras, chatgptDesktop, claude, openai, openrouter, localNormal, localReflex]
         case .deep:
-            defaultChain = [chatgptDesktop, groqStrong, claude, gemini, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqStrong, cerebras, claude, gemini, openai, openrouter, localNormal, localReflex]
         case .localFallback:
             defaultChain = [localNormal, localReflex]
         }

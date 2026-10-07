@@ -198,7 +198,7 @@ final class BrainRouter {
                     suggestedProviderID: "chatgpt-desktop",
                     reason: "deep architectural analysis requires premium reasoning brain",
                     isDeterministic: false,
-                    requiresPlanning: ziaIntent.requiresPlanning
+                    requiresPlanning: false
                 )
             } else {
                 let groqStrong = ProviderManager.shared.groqStrong
@@ -207,7 +207,7 @@ final class BrainRouter {
                     suggestedProviderID: groqStrong.id,
                     reason: "deep architecture task: premium brain unavailable, falling back to strong brain (120B)",
                     isDeterministic: false,
-                    requiresPlanning: ziaIntent.requiresPlanning,
+                    requiresPlanning: false,
                     escalated: true
                 )
             }
@@ -224,7 +224,7 @@ final class BrainRouter {
                     suggestedProviderID: groqStrong.id,
                     reason: "complex coding or multi-step reasoning task routed to strong brain (120B)",
                     isDeterministic: false,
-                    requiresPlanning: ziaIntent.requiresPlanning
+                    requiresPlanning: false
                 )
             }
         }
@@ -239,7 +239,7 @@ final class BrainRouter {
                 suggestedProviderID: groqFast.id,
                 reason: "standard conversational / reasoning turn routed to fast brain (20B) for ultra-low latency",
                 isDeterministic: false,
-                requiresPlanning: ziaIntent.requiresPlanning
+                requiresPlanning: false
             )
         }
 
@@ -251,7 +251,7 @@ final class BrainRouter {
                 suggestedProviderID: groqStrong.id,
                 reason: "fast brain unavailable; escalating to strong brain",
                 isDeterministic: false,
-                requiresPlanning: ziaIntent.requiresPlanning,
+                requiresPlanning: false,
                 escalated: true
             )
         }
@@ -262,7 +262,7 @@ final class BrainRouter {
             suggestedProviderID: "mlx-normal",
             reason: "cloud reasoning brains unavailable; routed to resilient on-device MLX fallback",
             isDeterministic: false,
-            requiresPlanning: ziaIntent.requiresPlanning
+            requiresPlanning: false
         )
     }
 
@@ -286,20 +286,6 @@ final class BrainRouter {
                 content: response,
                 tier: .reflex,
                 providerID: "deterministic",
-                executionTimeMs: elapsed,
-                decision: decision
-            )
-        }
-
-        // Multi-Step Planner Path (if required by intent)
-        if decision.requiresPlanning {
-            let response = try await AgentLoop.shared.run(goal: transcript)
-            onChunk?(response)
-            let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
-            return UnifiedZiAResponse(
-                content: response,
-                tier: decision.tier,
-                providerID: decision.suggestedProviderID,
                 executionTimeMs: elapsed,
                 decision: decision
             )

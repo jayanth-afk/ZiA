@@ -165,7 +165,7 @@ actor GroqProvider: LLMProvider {
         stream: Bool
     ) -> AsyncThrowingStream<StreamChunk, any Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 guard let apiKey = await self.resolveAPIKey() else {
                     continuation.yield(.error("Groq API key is missing from Keychain"))
                     continuation.finish()
@@ -209,6 +209,11 @@ actor GroqProvider: LLMProvider {
                     continuation.finish()
                 }
             }
+            // Cancellation propagation: when the consumer stops iterating (an
+            // interruption, a "wait", or a superseded turn), cancel the in-flight
+            // request instead of orphaning it. Without this the Task keeps
+            // streaming into a dead continuation — an orphaned stream.
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
@@ -221,7 +226,11 @@ actor GroqProvider: LLMProvider {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let body = (String(data: data, encoding: .utf8) ?? "").prefix(300)
-            continuation.yield(.error("Groq API error: HTTP \(status): \(body)"))
+            if status == 429 {
+                continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: http)))
+            } else {
+                continuation.yield(.error("Groq API error: HTTP \(status): \(body)"))
+            }
             return
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -252,7 +261,11 @@ actor GroqProvider: LLMProvider {
                 body += line + "\n"
                 if body.count > 300 { break }
             }
-            continuation.yield(.error("Groq API error: HTTP \(status) \(body.prefix(300))"))
+            if status == 429 {
+                continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: http)))
+            } else {
+                continuation.yield(.error("Groq API error: HTTP \(status) \(body.prefix(300))"))
+            }
             return
         }
 

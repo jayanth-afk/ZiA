@@ -20,7 +20,7 @@ actor GroqProvider: LLMProvider {
     nonisolated let currentLatencyMs = 150
 
     /// Production fallback when the `fast` config slot is unset.
-    static let fallbackModel = "llama-3.3-70b-versatile"
+    static let fallbackModel = "openai/gpt-oss-20b"
 
     /// Outcome of a live model-availability probe. Always carries the reason
     /// when unavailable — never a bare boolean.

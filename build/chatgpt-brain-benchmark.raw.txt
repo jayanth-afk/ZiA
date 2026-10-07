@@ -1,0 +1,4 @@
+chatgpt-brain-benchmark raw log
+ranAt=2026-10-07 11:00:05 +0000
+reachable=false
+note=unavailable — no Agent Bridge API key in the Keychain (service jarvis.agentbridge.api_key)

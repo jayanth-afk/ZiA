@@ -67,6 +67,20 @@ struct JarvisApp: App {
             exit(0)
         }
 
+        // Handle --chatgpt-bench: measured, capped ChatGPT brain benchmark (C5).
+        if CommandLine.arguments.contains("--chatgpt-bench") {
+            setbuf(stdout, nil)
+            let semaphore = DispatchSemaphore(value: 0)
+            Task { @MainActor in
+                _ = await ChatGPTBrainBenchmark.run(outputPath: "build")
+                semaphore.signal()
+            }
+            while semaphore.wait(timeout: .now() + 0.1) == .timedOut {
+                RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.1))
+            }
+            exit(0)
+        }
+
         // Handle --physical-test flag for live Mac control physical demonstration
         if CommandLine.arguments.contains("--physical-test") {
             let semaphore = DispatchSemaphore(value: 0)

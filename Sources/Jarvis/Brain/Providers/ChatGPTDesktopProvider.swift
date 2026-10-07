@@ -24,8 +24,9 @@ actor ChatGPTDesktopProvider: LLMProvider {
         .longContext,
         .structuredOutput
     ]
-    /// Measured lazily (C5); the previous hard-coded 1200 ms was a guess.
-    nonisolated let currentLatencyMs = 1200
+    /// Measured, not guessed: the rolling median of real turn latencies (C5),
+    /// floored at a documented 1200 ms fallback until samples exist.
+    nonisolated var currentLatencyMs: Int { ChatGPTBrainLatency.shared.median }
 
     /// Resolves the Agent Bridge control-plane API key. The bridge's ChatGPT
     /// brain endpoints always require it, so an absent key FAILS CLOSED (the
@@ -208,6 +209,7 @@ actor ChatGPTDesktopProvider: LLMProvider {
         continuation: AsyncThrowingStream<StreamChunk, any Error>.Continuation
     ) async {
         let requestId = "zia_gpt_\(UUID().uuidString)"
+        let started = ContinuousClock.now
         guard let streamURL = URL(string: "http://127.0.0.1:8765/api/chatgpt/complete?stream=true") else {
             continuation.yield(.error("Invalid stream URL"))
             continuation.finish()
@@ -259,6 +261,11 @@ actor ChatGPTDesktopProvider: LLMProvider {
         }
         await readTask.value
         watchdog.cancel()
+        if firstTokenSeen.value {
+            let elapsed = started.duration(to: .now)
+            let ms = Int(Double(elapsed.components.seconds) * 1000.0 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000.0)
+            ChatGPTBrainLatency.shared.record(ms)
+        }
     }
 
     private func setTransport(_ transport: String?) {
@@ -329,6 +336,7 @@ actor ChatGPTDesktopProvider: LLMProvider {
         options: [String: any Sendable]
     ) async throws -> String {
         let requestId = "zia_gpt_\(UUID().uuidString)"
+        let started = ContinuousClock.now
 
         var request = URLRequest(url: brainURL)
         request.httpMethod = "POST"
@@ -390,6 +398,9 @@ actor ChatGPTDesktopProvider: LLMProvider {
 
         cachedAvailability = (value: true, timestamp: .now)
         ChatGPTBrain.recordRequest()
+        let elapsed = started.duration(to: .now)
+        let ms = Int(Double(elapsed.components.seconds) * 1000.0 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000.0)
+        ChatGPTBrainLatency.shared.record(ms)
         return responseText
     }
 

@@ -1,5 +1,47 @@
 import Foundation
 
+/// A thread-safe rolling latency estimator. `ChatGPTDesktopProvider` is an
+/// actor whose `currentLatencyMs` must be `nonisolated`, so the measured samples
+/// live here rather than in isolated state.
+final class ChatGPTBrainLatency: @unchecked Sendable {
+    static let shared = ChatGPTBrainLatency(fallbackMs: 1200, capacity: 20)
+
+    private let lock = NSLock()
+    private var samples: [Int] = []
+    private let capacity: Int
+    private let fallbackMs: Int
+
+    init(fallbackMs: Int, capacity: Int) {
+        self.fallbackMs = fallbackMs
+        self.capacity = capacity
+    }
+
+    func record(_ ms: Int) {
+        guard ms >= 0 else { return }
+        lock.lock(); defer { lock.unlock() }
+        samples.append(ms)
+        if samples.count > capacity { samples.removeFirst(samples.count - capacity) }
+    }
+
+    /// Median of recorded samples, or the fallback guess when nothing is measured.
+    var median: Int {
+        lock.lock(); defer { lock.unlock() }
+        guard !samples.isEmpty else { return fallbackMs }
+        let sorted = samples.sorted()
+        return sorted[sorted.count / 2]
+    }
+
+    var sampleCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return samples.count
+    }
+
+    func reset() {
+        lock.lock(); defer { lock.unlock() }
+        samples.removeAll()
+    }
+}
+
 /// Opt-in configuration and local usage accounting for the ChatGPT brain.
 ///
 /// The brain is **OFF by default**: no request leaves the machine until the user

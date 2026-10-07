@@ -270,7 +270,8 @@ final class BrainRouter {
     func routeUnified(
         _ transcript: String,
         destination: OutputDestination = .visual,
-        environment: TaskEnvironmentContext? = nil
+        environment: TaskEnvironmentContext? = nil,
+        onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> UnifiedZiAResponse {
         let startTime = CFAbsoluteTimeGetCurrent()
         let decision = await decide(for: transcript, environment: environment)
@@ -279,6 +280,7 @@ final class BrainRouter {
         // Brain 0: Deterministic Reflex Path
         if decision.tier == .reflex {
             let response = try await AgentLoop.shared.run(goal: transcript)
+            onChunk?(response)
             let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
             return UnifiedZiAResponse(
                 content: response,
@@ -292,6 +294,7 @@ final class BrainRouter {
         // Multi-Step Planner Path (if required by intent)
         if decision.requiresPlanning {
             let response = try await AgentLoop.shared.run(goal: transcript)
+            onChunk?(response)
             let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
             return UnifiedZiAResponse(
                 content: response,
@@ -310,14 +313,6 @@ final class BrainRouter {
             environment: environment
         )
 
-        let category: IntentClassifier.IntentCategory
-        switch decision.tier {
-        case .strong, .deep:
-            category = .deepReasoning
-        case .fast, .localFallback, .reflex:
-            category = .conversation
-        }
-
         let isDeep = decision.tier == .deep
         let sensitivity = DataClassifier.shared.classify(transcript)
         let requestContext = ChatGPTRequestContext(
@@ -332,16 +327,19 @@ final class BrainRouter {
         var actualProvider = decision.suggestedProviderID
 
         do {
-            finalResponse = try await ProviderManager.shared.executeWithStreamingFallback(
+            let result = try await ProviderManager.shared.executeWithStreamingFallback(
                 messages: messages,
-                category: category,
+                tier: decision.tier,
                 context: requestContext,
-                onChunk: nil
+                onChunk: onChunk
             )
+            finalResponse = result.response
+            actualProvider = result.providerID
         } catch {
             // Automatic escalation/fallback if primary attempt throws
             JarvisLogger.brain.warning("Primary tier [\(decision.tier.rawValue)] failed: \(error.localizedDescription). Falling back through AgentLoop.")
             finalResponse = try await AgentLoop.shared.run(goal: transcript)
+            onChunk?(finalResponse)
             actualProvider = "agent-loop-fallback"
         }
 
@@ -353,6 +351,31 @@ final class BrainRouter {
             executionTimeMs: elapsed,
             decision: decision
         )
+    }
+
+    /// Stream unified response tokens incrementally.
+    func routeStream(
+        _ transcript: String,
+        destination: OutputDestination = .visual,
+        environment: TaskEnvironmentContext? = nil
+    ) -> AsyncThrowingStream<String, any Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    _ = try await self.routeUnified(
+                        transcript,
+                        destination: destination,
+                        environment: environment,
+                        onChunk: { chunk in
+                            continuation.yield(chunk)
+                        }
+                    )
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 
     /// Backward-compatible route method returning raw response string.

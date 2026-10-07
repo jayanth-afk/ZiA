@@ -512,7 +512,8 @@ final class DiagnosticsSettingsModel: ObservableObject {
     func load() async {
         guard !refreshing else { return }
         refreshing = true
-        report = await HealthService.shared.report()
+        // Explicit user action: perform the bounded live model probes too.
+        report = await HealthService.shared.report(verifyExternalModels: true)
         refreshing = false
     }
 

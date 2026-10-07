@@ -74,7 +74,12 @@ final class HealthService {
 
     private init() {}
 
-    func report() async -> HealthReport {
+    /// - Parameter verifyExternalModels: when true, performs bounded live probes
+    ///   of external provider model availability (currently Groq `/models`).
+    ///   Defaults to false so deterministic callers (self-test, the fast
+    ///   `check health` route) never touch the network. The Diagnostics pane
+    ///   opts in explicitly.
+    func report(verifyExternalModels: Bool = false) async -> HealthReport {
         var components: [ComponentHealth] = []
         var degraded: [String] = []
 
@@ -116,6 +121,25 @@ final class HealthService {
             let normal = LocalModelCatalog.resolveModelID(configured: Config.shared.localNormalModel)
             add("local-models", .healthy,
                 "Cached: \(cachedLocal.joined(separator: ", ")). Effective reflex/normal: \(reflex)/\(normal).")
+        }
+
+        // 1c. External provider MODEL availability — only when explicitly
+        // requested. A configured key is not proof the configured model exists;
+        // Groq's default model is not available to every account, so this is
+        // reported with the exact reason instead of being assumed healthy.
+        if verifyExternalModels {
+            let groq = ProviderManager.shared.groq
+            if await groq.hasAPIKey {
+                let model = await groq.resolvedModel
+                switch await groq.verifyModelAvailability() {
+                case .available:
+                    add("groq-model", .healthy, "Groq model '\(model)' confirmed available via /models.")
+                case .unavailable(let reason):
+                    add("groq-model", .degraded,
+                        "Groq model '\(model)' unavailable: \(reason)",
+                        degradation: "cloud acceleration unavailable — \(reason)")
+                }
+            }
         }
 
         // 2. Durable task state.

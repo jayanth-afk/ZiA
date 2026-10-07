@@ -26,6 +26,9 @@ public final class ZiaProviderModel: ObservableObject {
     @Published public private(set) var totalCount = 0
     @Published public private(set) var isDegraded = false
     @Published public private(set) var lastChecked: Date?
+    /// Exact Groq model status when a key is configured ("model 'x': ready" or
+    /// "model 'x': <reason>"). nil when Groq is not configured/available.
+    @Published public private(set) var groqModelNote: String?
 
     private init() {}
 
@@ -71,6 +74,22 @@ public final class ZiaProviderModel: ObservableObject {
         totalCount = summary.totalCount
         isDegraded = summary.isDegraded
         lastChecked = Date()
+
+        // Surface the Groq model's real availability when it is configured. The
+        // configured default model is NOT available to every account, so this is
+        // verified against /models (bounded) rather than assumed.
+        if summary.statuses.first(where: { $0.id == "groq" })?.isAvailable == true {
+            let groq = ProviderManager.shared.groq
+            let model = await groq.resolvedModel
+            switch await groq.verifyModelAvailability() {
+            case .available:
+                groqModelNote = "Groq model '\(model)': ready"
+            case .unavailable(let reason):
+                groqModelNote = "Groq model '\(model)': \(reason)"
+            }
+        } else {
+            groqModelNote = nil
+        }
         isRefreshing = false
     }
 
@@ -118,6 +137,13 @@ public struct ZiaProviderCard: View {
                     if index > 0 { ZiaDivider() }
                     providerRow(row)
                 }
+            }
+
+            if let note = model.groqModelNote {
+                Text(note)
+                    .font(ZiaType.caption)
+                    .foregroundStyle(note.contains(": ready") ? ZiaColors.textSecondary : ZiaColors.warning)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if let primary = model.primaryAvailable {

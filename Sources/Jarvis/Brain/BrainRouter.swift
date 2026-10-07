@@ -312,16 +312,33 @@ final class BrainRouter {
         var finalResponse = ""
         var actualProvider = decision.suggestedProviderID
 
+        // Track whether the caller already saw part of an answer. If it did, a
+        // fallback would append a SECOND answer to the first, violating the "one
+        // ZiA response" invariant. In that case we surface the failure truthfully
+        // instead of emitting a mixed response.
+        let emittedVisibleText = LockedValue<Bool>(false)
+        let trackedChunk: (@Sendable (String) -> Void)? = onChunk.map { downstream in
+            { text in
+                if !text.isEmpty { emittedVisibleText.value = true }
+                downstream(text)
+            }
+        }
+
         do {
             let result = try await ProviderManager.shared.executeWithStreamingFallback(
                 messages: messages,
                 tier: decision.tier,
                 context: requestContext,
-                onChunk: onChunk
+                onChunk: trackedChunk
             )
             finalResponse = result.response
             actualProvider = result.providerID
         } catch {
+            if emittedVisibleText.value {
+                // Partial output already reached the user; do not append a second answer.
+                JarvisLogger.brain.warning("Primary tier [\(decision.tier.rawValue)] failed after partial output: \(error.localizedDescription). Not falling back (would mix answers).")
+                throw error
+            }
             // Automatic escalation/fallback if primary attempt throws
             JarvisLogger.brain.warning("Primary tier [\(decision.tier.rawValue)] failed: \(error.localizedDescription). Falling back through AgentLoop.")
             finalResponse = try await AgentLoop.shared.run(goal: transcript)

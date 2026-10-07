@@ -176,8 +176,7 @@ enum LocalVsGroqBenchmark {
         print("╔══════════════════════════════════════════════════════════════╗")
         print("║   ZiA — LOCAL (Qwen2.5-0.5B) vs GROQ (\(groqModel)) BENCH")
         print("╚══════════════════════════════════════════════════════════════╝")
-        print("tasks: \(tasks.count) · per-task timeout: \(Int(perTaskTimeout))s · wall cap: \(Int(wallCap))s")
-        print("groq model requested: \(groqModel) (configured default \(GroqProvider.fallbackModel) is unavailable to this account)")
+        print("groq model requested: \(groqModel) (default fast: \(GroqProvider.fallbackModel))")
 
         // Model is INJECTED into the provider; persisted Config is never touched.
         let local = MLXProvider(id: "bench-local", modelSlot: "normal")

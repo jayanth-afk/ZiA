@@ -62,7 +62,7 @@ public final class ContextBuilder: @unchecked Sendable {
 
     func buildContext(messages: [Message], tokenLimit: Int = 4000) -> [Message] {
         let suppliedSystem = messages.first(where: { $0.role == .system })?.content ?? ""
-        let prompt = "You are JARVIS, a macOS assistant. Never claim an action succeeded without evidence.\n\(suppliedSystem)"
+        let prompt = "You are ZiA (JARVIS), a macOS assistant. Never claim an action succeeded without evidence.\n\(suppliedSystem)"
         let budget = max(1, tokenLimit)
         var selected: [Message] = []
         var tokens = max(1, (prompt.count + 3) / 4)

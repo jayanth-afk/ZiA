@@ -134,6 +134,7 @@ private extension KeychainManager.APIService {
         case .google: return "google"
         case .groq: return "groq"
         case .openrouter: return "openrouter"
+        case .agentBridge: return "chatgpt-desktop"
         case .elevenlabs, .tavily: return rawValue
         }
     }

@@ -19,6 +19,27 @@ actor ChatGPTDesktopProvider: LLMProvider {
     ]
     nonisolated let currentLatencyMs = 1200
 
+    /// Resolves the Agent Bridge control-plane API key. The bridge's ChatGPT
+    /// brain endpoints always require it, so an absent key FAILS CLOSED (the
+    /// brain is disabled) rather than sending an unauthenticated request.
+    /// Injectable so tests pin both the configured and missing paths without
+    /// touching the real keychain.
+    private let apiKeyProvider: @Sendable () -> String?
+
+    init(apiKeyProvider: @escaping @Sendable () -> String? = {
+        KeychainManager.shared.getAPIKey(for: .agentBridge)
+    }) {
+        self.apiKeyProvider = apiKeyProvider
+    }
+
+    /// The bridge key, or nil when the ChatGPT brain is not configured.
+    nonisolated func bridgeKey() -> String? { apiKeyProvider() }
+
+    /// Attach the control-plane key. Never logs or echoes the value.
+    private func applyBridgeAuth(_ request: inout URLRequest) {
+        if let key = bridgeKey() { request.setValue(key, forHTTPHeaderField: "x-api-key") }
+    }
+
     private let chatgptHealthURL = URL(string: "http://127.0.0.1:8765/api/chatgpt/health")!
     private let fallbackHealthURL = URL(string: "http://127.0.0.1:8765/health")!
     private let brainURL = URL(string: "http://127.0.0.1:8765/api/chatgpt/complete")!
@@ -42,6 +63,7 @@ actor ChatGPTDesktopProvider: LLMProvider {
         var request = URLRequest(url: chatgptHealthURL)
         request.httpMethod = "GET"
         request.timeoutInterval = 1.2
+        applyBridgeAuth(&request)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             if let http = response as? HTTPURLResponse {
@@ -59,6 +81,7 @@ actor ChatGPTDesktopProvider: LLMProvider {
             var fallbackReq = URLRequest(url: fallbackHealthURL)
             fallbackReq.httpMethod = "GET"
             fallbackReq.timeoutInterval = 0.8
+            applyBridgeAuth(&fallbackReq)
             if let (_, resp) = try? await URLSession.shared.data(for: fallbackReq),
                let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) {
                 return true
@@ -72,6 +95,9 @@ actor ChatGPTDesktopProvider: LLMProvider {
     /// `probe: false` never touches the network — it returns the fresh cached
     /// probe or a truthful `.unverified`. C3 extends this with key + opt-in gates.
     func verifiedAvailability(probe: Bool) async -> ProviderAvailability {
+        guard bridgeKey() != nil else {
+            return .unavailable(reason: "Agent Bridge API key is not configured; ChatGPT brain is disabled")
+        }
         if probe {
             return await isAvailable
                 ? .available
@@ -130,10 +156,17 @@ actor ChatGPTDesktopProvider: LLMProvider {
             return
         }
 
+        guard bridgeKey() != nil else {
+            continuation.yield(.error("Agent Bridge API key is not configured; ChatGPT brain is disabled"))
+            continuation.finish()
+            return
+        }
+
         var request = URLRequest(url: streamURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = timeoutSeconds
+        applyBridgeAuth(&request)
 
         let body: [String: Any] = [
             "messages": messages.map {
@@ -203,12 +236,16 @@ actor ChatGPTDesktopProvider: LLMProvider {
         messages: [Message],
         options: [String: any Sendable]
     ) async throws -> String {
+        guard bridgeKey() != nil else {
+            throw ProviderError.unavailable("Agent Bridge API key is not configured; ChatGPT brain is disabled")
+        }
         let requestId = "zia_gpt_\(UUID().uuidString)"
 
         var request = URLRequest(url: brainURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.timeoutInterval = timeoutSeconds
+        applyBridgeAuth(&request)
 
         let body: [String: Any] = [
             "messages": messages.map {

@@ -60,6 +60,10 @@ final class KeychainManager: @unchecked Sendable {
         case elevenlabs = "jarvis.elevenlabs.api_key"
         case tavily = "jarvis.tavily.api_key"
         case openrouter = "jarvis.openrouter.api_key"
+        /// Control-plane key for the local Agent Bridge. The bridge's ChatGPT
+        /// brain endpoints (`/api/chatgpt/*`) require it; absent ⇒ the brain is
+        /// unavailable rather than open to any local caller.
+        case agentBridge = "jarvis.agentbridge.api_key"
 
         var displayName: String {
             switch self {
@@ -70,6 +74,7 @@ final class KeychainManager: @unchecked Sendable {
             case .elevenlabs: return "ElevenLabs"
             case .tavily: return "Tavily Search"
             case .openrouter: return "OpenRouter"
+            case .agentBridge: return "Agent Bridge (ChatGPT brain)"
             }
         }
     }

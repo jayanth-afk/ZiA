@@ -83,6 +83,7 @@ final class ProviderManager {
     let groqFast = GroqProvider(id: "groq", modelSlot: "fast")
     let groqStrong = GroqProvider(id: "groq-strong", modelSlot: "strong")
     let cerebras = CerebrasProvider()
+    let sambanova = SambaNovaProvider()
     var groq: GroqProvider { groqFast }
     let openrouter = OpenRouterProvider()
     let chatgptDesktop = ChatGPTDesktopProvider()
@@ -236,7 +237,7 @@ final class ProviderManager {
 
     /// All registered providers in deterministic order.
     var allProviders: [any LLMProvider] {
-        [claude, gemini, openai, groqFast, groqStrong, cerebras, openrouter, chatgptDesktop, localNormal, localReflex]
+        [claude, gemini, openai, groqFast, groqStrong, cerebras, sambanova, openrouter, chatgptDesktop, localNormal, localReflex]
     }
 
     /// Record an observed provider failure. Trips the circuit breaker once the
@@ -595,13 +596,13 @@ final class ProviderManager {
         let defaultChain: [any LLMProvider]
         switch category {
         case .coding:
-            defaultChain = [chatgptDesktop, groqStrong, cerebras, claude, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqStrong, cerebras, sambanova, claude, openai, openrouter, localNormal, localReflex]
         case .deepReasoning:
-            defaultChain = [chatgptDesktop, groqStrong, cerebras, claude, gemini, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqStrong, cerebras, sambanova, claude, gemini, openai, openrouter, localNormal, localReflex]
         case .webSearch:
-            defaultChain = [chatgptDesktop, groqFast, groqStrong, cerebras, openrouter, gemini, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqFast, groqStrong, cerebras, sambanova, openrouter, gemini, localNormal, localReflex]
         case .conversation, .systemQuery:
-            defaultChain = [chatgptDesktop, groqFast, groqStrong, cerebras, claude, gemini, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqFast, groqStrong, cerebras, sambanova, claude, gemini, openai, openrouter, localNormal, localReflex]
         }
 
         let prefs = PreferenceStore.shared.current
@@ -630,9 +631,9 @@ final class ProviderManager {
         case .fast:
             defaultChain = [groqFast, groqStrong, cerebras, localNormal, localReflex]
         case .strong:
-            defaultChain = [groqStrong, cerebras, chatgptDesktop, claude, openai, openrouter, localNormal, localReflex]
+            defaultChain = [groqStrong, cerebras, sambanova, chatgptDesktop, claude, openai, openrouter, localNormal, localReflex]
         case .deep:
-            defaultChain = [chatgptDesktop, groqStrong, cerebras, claude, gemini, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqStrong, cerebras, sambanova, claude, gemini, openai, openrouter, localNormal, localReflex]
         case .localFallback:
             defaultChain = [localNormal, localReflex]
         }

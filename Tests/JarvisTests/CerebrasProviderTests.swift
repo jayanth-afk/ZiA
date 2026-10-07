@@ -42,6 +42,23 @@ final class CerebrasMockURLProtocol: URLProtocol {
         HTTPURLResponse(url: url, statusCode: code, httpVersion: "HTTP/1.1", headerFields: headers)!
     }
 
+    /// URLSession hands `URLProtocol` an upload body as a stream, not `httpBody`.
+    private func bodyData(of request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        let size = 1024
+        var buffer = [UInt8](repeating: 0, count: size)
+        while stream.hasBytesAvailable {
+            let read = stream.read(&buffer, maxLength: size)
+            if read <= 0 { break }
+            data.append(buffer, count: read)
+        }
+        return data
+    }
+
     /// Collects text plus any terminal error / rate-limit signal.
     private func collect(_ stream: AsyncThrowingStream<StreamChunk, any Error>)
         async -> (text: String, error: String?, retryAfter: TimeInterval?) {
@@ -101,7 +118,7 @@ final class CerebrasMockURLProtocol: URLProtocol {
         // request (not just that it returns something).
         nonisolated(unsafe) var seenBody: [String: Any]?
         CerebrasMockURLProtocol.handler = { request in
-            if let body = request.httpBody,
+            if let body = self.bodyData(of: request),
                let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
                 seenBody = json
             }

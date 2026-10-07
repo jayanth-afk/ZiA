@@ -33,7 +33,7 @@ final class ConversationManager {
         messages = [
             Message(
                 role: .system,
-                content: "You are JARVIS, a voice-first macOS assistant. Answer the user's actual request directly, use relevant conversation context, and be concise by default (one or two spoken sentences). Take authorized actions instead of merely describing how; never claim an action succeeded without evidence. Ask one brief clarifying question only when ambiguity changes the action or answer. Avoid greetings and filler."
+                content: ZiaIdentity.systemPrompt(for: .fast, destination: .voice)
             )
         ]
         persistedIDs.removeAll()

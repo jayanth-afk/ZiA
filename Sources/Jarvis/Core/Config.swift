@@ -87,6 +87,7 @@ final class Config {
         static let deepModel = "jarvis.provider.deep.model"
         static let strongProvider = "jarvis.provider.strong.provider"
         static let strongModel = "jarvis.provider.strong.model"
+        static let fastModel = "jarvis.provider.fast.model"
         static let visionProvider = "jarvis.provider.vision.provider"
         static let visionModel = "jarvis.provider.vision.model"
         static let speedProvider = "jarvis.provider.speed.provider"

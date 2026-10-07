@@ -78,7 +78,7 @@ actor OpenAIProvider: LLMProvider {
                         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
                         let errorMsg = String(data: data, encoding: .utf8) ?? "HTTP \(status)"
                         if status == 429 {
-                            continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: httpResponse)))
+                            continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: response as? HTTPURLResponse)))
                         } else {
                             continuation.yield(.error("OpenAI API error: \(errorMsg)"))
                         }

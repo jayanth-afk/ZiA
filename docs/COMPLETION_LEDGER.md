@@ -25,7 +25,8 @@ Baseline at ledger creation (`77a5799`):
 | 0.1 | Orient & baseline | DONE | — | build OK · 254/0 · 1067/0/0 · no `@State` | baseline tail captured this session (see summary) |
 | 0.2 | Capability audit of ToolRegistry | DONE | `12c4298` | build OK · 254/0 · 1067/0/0 | `docs/CAPABILITY_AUDIT.md` |
 | 1.1 | Docs truth refresh | DONE | `229d149` | build OK · 254/0 · 1067/0/0 · no `@State` | `PROJECT_CONTEXT.md`, `ZIA_ARCHITECTURE.md` |
-| 1.2 | Repo hygiene classification | DONE | _(this commit)_ | build OK · 254/0 · 1067/0/0 | `docs/REPO_HYGIENE.md`, `.gitignore` |
+| 1.2 | Repo hygiene classification | DONE | `4f979f2` | build OK · 254/0 · 1067/0/0 | `docs/REPO_HYGIENE.md`, `.gitignore` |
+| 1.3 | Stale branch diff (read-only) | DONE | _(this commit)_ | build OK · 254/0 · 1067/0/0 | `docs/STALE_BRANCHES.md` |
 
 ## APPROVAL QUEUE (owner-only destructive/licence-sensitive actions)
 

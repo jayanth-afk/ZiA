@@ -1,19 +1,353 @@
 import Foundation
 
-/// Master router connecting DeterministicRouter -> IntentClassifier -> Local / Cloud Providers.
-/// Measures microsecond latency at every stage using PipelineTimer.
+/// Structured response from the unified ZiA intelligence pipeline.
+public struct UnifiedZiAResponse: Sendable {
+    /// Full, formatted response text for visual display.
+    public let content: String
+    /// Natural, clean spoken response text for speech synthesis (TTS).
+    public let spokenContent: String
+    /// The brain tier that executed the reasoning.
+    public let tier: BrainTier
+    /// The provider ID that served the turn.
+    public let providerID: String
+    /// End-to-end execution latency in milliseconds.
+    public let executionTimeMs: Double
+    /// The explainable routing decision.
+    public let decision: BrainRoutingDecision
+
+    public init(
+        content: String,
+        spokenContent: String? = nil,
+        tier: BrainTier,
+        providerID: String,
+        executionTimeMs: Double,
+        decision: BrainRoutingDecision
+    ) {
+        self.content = content
+        self.spokenContent = spokenContent ?? SpokenResponseLayer.cleanForSpeech(content)
+        self.tier = tier
+        self.providerID = providerID
+        self.executionTimeMs = executionTimeMs
+        self.decision = decision
+    }
+}
+
+/// Explainable routing decision describing which brain was chosen and WHY.
+public struct BrainRoutingDecision: Sendable, Equatable {
+    public let tier: BrainTier
+    public let suggestedProviderID: String
+    public let reason: String
+    public let isDeterministic: Bool
+    public let requiresPlanning: Bool
+    public let escalated: Bool
+
+    public init(
+        tier: BrainTier,
+        suggestedProviderID: String,
+        reason: String,
+        isDeterministic: Bool,
+        requiresPlanning: Bool,
+        escalated: Bool = false
+    ) {
+        self.tier = tier
+        self.suggestedProviderID = suggestedProviderID
+        self.reason = reason
+        self.isDeterministic = isDeterministic
+        self.requiresPlanning = requiresPlanning
+        self.escalated = escalated
+    }
+}
+
+/// Master Multi-Dimensional Brain Router for ZiA.
+///
+/// Implements the Target Brain Fleet:
+///   Brain 0 — Deterministic Local Reflex Layer (zero-LLM)
+///   Brain 1 — Fast Normal Reasoning (Groq 20B candidate)
+///   Brain 2 — Strong Reasoning (Groq 120B candidate)
+///   Brain 3 — Premium Deep Reasoning (ChatGPT Desktop / Agent Bridge)
+///   Brain 4 — Local MLX Model (offline & privacy fallback)
+///
+/// Routing considers:
+/// - Deterministic nature (system commands, calculator, direct answer)
+/// - Task continuity (continuation of active goals)
+/// - Privacy sensitivity (sensitive content stays on-device)
+/// - Complexity & reasoning depth (coding, debugging, architecture)
+/// - Provider health and availability
 @MainActor
-final class BrainRouter {
-    static let shared = BrainRouter()
+public final class BrainRouter {
+    public static let shared = BrainRouter()
 
     private init() {}
 
     // MARK: - Public API
 
-    /// Route a transcript through the JARVIS brain pipeline.
-    func route(_ transcript: String) async throws -> String {
-        let response = try await AgentLoop.shared.run(goal: transcript)
-        JarvisLogger.brain.info("BrainRouter completed query through the authoritative AgentLoop")
-        return response
+    /// Analyze a user request and determine the optimal BrainTier.
+    public func decide(
+        for transcript: String,
+        environment: TaskEnvironmentContext? = nil
+    ) async -> BrainRoutingDecision {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return BrainRoutingDecision(
+                tier: .reflex,
+                suggestedProviderID: "deterministic",
+                reason: "empty input",
+                isDeterministic: true,
+                requiresPlanning: false
+            )
+        }
+
+        // 1. Emergency stop check (Immediate deterministic halt)
+        if EmergencyInterrupt.shared.checkForEmergency(in: trimmed) {
+            return BrainRoutingDecision(
+                tier: .reflex,
+                suggestedProviderID: "deterministic",
+                reason: "emergency stop keyword detected",
+                isDeterministic: true,
+                requiresPlanning: false
+            )
+        }
+
+        // 2. Deterministic reflex rules (open app, volume, mute, web search prefix)
+        if DeterministicRouter.shared.match(trimmed) != nil {
+            return BrainRoutingDecision(
+                tier: .reflex,
+                suggestedProviderID: "deterministic",
+                reason: "matches deterministic system action pattern (zero-LLM reflex)",
+                isDeterministic: true,
+                requiresPlanning: false
+            )
+        }
+
+        // 3. Deterministic direct answers (time, date, identity, calculator)
+        if DirectAnswerRouter.shared.evaluateDirectAnswer(trimmed) != nil {
+            return BrainRoutingDecision(
+                tier: .reflex,
+                suggestedProviderID: "deterministic",
+                reason: "resolved by deterministic direct answer / local calculator",
+                isDeterministic: true,
+                requiresPlanning: false
+            )
+        }
+
+        // 4. Privacy Sensitivity Check (DataClassifier)
+        let sensitivity = DataClassifier.shared.classify(trimmed)
+        let isLocalOnly = PreferenceStore.shared.current.localOnly || sensitivity == .sensitive || sensitivity == .highlySensitive
+        if isLocalOnly {
+            return BrainRoutingDecision(
+                tier: .localFallback,
+                suggestedProviderID: "mlx-normal",
+                reason: sensitivity == .sensitive || sensitivity == .highlySensitive
+                    ? "data sensitivity classified as \(sensitivity.rawValue); constrained to local processing"
+                    : "user preference set to localOnly",
+                isDeterministic: false,
+                requiresPlanning: false
+            )
+        }
+
+        // 5. Task Continuity Check
+        if let continuity = TaskContinuity.query(for: trimmed) {
+            if continuity == .continueTask, TaskStateMachine.shared.isPersistenceAvailable {
+                return BrainRoutingDecision(
+                    tier: .reflex,
+                    suggestedProviderID: "deterministic",
+                    reason: "task continuity query resumes authoritative active task",
+                    isDeterministic: true,
+                    requiresPlanning: true
+                )
+            }
+        }
+
+        // 6. Deep Architecture / Complex Reasoning Signals
+        let lower = trimmed.lowercased()
+        let isArchitectureOrSystemDesign = lower.contains("architecture")
+            || lower.contains("redesign")
+            || lower.contains("fundamentally better")
+            || lower.contains("trade-off")
+            || lower.contains("tradeoff")
+            || lower.contains("system-wide")
+            || lower.contains("deeply about")
+
+        // 7. Coding & Technical Debugging Signals
+        let isCodingTask = lower.contains("function")
+            || lower.contains("algorithm")
+            || lower.contains("bug")
+            || lower.contains("fix the")
+            || lower.contains("stack trace")
+            || lower.contains("refactor")
+            || lower.contains("swift")
+            || lower.contains("python")
+            || lower.contains("compile")
+            || lower.contains("crash")
+
+        // 8. Intent Engine Classification
+        let ziaIntent = IntentEngine.classify(trimmed)
+
+        // ── TIER SELECTION LOGIC ──
+
+        // Candidate 3: Premium ChatGPT Reasoning (Brain 3)
+        // For deep architecture, high ambiguity, and profound multi-step analysis
+        if isArchitectureOrSystemDesign {
+            let chatgptProvider = ProviderManager.shared.chatgptDesktop
+            let isAvailable = await ProviderManager.shared.isProviderAvailable(chatgptProvider)
+            let isQuarantined = ProviderManager.shared.isQuarantined(chatgptProvider.id)
+
+            if isAvailable && !isQuarantined && !ChatGPTBrain.isDailyCapReached() {
+                return BrainRoutingDecision(
+                    tier: .deep,
+                    suggestedProviderID: "chatgpt-desktop",
+                    reason: "deep architectural analysis requires premium reasoning brain",
+                    isDeterministic: false,
+                    requiresPlanning: ziaIntent.requiresPlanning
+                )
+            }
+        }
+
+        // Candidate 2: Strong Reasoning (Brain 2 - Groq 120B)
+        // For complex coding, debugging, multi-step planning, algorithms
+        if isCodingTask || ziaIntent.kind == .codingTask || ziaIntent.kind == .multiStepProject || trimmed.count > 500 {
+            let groqStrong = ProviderManager.shared.groqStrong
+            let isStrongAvailable = await ProviderManager.shared.isProviderAvailable(groqStrong)
+            if isStrongAvailable && !ProviderManager.shared.isQuarantined(groqStrong.id) {
+                return BrainRoutingDecision(
+                    tier: .strong,
+                    suggestedProviderID: groqStrong.id,
+                    reason: "complex coding or multi-step reasoning task routed to strong brain (120B)",
+                    isDeterministic: false,
+                    requiresPlanning: ziaIntent.requiresPlanning
+                )
+            }
+        }
+
+        // Candidate 1: Fast Normal Reasoning (Brain 1 - Groq 20B)
+        // For everyday conversations, explanations, summaries, low-latency turns
+        let groqFast = ProviderManager.shared.groqFast
+        let isFastAvailable = await ProviderManager.shared.isProviderAvailable(groqFast)
+        if isFastAvailable && !ProviderManager.shared.isQuarantined(groqFast.id) {
+            return BrainRoutingDecision(
+                tier: .fast,
+                suggestedProviderID: groqFast.id,
+                reason: "standard conversational / reasoning turn routed to fast brain (20B) for ultra-low latency",
+                isDeterministic: false,
+                requiresPlanning: ziaIntent.requiresPlanning
+            )
+        }
+
+        // If Groq Fast is unavailable, try Groq Strong
+        let groqStrong = ProviderManager.shared.groqStrong
+        if await ProviderManager.shared.isProviderAvailable(groqStrong) && !ProviderManager.shared.isQuarantined(groqStrong.id) {
+            return BrainRoutingDecision(
+                tier: .strong,
+                suggestedProviderID: groqStrong.id,
+                reason: "fast brain unavailable; escalating to strong brain",
+                isDeterministic: false,
+                requiresPlanning: ziaIntent.requiresPlanning,
+                escalated: true
+            )
+        }
+
+        // Candidate 4: Local MLX Fallback (Brain 4)
+        return BrainRoutingDecision(
+            tier: .localFallback,
+            suggestedProviderID: "mlx-normal",
+            reason: "cloud reasoning brains unavailable; routed to resilient on-device MLX fallback",
+            isDeterministic: false,
+            requiresPlanning: ziaIntent.requiresPlanning
+        )
+    }
+
+    /// Primary routing method returning unified response with spoken & visual formats.
+    public func routeUnified(
+        _ transcript: String,
+        destination: OutputDestination = .visual,
+        environment: TaskEnvironmentContext? = nil
+    ) async throws -> UnifiedZiAResponse {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        let decision = await decide(for: transcript, environment: environment)
+        JarvisLogger.brain.info("BrainRouter selected tier [\(decision.tier.rawValue)] provider [\(decision.suggestedProviderID)]: \(decision.reason)")
+
+        // Brain 0: Deterministic Reflex Path
+        if decision.tier == .reflex {
+            let response = try await AgentLoop.shared.run(goal: transcript)
+            let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
+            return UnifiedZiAResponse(
+                content: response,
+                tier: .reflex,
+                providerID: "deterministic",
+                executionTimeMs: elapsed,
+                decision: decision
+            )
+        }
+
+        // Multi-Step Planner Path (if required by intent)
+        if decision.requiresPlanning {
+            let response = try await AgentLoop.shared.run(goal: transcript)
+            let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
+            return UnifiedZiAResponse(
+                content: response,
+                tier: decision.tier,
+                providerID: decision.suggestedProviderID,
+                executionTimeMs: elapsed,
+                decision: decision
+            )
+        }
+
+        // Direct Reasoning Dispatch via ContextCompiler & ProviderManager Fallback Ladder
+        let messages = ContextCompiler.shared.compile(
+            goal: transcript,
+            tier: decision.tier,
+            destination: destination,
+            environment: environment
+        )
+
+        let category: IntentClassifier.IntentCategory
+        switch decision.tier {
+        case .strong, .deep:
+            category = .deepReasoning
+        case .fast, .localFallback, .reflex:
+            category = .conversation
+        }
+
+        let isDeep = decision.tier == .deep
+        let sensitivity = DataClassifier.shared.classify(transcript)
+        let requestContext = ChatGPTRequestContext(
+            isUserPresent: true,
+            needsDeepReasoning: isDeep,
+            isExtractionPrompt: false,
+            isScheduledOrBackground: false,
+            sensitivity: sensitivity
+        )
+
+        var finalResponse = ""
+        var actualProvider = decision.suggestedProviderID
+
+        do {
+            finalResponse = try await ProviderManager.shared.executeWithStreamingFallback(
+                messages: messages,
+                category: category,
+                context: requestContext,
+                onChunk: nil
+            )
+        } catch {
+            // Automatic escalation/fallback if primary attempt throws
+            JarvisLogger.brain.warning("Primary tier [\(decision.tier.rawValue)] failed: \(error.localizedDescription). Falling back through AgentLoop.")
+            finalResponse = try await AgentLoop.shared.run(goal: transcript)
+            actualProvider = "agent-loop-fallback"
+        }
+
+        let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000.0
+        return UnifiedZiAResponse(
+            content: finalResponse,
+            tier: decision.tier,
+            providerID: actualProvider,
+            executionTimeMs: elapsed,
+            decision: decision
+        )
+    }
+
+    /// Backward-compatible route method returning raw response string.
+    public func route(_ transcript: String) async throws -> String {
+        let response = try await routeUnified(transcript)
+        return response.content
     }
 }

@@ -32,7 +32,7 @@ Baseline at ledger creation (`77a5799`):
 | 2.1 | Local vs Groq benchmark (executor R1) | DONE | `177d14a` | build OK · 270/0 · self-test 1067/0/0 · no `@State` | `Sources/Jarvis/Core/LocalVsGroqBenchmark.swift`, `Tests/JarvisTests/LocalVsGroqBenchmarkScoringTests.swift`, `build/local-vs-groq-benchmark.{md,raw.txt}` |
 | 2.1b | Groq provider fixes (executor R2) | DONE | `571c6a6` | build OK · 277/0 · self-test 1067/0/0 · no `@State` | `Sources/Jarvis/Brain/Providers/GroqProvider.swift` (real SSE, bounded `/models` verify, injectable session/key), `HealthService.report(verifyExternalModels:)`, `ZiaProviderModel.groqModelNote`, `Tests/JarvisTests/GroqProviderTests.swift` |
 | 2.1c | Keychain bounds (executor R3) | DONE | `5cb04a1` | build OK · 282/0 · self-test 1067/0/0 · no `@State` | `Sources/Jarvis/Core/KeychainManager.swift` (bounded fail-closed reads, injectable backend), `Tests/JarvisTests/KeychainBoundsTests.swift` |
-| 2.1d | Loose ends (executor R4) | DONE | _(this commit)_ | build OK · 282/0 · self-test 1067/0/0 · no `@State` | `docs/OWNER_CHECKLIST.md` (new); tool count reconciled; hazard/screenshot/host notes recorded below |
+| 2.1d | Loose ends (executor R4) | DONE | `0826c67` | build OK · 282/0 · self-test 1067/0/0 · no `@State` | `docs/OWNER_CHECKLIST.md` (new); tool count reconciled; hazard/screenshot/host notes recorded below |
 
 ## APPROVAL QUEUE (owner-only destructive/licence-sensitive actions)
 

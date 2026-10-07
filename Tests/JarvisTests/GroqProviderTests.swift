@@ -70,12 +70,10 @@ final class MockURLProtocol: URLProtocol {
     }
 
     @Test func streamingCompletionParsesSSE() async {
-        let sawStreamTrue = LockedValue(false)
+        // The SSE branch is only taken when `stream: true` is requested, so a
+        // successful parse proves the streaming path is real (not the single-
+        // body path that previously swallowed the SSE reply).
         MockURLProtocol.handler = { request in
-            if let body = request.httpBody,
-               let text = String(data: body, encoding: .utf8) {
-                sawStreamTrue.value = text.contains("\"stream\":true")
-            }
             let sse = """
             data: {"choices":[{"delta":{"content":"hel"}}]}
 

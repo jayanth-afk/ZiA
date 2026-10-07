@@ -171,7 +171,7 @@ actor CerebrasProvider: LLMProvider {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let body = String(data: data, encoding: .utf8) ?? ""
             if status == 429 {
-                continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: http)))
+                continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: response as? HTTPURLResponse)))
             } else {
                 continuation.yield(.error("Cerebras API error: HTTP \(status): \(body.prefix(300))"))
             }
@@ -202,7 +202,7 @@ actor CerebrasProvider: LLMProvider {
                 if body.count > 300 { break }
             }
             if status == 429 {
-                continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: http)))
+                continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: response as? HTTPURLResponse)))
             } else {
                 continuation.yield(.error("Cerebras API error: HTTP \(status): \(body.prefix(300))"))
             }

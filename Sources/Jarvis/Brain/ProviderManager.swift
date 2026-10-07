@@ -536,7 +536,7 @@ final class ProviderManager {
         case .webSearch:
             defaultChain = [chatgptDesktop, groqFast, groqStrong, cerebras, openrouter, gemini, localNormal, localReflex]
         case .conversation, .systemQuery:
-            defaultChain = [chatgptDesktop, groqFast, groqStrong, claude, gemini, openai, openrouter, localNormal, localReflex]
+            defaultChain = [chatgptDesktop, groqFast, groqStrong, cerebras, claude, gemini, openai, openrouter, localNormal, localReflex]
         }
 
         let prefs = PreferenceStore.shared.current

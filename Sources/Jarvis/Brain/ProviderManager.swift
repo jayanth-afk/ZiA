@@ -11,9 +11,26 @@ struct ProviderStatus: Sendable {
     let availability: ProviderAvailability
     /// `true` only when the provider is verified-available right now.
     let isVerified: Bool
+    /// Consecutive failures since the last success (drives the circuit breaker).
     let failureCount: Int
     let lastError: String?
     let capabilities: Set<Capability>
+
+    // MARK: Operational health (observational only, never routing authority)
+
+    /// Total successful turns observed for this provider.
+    let successCount: Int
+    /// Last time a turn actually completed.
+    let lastSuccessAt: Date?
+    /// Last time a turn failed.
+    let lastFailureAt: Date?
+    /// Latency of the most recent successful turn, in milliseconds.
+    let lastLatencyMs: Int?
+    /// When a rate-limit cooldown expires, if the provider is currently throttled.
+    let rateLimitedUntil: Date?
+
+    /// Whether this provider is cooling down after a rate limit right now.
+    var isRateLimited: Bool { rateLimitedUntil != nil }
 }
 
 /// The intelligence router's decision for one request: which provider chain it
@@ -44,6 +61,8 @@ struct ProviderHealthSummary: Sendable {
     let hasLocalFallback: Bool
     /// Providers currently quarantined (consecutive failures past threshold).
     let quarantined: [String]
+    /// Providers currently cooling down after a rate limit (temporary).
+    let rateLimited: [String]
 
     /// Degraded means no cloud provider is available but a local model is — Zia
     /// keeps working, with lower capability, and says so instead of failing.
@@ -77,6 +96,16 @@ final class ProviderManager {
     private var lastErrors: [String: String] = [:]
     /// Circuit-breaker state: provider id -> time until which it is quarantined.
     private var quarantines: [String: Date] = [:]
+    /// Rate-limit cooldown state: provider id -> time until it is throttled.
+    /// Deliberately separate from `quarantines`: a throttle is temporary and must
+    /// never be treated as a proven failure.
+    private var rateLimitCooldowns: [String: Date] = [:]
+    /// Operational health accounting (observational only). Populated from real
+    /// turns so health can explain outcomes without becoming a telemetry store.
+    private var successCounts: [String: Int] = [:]
+    private var lastSuccessTimes: [String: Date] = [:]
+    private var lastFailureTimes: [String: Date] = [:]
+    private var lastLatencies: [String: Int] = [:]
 
     /// Consecutive failures before a provider is quarantined.
     static let quarantineFailureThreshold = 3
@@ -110,6 +139,43 @@ final class ProviderManager {
 
     func quarantinedProviderIDs(now: Date = .now) -> [String] {
         allProviders.map(\.id).filter { isQuarantined($0, now: now) }
+    }
+
+    // MARK: - Rate limiting
+
+    /// Record a provider rate limit. This is a *temporary* condition: it sets a
+    /// cooldown for exactly the server-requested duration and does NOT count
+    /// toward the consecutive-failure quarantine — a healthy provider must not be
+    /// punished for a momentary throttle. Returns the cooldown applied, seconds.
+    @discardableResult
+    func recordRateLimit(providerID: String, retryAfter: TimeInterval?, now: Date = .now) -> TimeInterval {
+        let cooldown = ProviderRateLimit.cooldown(for: retryAfter)
+        rateLimitCooldowns[providerID] = now.addingTimeInterval(cooldown)
+        JarvisLogger.brain.warning(
+            "Provider \(providerID) rate-limited; cooling down \(Int(cooldown))s (retryAfter=\(retryAfter.map { String(Int($0)) } ?? "none"))")
+        return cooldown
+    }
+
+    /// Whether a provider is cooling down after a rate limit. Expired cooldowns
+    /// are cleared lazily so recovery needs no timer.
+    func isRateLimited(_ providerID: String, now: Date = .now) -> Bool {
+        guard let until = rateLimitCooldowns[providerID] else { return false }
+        if until <= now {
+            rateLimitCooldowns[providerID] = nil
+            return false
+        }
+        return true
+    }
+
+    func rateLimitReason(_ providerID: String) -> String? {
+        guard let until = rateLimitCooldowns[providerID] else { return nil }
+        return "rate-limited for \(max(0, Int(until.timeIntervalSinceNow)))s"
+    }
+
+    func clearRateLimit(_ providerID: String) { rateLimitCooldowns[providerID] = nil }
+
+    func rateLimitedProviderIDs(now: Date = .now) -> [String] {
+        allProviders.map(\.id).filter { isRateLimited($0, now: now) }
     }
 
     // MARK: - Public API
@@ -181,6 +247,7 @@ final class ProviderManager {
         let count = (failureCounts[providerID] ?? 0) + 1
         failureCounts[providerID] = count
         lastErrors[providerID] = error
+        lastFailureTimes[providerID] = now
         if count >= Self.quarantineFailureThreshold {
             quarantines[providerID] = now.addingTimeInterval(Self.quarantineCooldownSeconds)
             JarvisLogger.brain.warning("Provider \(providerID) quarantined after \(count) consecutive failures")
@@ -191,12 +258,17 @@ final class ProviderManager {
         return count
     }
 
-    func recordSuccess(providerID: String) {
+    func recordSuccess(providerID: String, latencyMs: Int? = nil) {
         availabilityCache[providerID] = (true, .now)
         // A real completed turn is genuine verification of availability.
         verifiedAvailabilityCache.store(.available, for: providerID)
         failureCounts[providerID] = 0
         lastErrors[providerID] = nil
+        successCounts[providerID, default: 0] += 1
+        lastSuccessTimes[providerID] = .now
+        if let latencyMs { lastLatencies[providerID] = latencyMs }
+        // A successful turn proves the throttle cleared early.
+        rateLimitCooldowns[providerID] = nil
         if quarantines[providerID] != nil {
             quarantines[providerID] = nil
             JarvisLogger.brain.info("Provider \(providerID) recovered and left quarantine")

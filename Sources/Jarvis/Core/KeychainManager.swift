@@ -1,19 +1,54 @@
 import Foundation
 import KeychainAccess
 
-/// Secure API key storage using macOS Keychain.
-///
-/// Keys are stored with `.afterFirstUnlock` accessibility —
-/// available after first device unlock, persists across reboots.
-/// Never stored in config files, UserDefaults, or plaintext.
-final class KeychainManager: @unchecked Sendable {
-    static let shared = KeychainManager()
+/// Backend abstraction for secure storage. The production implementation is the
+/// macOS Keychain (via `KeychainAccess`); tests inject in-memory or deliberately
+/// slow backends so the bounded-read behavior is observable without touching the
+/// real keychain.
+protocol KeychainBackend: Sendable {
+    func get(_ key: String) throws -> String?
+    func set(_ value: String, for key: String) throws
+    func remove(_ key: String) throws
+}
 
-    private let lock = NSLock()
+/// Production backend: macOS Keychain with `.afterFirstUnlock` accessibility —
+/// available after first device unlock and persistent across reboots. Storage
+/// security is unchanged; only the READ path is time-bounded by the manager.
+final class KeychainAccessBackend: KeychainBackend, @unchecked Sendable {
     private let keychain = Keychain(service: "com.jarvis.app")
         .accessibility(.afterFirstUnlock)
 
-    private init() {}
+    func get(_ key: String) throws -> String? { try keychain.get(key) }
+    func set(_ value: String, for key: String) throws { try keychain.set(value, key: key) }
+    func remove(_ key: String) throws { try keychain.remove(key) }
+}
+
+/// Secure API key storage using macOS Keychain.
+///
+/// Keys are stored with `.afterFirstUnlock` accessibility — available after
+/// first device unlock, persists across reboots. Never stored in config files,
+/// UserDefaults, or plaintext.
+///
+/// **Bounded reads.** `SecItemCopyMatching` can block inside `securityd`
+/// indefinitely (observed freezing health checks and the self-test). Every read
+/// therefore runs off the caller's thread and waits at most `readTimeout`
+/// seconds; on timeout it FAILS CLOSED to `nil` ("no key"), never hanging.
+/// Writes/removes remain synchronous (rare, user-initiated).
+final class KeychainManager: @unchecked Sendable {
+    static let shared = KeychainManager()
+
+    /// Default bound for a single keychain read.
+    static let defaultReadTimeout: TimeInterval = 2
+
+    private let backend: any KeychainBackend
+    private let readTimeout: TimeInterval
+    private let readQueue = DispatchQueue(label: "jarvis.keychain.read", qos: .userInitiated)
+
+    init(backend: any KeychainBackend = KeychainAccessBackend(),
+         readTimeout: TimeInterval = KeychainManager.defaultReadTimeout) {
+        self.backend = backend
+        self.readTimeout = readTimeout
+    }
 
     // MARK: - API Service Registry
 
@@ -42,28 +77,20 @@ final class KeychainManager: @unchecked Sendable {
     // MARK: - CRUD
 
     func getAPIKey(for service: APIService) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return try? keychain.get(service.rawValue)
+        boundedRead(service.rawValue)
     }
 
     func getCustomKey(_ keyName: String) -> String? {
-        lock.lock()
-        defer { lock.unlock() }
-        return try? keychain.get(keyName)
+        boundedRead(keyName)
     }
 
     func setAPIKey(_ key: String, for service: APIService) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        try keychain.set(key, key: service.rawValue)
+        try backend.set(key, for: service.rawValue)
         JarvisLogger.security.info("API key stored for \(service.displayName)")
     }
 
     func removeAPIKey(for service: APIService) throws {
-        lock.lock()
-        defer { lock.unlock() }
-        try keychain.remove(service.rawValue)
+        try backend.remove(service.rawValue)
         JarvisLogger.security.info("API key removed for \(service.displayName)")
     }
 
@@ -79,5 +106,28 @@ final class KeychainManager: @unchecked Sendable {
     /// Returns services that are missing API keys.
     func missingServices() -> [APIService] {
         APIService.allCases.filter { !hasAPIKey(for: $0) }
+    }
+
+    // MARK: - Bounded read
+
+    /// Run a keychain read off-thread with a hard upper bound. On timeout the
+    /// result is `nil` (fail closed) and the timeout is logged; the abandoned
+    /// read may still complete in the background, which is harmless.
+    private func boundedRead(_ key: String) -> String? {
+        if readTimeout <= 0 { return (try? backend.get(key)) ?? nil }
+
+        let result = LockedValue<String?>(nil)
+        let semaphore = DispatchSemaphore(value: 0)
+        let backend = self.backend
+        readQueue.async {
+            result.value = (try? backend.get(key)) ?? nil
+            semaphore.signal()
+        }
+        if semaphore.wait(timeout: .now() + readTimeout) == .timedOut {
+            JarvisLogger.security.error(
+                "Keychain read timed out after \(self.readTimeout)s; failing closed to 'no value' for key '\(key)'")
+            return nil
+        }
+        return result.value
     }
 }

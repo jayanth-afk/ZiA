@@ -82,7 +82,41 @@ final class KeychainManager: @unchecked Sendable {
     // MARK: - CRUD
 
     func getAPIKey(for service: APIService) -> String? {
-        boundedRead(service.rawValue)
+        if let key = boundedRead(service.rawValue), !key.isEmpty {
+            return key
+        }
+        if backend is KeychainAccessBackend {
+            if service == .agentBridge {
+                if let bridgeKey = try? Keychain(service: "agent-bridge").get("control_plane_api_key"),
+                   !bridgeKey.isEmpty {
+                    return bridgeKey
+                }
+                if let envKey = ProcessInfo.processInfo.environment["AGENT_BRIDGE_API_KEY"]
+                    ?? ProcessInfo.processInfo.environment["CONTROL_PLANE_API_KEY"],
+                   !envKey.isEmpty {
+                    return envKey
+                }
+            }
+            switch service {
+            case .anthropic:
+                return ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"]
+            case .openai:
+                return ProcessInfo.processInfo.environment["OPENAI_API_KEY"]
+            case .google:
+                return ProcessInfo.processInfo.environment["GEMINI_API_KEY"] ?? ProcessInfo.processInfo.environment["GOOGLE_API_KEY"]
+            case .groq:
+                return ProcessInfo.processInfo.environment["GROQ_API_KEY"]
+            case .elevenlabs:
+                return ProcessInfo.processInfo.environment["ELEVENLABS_API_KEY"]
+            case .tavily:
+                return ProcessInfo.processInfo.environment["TAVILY_API_KEY"]
+            case .openrouter:
+                return ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]
+            case .agentBridge:
+                break
+            }
+        }
+        return nil
     }
 
     func getCustomKey(_ keyName: String) -> String? {

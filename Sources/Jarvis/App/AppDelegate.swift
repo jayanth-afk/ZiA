@@ -21,6 +21,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appState = AppState.shared
         let eventBus = EventBus.shared
 
+        // Enable ChatGPT as primary reasoning brain by default on first launch
+        if UserDefaults.standard.object(forKey: "jarvis.chatgpt.hasConfiguredBrainDefault") == nil {
+            UserDefaults.standard.set(true, forKey: "jarvis.chatgpt.allowBrain")
+            UserDefaults.standard.set(true, forKey: "jarvis.chatgpt.hasConfiguredBrainDefault")
+        }
+
         // Restore the persisted conversation window (SQLite) so memory
         // survives restart. CONTEXT ONLY: restored turns help understanding;
         // they never authorize an action (authority stays with the existing

@@ -69,8 +69,8 @@ enum ChatGPTBrainBenchmark {
                 if outOfTime() { notes.append("engine route stopped: 5-minute cap reached"); break }
                 let attempt = await call(base: base, key: key, transport: "engine", prompt: prompt)
                 attempts.append(attempt)
-                if attempt.error?.contains("CODEX_CLI_NOT_FOUND") == true {
-                    notes.append("engine route unavailable: bundled Codex CLI not found")
+                if !attempt.ok {
+                    notes.append("engine route unavailable: \(attempt.error ?? "error")")
                     break
                 }
                 try? await Task.sleep(for: .seconds(spacingSeconds))

@@ -40,15 +40,32 @@ enum ChatGPTBrainPolicy {
         var reason: String? { if case .ineligible(let reason) = self { return reason }; return nil }
     }
 
-    /// A cheap, deterministic heuristic for "this request needs real reasoning or
-    /// writing" (not a bare lookup). Deliberately simple and portable.
+    /// A deterministic heuristic for identifying requests eligible for the ChatGPT reasoning brain (Tier 1).
+    /// Trivial deterministic lookups/reflexes stay local (Tier 0); conversational, reasoning,
+    /// synthesis, and creative natural-language requests are marked as deep reasoning.
     static func looksLikeDeepRequest(_ goal: String) -> Bool {
         let trimmed = goal.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.count >= 80 { return true }
+        if trimmed.isEmpty { return false }
         let lowered = trimmed.lowercased()
-        let cues = ["why", "how ", "explain", "compare", "analyse", "analyze", "write",
+
+        // Obvious trivial lookups/reflexes stay local (Tier 0 fast paths)
+        let trivialLookups: Set<String> = [
+            "what time is it", "time", "current time",
+            "what is today's date", "date", "current date", "what date is it",
+            "who are you", "what is your name", "version", "ping"
+        ]
+        if trivialLookups.contains(lowered) { return false }
+
+        // Expressive natural language queries
+        if trimmed.count >= 40 { return true }
+
+        let cues = ["why", "how", "explain", "compare", "analyse", "analyze", "write",
                     "draft", "summarise", "summarize", "plan", "design", "reason",
-                    "trade-off", "tradeoff", "pros and cons"]
+                    "trade-off", "tradeoff", "pros and cons", "what should", "help",
+                    "tell me", "find a way", "suggest", "recommend", "solve", "poem",
+                    "create", "describe", "elaborate", "opinion", "difference", "think",
+                    "joke", "story", "idea", "review", "guide", "cook", "weather",
+                    "who was", "who is", "what is", "where is", "when did", "which"]
         return cues.contains { lowered.contains($0) }
     }
 

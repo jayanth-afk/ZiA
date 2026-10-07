@@ -319,6 +319,7 @@ final class ProviderManager {
         let chain = getFallbackChain(for: category)
         let chainIDs = chain.map(\.id)
         var skippedQuarantined: [String] = []
+        var skippedRateLimited: [String] = []
         var skippedUnavailable: [String] = []
         var skippedPolicy: [String] = []
         var chatgptFallbackReason: String?
@@ -328,6 +329,10 @@ final class ProviderManager {
         for provider in chain {
             if isQuarantined(provider.id) {
                 skippedQuarantined.append(provider.id)
+                continue
+            }
+            if isRateLimited(provider.id) {
+                skippedRateLimited.append(provider.id)
                 continue
             }
             if let context, HybridRoutingPolicy.isEnabled, provider.id == "chatgpt-desktop" {
@@ -359,6 +364,9 @@ final class ProviderManager {
             if !skippedQuarantined.isEmpty {
                 reasons.append("quarantined: \(skippedQuarantined.joined(separator: ", "))")
             }
+            if !skippedRateLimited.isEmpty {
+                reasons.append("rate-limited: \(skippedRateLimited.joined(separator: ", "))")
+            }
             if !skippedUnavailable.isEmpty {
                 reasons.append("unavailable: \(skippedUnavailable.joined(separator: ", "))")
             }
@@ -369,8 +377,8 @@ final class ProviderManager {
         }
 
         let skipped = chainIDs.filter {
-            $0 != chosen.id && (skippedQuarantined.contains($0) || skippedUnavailable.contains($0)
-                                || skippedPolicy.contains($0))
+            $0 != chosen.id && (skippedQuarantined.contains($0) || skippedRateLimited.contains($0)
+                                || skippedUnavailable.contains($0) || skippedPolicy.contains($0))
         }
         let degraded = chosen.id.hasPrefix("mlx") || !skipped.isEmpty
         let reason: String
@@ -418,6 +426,11 @@ final class ProviderManager {
             // it only reorders intelligence sourcing.
             if isQuarantined(provider.id) {
                 JarvisLogger.brain.warning("Skipping \(provider.id): \(self.quarantineReason(provider.id) ?? "quarantined")")
+                continue
+            }
+            // Rate-limit cooldown: a throttled provider is skipped, not failed.
+            if isRateLimited(provider.id) {
+                JarvisLogger.brain.warning("Skipping \(provider.id): \(self.rateLimitReason(provider.id) ?? "rate-limited")")
                 continue
             }
             // Hybrid policy: the ChatGPT deep tier must earn every eligible rule.
@@ -518,6 +531,10 @@ final class ProviderManager {
         for provider in chain {
             if isQuarantined(provider.id) {
                 JarvisLogger.brain.warning("Skipping \(provider.id): \(self.quarantineReason(provider.id) ?? "quarantined")")
+                continue
+            }
+            if isRateLimited(provider.id) {
+                JarvisLogger.brain.warning("Skipping \(provider.id): \(self.rateLimitReason(provider.id) ?? "rate-limited")")
                 continue
             }
             if let context, HybridRoutingPolicy.isEnabled, provider.id == "chatgpt-desktop" {

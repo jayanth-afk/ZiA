@@ -7,8 +7,8 @@
 > safe, measured, **opt-in** tier. It records what exists today (C0 recon), the
 > trust boundaries, and — in later sections — the design that was implemented.
 >
-> Status: **C0 recon complete** (current state). Architecture/trust-boundary
-> sections filled in C6.
+> Status: **C0–C5 implemented; C6 documents complete.** N1 (verified provider
+> availability) was done first as the prerequisite.
 
 ---
 
@@ -150,10 +150,73 @@ Flags this build actually supports (`codex exec --help`), used by C2:
 
 ---
 
-## 3. Trust boundaries (filled in C6)
+## 3. Architecture and trust boundaries
 
-_To be completed in C6: architecture diagram, data classes that never leave the
-machine, quota/terms notes._
+```
+  user request (voice / typed)
+        │
+        ▼
+  DeterministicRouter / IntentClassifier        ← deterministic baseline, no model
+        │
+        ▼
+  Hybrid routing policy (C4, ChatGPTBrainPolicy)
+        │  eligible ONLY when: user-present AND needs deep reasoning/writing
+        │  AND not scheduled/background AND not sensitive AND not the extraction
+        │  prompt AND under the daily cap AND not quarantined AND available
+        ▼
+  ProviderManager.executeWithStreamingFallback
+        │  DataClassifier gate (fail closed to local)  +  ContextSanitizer redaction
+        ▼
+  ChatGPTDesktopProvider  ──HTTP + x-api-key──▶  Agent Bridge 127.0.0.1:8765
+        │                                          │  guardChatGPTRequest: loopback only,
+        │                                          │  no browser Origin, validated Host,
+        │                                          │  mandatory constant-time key
+        │                                          ▼
+        │                             transport auto → engine (bundled Codex CLI)
+        │                                              else UI (ChatGPT Desktop AX)
+        ▼
+  response text — DATA ONLY, never authority
+        │  still flows through PlanValidator / PermissionGate / normal verifiers
+        ▼
+  overlay shows “Answered by ChatGPT · engine/ui”
+```
+
+**Trust boundaries**
+
+- **ChatGPT output is data, never authority.** It cannot call ZiA tools, change
+  permissions/autonomy/memory trust, or bypass `PermissionGate` / `PlanValidator`.
+  Anything it proposes goes through the normal validators.
+- **Two gates before anything leaves the machine** (ProviderManager): the
+  `DataClassifier` gate (sensitive/highly-sensitive fails closed to local) and
+  `ContextSanitizer` (credential redaction + size bounds on untrusted segments).
+- **The bridge is a local, authenticated boundary.** The ChatGPT routes are
+  loopback-only, reject any browser `Origin` (CSRF), validate `Host` (DNS
+  rebinding), and require a constant-time API key (503 when none is configured).
+- **The engine never inherits the repo or home directory.** Engine Q&A runs in a
+  fresh EMPTY temp dir with a read-only sandbox, no approvals, an ephemeral
+  session, bounded timeouts, and a whole-process-group kill on cancel.
+- **No credentials are ever read, logged, or transmitted.** ZiA never reads
+  ChatGPT/OpenAI session tokens, cookies, or `~/.codex/auth.json`; it never
+  calls `chatgpt.com`/`api.openai.com` and never reimplements ChatGPT's web API.
+  Only the bridge routes above. The control-plane key lives in the Keychain and
+  is never logged.
+
+**Data classes that never leave the machine** (kept local, always)
+
+- HIGHLY_SENSITIVE: passwords, API keys/tokens, private keys, credit cards, SSN, `sudo`.
+- SENSITIVE: local paths, personal documents, private code, financial/bank/tax data.
+- The tuned extraction prompt (must stay portable and local — benchmark 1/8 vs
+  8/8) and any scheduled/background autonomous goal.
+
+**Quota and terms**
+
+- The ChatGPT brain is for **personal, user-initiated, human-scale use only** —
+  never bulk or background use. It uses the user's own ChatGPT sign-in through
+  their installed app.
+- A **daily soft cap** (`ChatGPTBrain.dailySoftCap`, default 50) is enforced by
+  the routing policy and shown to the user in Settings.
+- A **circuit breaker** quarantines the brain for 60 s after 3 consecutive
+  failures (existing `ProviderManager` quarantine), and the policy then skips it.
 
 ## 4. Risks / gaps closed by this mission
 
@@ -164,3 +227,21 @@ machine, quota/terms notes._
 | G3 | Provider has no opt-in switch, no data-class gate, no deadlines, guessed latency | C3, C5 |
 | G4 | ChatGPT is first in every routing chain with no policy | C4 |
 | G5 | No measured latency | C5 |
+
+## 5. What changed (implementation summary)
+
+| Task | Change | Evidence |
+|---|---|---|
+| N1 | Tri-state verified availability (`available`/`unverified`/`unavailable(reason)`), ~10-min cache, 5 s probe bound; health stops treating a key as usable | `ProviderAvailability.swift`, `ProviderAvailabilityTests` |
+| C1 | Endpoint security boundary + Keychain `agentBridge` service; provider sends `x-api-key`, fails closed without it | `http-server.js`, `chatgpt-endpoint-security.test.js`, `ChatGPTBrainKeyTests` |
+| C2 | Headless engine as default transport; hardened, stateless Q&A; always reports the transport | `chatgpt-local-engine.js`, `chatgpt-local-engine.test.js` |
+| C3 | Opt-in (default OFF) + DataClassifier + ContextSanitizer + 15 s/60 s deadlines + transport provenance + usage counter and Settings card | `ChatGPTBrain.swift`, `ChatGPTBrainSettingsView.swift`, `ChatGPTBrainSettingsTests` |
+| C4 | Hybrid policy + decision-record provenance + UI indicator | `ChatGPTBrainPolicy.swift`, `ChatGPTBrainPolicyTests`, `OverlayView` |
+| C5 | `Jarvis --chatgpt-bench` measured benchmark; rolling measured median latency | `ChatGPTBrainBenchmark.swift`, `build/chatgpt-brain-benchmark.md` |
+
+## 6. How to enable it (owner steps)
+
+See **`docs/OWNER_CHECKLIST.md` §9 (ChatGPT brain)** for the exact steps: sign in
+Desktop, confirm the bundled engine is signed in, grant Accessibility for the UI
+route, keep the dedicated conversation, set the bridge key, and turn on the
+Settings switch.

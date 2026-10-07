@@ -94,6 +94,38 @@ must be granted separately for the packaged app.
 | 8.1 | Build the release app bundle (`./Scripts/build-app.sh release`). | Bundle assembled; Info.plist usage strings present for Mic/Speech/Screen. | plist keys |
 | 8.2 | Sign/notarize (owner-only). | Launches without Gatekeeper block. | signature status |
 
+## 9. ChatGPT as a brain (opt-in)
+
+**Current known state:** the brain is **OFF by default** and the Agent Bridge
+key is **not configured** on this machine (the C5 benchmark honestly sent 0
+prompts). Treat every step below as required before the brain can answer, and
+never relabel it REAL from an unattended run.
+
+| Step | Action | Expected result | Paste back |
+|---|---|---|---|
+| 9.1 | Sign in to **ChatGPT Desktop** with your account. | The app shows you signed in. | "signed in" + plan |
+| 9.2 | Confirm the bundled engine is signed in: run `/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex login status`. | Prints `Logged in using ChatGPT`. | exact line |
+| 9.3 | Start the Agent Bridge HTTP control plane with a key: set `CONTROL_PLANE_API_KEY` (and `CONTROL_PLANE_REQUIRE_API_KEY=1`). | Bridge `/health` shows `authEnabled: true`. | `authEnabled` value |
+| 9.4 | Store the same key in ZiA: **Settings → AI Providers → Agent Bridge (ChatGPT brain)**, paste the key. | Key stored; the ChatGPT row no longer reads "no API key". | row status |
+| 9.5 | Grant **Accessibility** to the bridge's host app (the terminal, or `build/Jarvis.app`) for the **UI route**. | The UI route health is READY. | "granted" |
+| 9.6 | Keep the **dedicated conversation/project** ("ZiA Response") for the UI route; do not use it for anything else. | The UI route resolves to that one thread. | project name |
+| 9.7 | Turn ON **Settings → AI Providers → "Allow ChatGPT as a brain"**. | Status line reads `Available · N/50 requests today`. | status line |
+| 9.8 | Run `swift run Jarvis --chatgpt-bench`. | Numbers for the engine (and UI if READY). | paste `build/chatgpt-brain-benchmark.md` |
+
+**If it fails, paste this back to Claude:**
+
+```
+ChatGPT brain: <FAILED | WORKED>
+9.1 signed in: <yes/no + plan>
+9.2 codex login status: <exact line>
+9.3 bridge authEnabled: <true/false>
+9.4 key stored: <yes/no>
+9.5 accessibility for UI route: <granted/denied>
+9.7 settings switch: <on/off>
+settings status line: <exact text>
+benchmark tail: <first 20 lines of build/chatgpt-brain-benchmark.md>
+```
+
 ---
 
 ## Verified by tests vs hardware-unverified (summary)
@@ -103,6 +135,7 @@ must be granted separately for the packaged app.
   `docs/CAPABILITY_AUDIT.md` and the ledger gate counts).
 - **Hardware/permission-unverified (this file):** microphone capture, speech
   recognition, accessibility control, screen recording, automation, live voice
-  loop, live on-screen UI, release signing.
+  loop, live on-screen UI, release signing, and the **live ChatGPT brain**
+  (§9 — it needs a ChatGPT sign-in, the bridge key, and TCC grants).
 
 > Populated in Phase 9 with exact expected outputs and the paste-back format.

@@ -170,7 +170,11 @@ actor CerebrasProvider: LLMProvider {
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let body = String(data: data, encoding: .utf8) ?? ""
-            continuation.yield(.error("Cerebras API error: HTTP \(status): \(body.prefix(300))"))
+            if status == 429 {
+                continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: http)))
+            } else {
+                continuation.yield(.error("Cerebras API error: HTTP \(status): \(body.prefix(300))"))
+            }
             return
         }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -197,7 +201,11 @@ actor CerebrasProvider: LLMProvider {
                 body += line + "\n"
                 if body.count > 300 { break }
             }
-            continuation.yield(.error("Cerebras API error: HTTP \(status): \(body.prefix(300))"))
+            if status == 429 {
+                continuation.yield(.rateLimited(retryAfter: ProviderRateLimit.retryAfter(from: http)))
+            } else {
+                continuation.yield(.error("Cerebras API error: HTTP \(status): \(body.prefix(300))"))
+            }
             return
         }
 

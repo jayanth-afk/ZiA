@@ -20,6 +20,17 @@ actor GeminiProvider: LLMProvider {
         }
     }
 
+    /// N1: a configured key is *unverified*, not available (no network on this path).
+    func verifiedAvailability(probe: Bool) async -> ProviderAvailability {
+        guard await KeychainManager.shared.hasAPIKey(for: .google) else {
+            return .unavailable(reason: "no Google AI API key configured")
+        }
+        guard await NetworkMonitor.shared.isOnline else {
+            return .unavailable(reason: "offline")
+        }
+        return .unverified(reason: "Google AI API key configured; live availability not verified")
+    }
+
     func complete(
         messages: [Message],
         tools: [ToolDefinition]?,

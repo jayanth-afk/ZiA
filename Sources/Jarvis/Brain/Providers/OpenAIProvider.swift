@@ -22,6 +22,17 @@ actor OpenAIProvider: LLMProvider {
         }
     }
 
+    /// N1: a configured key is *unverified*, not available (no network on this path).
+    func verifiedAvailability(probe: Bool) async -> ProviderAvailability {
+        guard await KeychainManager.shared.hasAPIKey(for: .openai) else {
+            return .unavailable(reason: "no OpenAI API key configured")
+        }
+        guard await NetworkMonitor.shared.isOnline else {
+            return .unavailable(reason: "offline")
+        }
+        return .unverified(reason: "OpenAI API key configured; live availability not verified")
+    }
+
     func complete(
         messages: [Message],
         tools: [ToolDefinition]?,

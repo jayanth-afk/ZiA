@@ -14,6 +14,8 @@ public final class ZiaProviderModel: ObservableObject {
         public let id: String
         public let name: String
         public let isAvailable: Bool
+        /// Verified availability (N1) — never `.available` for a key-only provider.
+        public let availability: ProviderAvailability
         public let failureCount: Int
         public let lastError: String?
         public let isLocal: Bool
@@ -23,6 +25,7 @@ public final class ZiaProviderModel: ObservableObject {
     @Published public private(set) var rows: [Row] = []
     @Published public private(set) var isRefreshing = false
     @Published public private(set) var availableCount = 0
+    @Published public private(set) var verifiedCount = 0
     @Published public private(set) var totalCount = 0
     @Published public private(set) var isDegraded = false
     @Published public private(set) var lastChecked: Date?
@@ -58,6 +61,7 @@ public final class ZiaProviderModel: ObservableObject {
                     id: status.id,
                     name: Self.displayName(for: status.id),
                     isAvailable: status.isAvailable,
+                    availability: status.availability,
                     failureCount: status.failureCount,
                     lastError: status.lastError,
                     isLocal: status.id.hasPrefix("mlx"),
@@ -71,6 +75,7 @@ public final class ZiaProviderModel: ObservableObject {
                 return lhs.name < rhs.name
             }
         availableCount = summary.availableCount
+        verifiedCount = summary.verifiedCount
         totalCount = summary.totalCount
         isDegraded = summary.isDegraded
         lastChecked = Date()
@@ -122,7 +127,7 @@ public struct ZiaProviderCard: View {
                     Text(model.availableCount == 0 ? "No model available" : "Intelligence available")
                         .font(ZiaType.sectionTitle)
                         .foregroundStyle(ZiaColors.textPrimary)
-                    Text("\(model.availableCount) of \(model.totalCount) providers responding")
+                    Text("\(model.availableCount) of \(model.totalCount) providers usable · \(model.verifiedCount) verified")
                         .font(ZiaType.caption)
                         .foregroundStyle(ZiaColors.textSecondary)
                 }
@@ -162,7 +167,9 @@ public struct ZiaProviderCard: View {
     private func providerRow(_ row: ZiaProviderModel.Row) -> some View {
         HStack(spacing: ZiaSpace.sm) {
             ZiaStatusDot(
-                color: row.quarantined ? ZiaColors.error : (row.isAvailable ? ZiaColors.success : ZiaColors.textTertiary),
+                color: row.quarantined ? ZiaColors.error
+                    : (row.availability.isAvailable ? ZiaColors.success
+                       : (row.isAvailable ? ZiaColors.warning : ZiaColors.textTertiary)),
                 diameter: 7
             )
             Text(row.name)
@@ -174,8 +181,10 @@ public struct ZiaProviderCard: View {
             Spacer(minLength: ZiaSpace.sm)
             if row.quarantined {
                 ZiaBadge("Quarantined", symbol: "pause.circle", tint: ZiaColors.error)
-            } else if row.isAvailable {
+            } else if row.availability.isAvailable {
                 Text("Ready").font(ZiaType.caption).foregroundStyle(ZiaColors.textSecondary)
+            } else if row.isAvailable {
+                Text("Unverified").font(ZiaType.caption).foregroundStyle(ZiaColors.warning)
             } else {
                 Text(row.failureCount > 0 ? "Unavailable · \(row.failureCount) failures" : "Not configured")
                     .font(ZiaType.caption)
@@ -184,7 +193,7 @@ public struct ZiaProviderCard: View {
         }
         .padding(.horizontal, ZiaSpace.lg)
         .padding(.vertical, ZiaSpace.sm + 2)
-        .help(row.lastError ?? "")
+        .help(row.lastError ?? row.availability.reason ?? "")
     }
 }
 

@@ -22,6 +22,19 @@ actor ClaudeProvider: LLMProvider {
         }
     }
 
+    /// N1: a configured key is *unverified*, not available. This path performs no
+    /// network probe (never on a hot path); a live probe is an explicit
+    /// diagnostics/benchmark action.
+    func verifiedAvailability(probe: Bool) async -> ProviderAvailability {
+        guard await KeychainManager.shared.hasAPIKey(for: .anthropic) else {
+            return .unavailable(reason: "no Anthropic API key configured")
+        }
+        guard await NetworkMonitor.shared.isOnline else {
+            return .unavailable(reason: "offline")
+        }
+        return .unverified(reason: "Anthropic API key configured; live availability not verified")
+    }
+
     func complete(
         messages: [Message],
         tools: [ToolDefinition]?,

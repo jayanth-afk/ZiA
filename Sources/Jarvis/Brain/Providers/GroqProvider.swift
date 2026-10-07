@@ -88,6 +88,24 @@ actor GroqProvider: LLMProvider {
         }
     }
 
+    /// N1: Groq is `.available` only when the configured model is confirmed by the
+    /// bounded `/models` probe. Without a probe, a configured key is `.unverified`
+    /// — a key alone never proves the model this account can actually use.
+    func verifiedAvailability(probe: Bool) async -> ProviderAvailability {
+        guard await resolveAPIKey() != nil else {
+            return .unavailable(reason: "no Groq API key configured")
+        }
+        guard probe else {
+            return .unverified(reason: "Groq API key configured; model not verified")
+        }
+        switch await verifyModelAvailability() {
+        case .available:
+            return .available
+        case .unavailable(let reason):
+            return .unavailable(reason: reason)
+        }
+    }
+
     private func resolveAPIKey() async -> String? {
         if let apiKeyOverride { return apiKeyOverride }
         if !usesKeychain { return nil }

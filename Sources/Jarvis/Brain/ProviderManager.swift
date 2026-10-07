@@ -3,7 +3,14 @@ import Foundation
 /// Structured, observational health of one provider.
 struct ProviderStatus: Sendable {
     let id: String
+    /// Usable for routing: verified-available OR configured-but-not-yet-probed.
+    /// This is NOT the same as "verified" — see `availability`/`isVerified`.
     let isAvailable: Bool
+    /// Truthful verified availability (N1). A configured API key is
+    /// `.unverified(reason:)`, never `.available`.
+    let availability: ProviderAvailability
+    /// `true` only when the provider is verified-available right now.
+    let isVerified: Bool
     let failureCount: Int
     let lastError: String?
     let capabilities: Set<Capability>
@@ -22,7 +29,11 @@ struct RoutingDecision: Sendable, Equatable {
 /// Aggregate provider health used by HealthService and degraded-mode decisions.
 struct ProviderHealthSummary: Sendable {
     let statuses: [ProviderStatus]
+    /// Providers usable for routing (verified + configured-unprobed).
     let availableCount: Int
+    /// Providers verified-available only (`availability == .available`). This is
+    /// the honest "N are actually confirmed" number.
+    let verifiedCount: Int
     let totalCount: Int
     let hasLocalFallback: Bool
     /// Providers currently quarantined (consecutive failures past threshold).
@@ -98,6 +109,10 @@ final class ProviderManager {
     private var availabilityCache: [String: (available: Bool, timestamp: ContinuousClock.Instant)] = [:]
     private let availabilityCacheTTL: Duration = .seconds(2)
 
+    /// Verified availability (N1): results of bounded probes, cached for ~10 min
+    /// so probes never run on a request hot path.
+    private var verifiedAvailabilityCache = ProviderAvailabilityCache()
+
     func isProviderAvailable(_ provider: any LLMProvider) async -> Bool {
         if let entry = availabilityCache[provider.id], entry.timestamp.duration(to: .now) < availabilityCacheTTL {
             return entry.available
@@ -109,6 +124,39 @@ final class ProviderManager {
 
     func invalidateAvailability(for providerID: String) {
         availabilityCache[providerID] = nil
+        verifiedAvailabilityCache.invalidate(providerID)
+    }
+
+    /// Truthful availability for reporting WITHOUT a network probe (the hot
+    /// path). Uses a fresh cached probe when one exists; otherwise derives an
+    /// honest non-network state — a configured key-based provider reports
+    /// `.unverified`, never `.available`.
+    func reportedAvailability(for provider: any LLMProvider) async -> ProviderAvailability {
+        if let cached = verifiedAvailabilityCache.value(for: provider.id) { return cached }
+        return await provider.verifiedAvailability(probe: false)
+    }
+
+    /// Run bounded availability probes for every provider and cache the results
+    /// (TTL ~10 min). This is the ONLY path that may touch the network, so it is
+    /// never called from a request hot path — only diagnostics/benchmark/health
+    /// refresh opt in. Also folds in known-good state observed by real turns.
+    @discardableResult
+    func refreshVerifiedAvailability(now: Date = .now) async -> [String: ProviderAvailability] {
+        var result: [String: ProviderAvailability] = [:]
+        for provider in allProviders {
+            // A provider that served a real turn is verified-available until the
+            // next failure invalidates it; do not re-probe something already known-good.
+            let availability: ProviderAvailability
+            if let cached = verifiedAvailabilityCache.value(for: provider.id, now: now),
+               cached.isAvailable {
+                availability = cached
+            } else {
+                availability = await provider.verifiedAvailability(probe: true)
+                verifiedAvailabilityCache.store(availability, for: provider.id, now: now)
+            }
+            result[provider.id] = availability
+        }
+        return result
     }
 
     /// All registered providers in deterministic order.
@@ -136,6 +184,8 @@ final class ProviderManager {
 
     func recordSuccess(providerID: String) {
         availabilityCache[providerID] = (true, .now)
+        // A real completed turn is genuine verification of availability.
+        verifiedAvailabilityCache.store(.available, for: providerID)
         failureCounts[providerID] = 0
         lastErrors[providerID] = nil
         if quarantines[providerID] != nil {
@@ -151,17 +201,21 @@ final class ProviderManager {
     func healthSnapshot() async -> ProviderHealthSummary {
         var statuses: [ProviderStatus] = []
         for provider in allProviders {
-            let available = await isProviderAvailable(provider)
+            let availability = await reportedAvailability(for: provider)
             statuses.append(ProviderStatus(
                 id: provider.id,
-                isAvailable: available,
+                isAvailable: availability.isUsable,
+                availability: availability,
+                isVerified: availability.isAvailable,
                 failureCount: failureCounts[provider.id] ?? 0,
                 lastError: lastErrors[provider.id],
                 capabilities: provider.capabilities))
         }
         let availableCount = statuses.filter(\.isAvailable).count
+        let verifiedCount = statuses.filter(\.isVerified).count
         let hasLocalFallback = statuses.contains { $0.id.hasPrefix("mlx") && $0.isAvailable }
         return ProviderHealthSummary(statuses: statuses, availableCount: availableCount,
+                                     verifiedCount: verifiedCount,
                                      totalCount: statuses.count, hasLocalFallback: hasLocalFallback,
                                      quarantined: quarantinedProviderIDs())
     }

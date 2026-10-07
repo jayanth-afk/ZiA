@@ -96,11 +96,11 @@ final class HealthService {
                 degradation: "model reasoning unavailable — deterministic capabilities only")
         } else if providerHealth.isDegraded {
             add("intelligence", .degraded,
-                "\(providerHealth.availableCount)/\(providerHealth.totalCount) providers available; local fallback active.",
+                "\(providerHealth.availableCount)/\(providerHealth.totalCount) providers usable (\(providerHealth.verifiedCount) verified); local fallback active.",
                 degradation: "cloud reasoning unavailable — local model only")
         } else {
             add("intelligence", .healthy,
-                "\(providerHealth.availableCount)/\(providerHealth.totalCount) providers available.")
+                "\(providerHealth.availableCount)/\(providerHealth.totalCount) providers usable (\(providerHealth.verifiedCount) verified).")
         }
         if !providerHealth.quarantined.isEmpty {
             add("provider-circuit", .degraded,

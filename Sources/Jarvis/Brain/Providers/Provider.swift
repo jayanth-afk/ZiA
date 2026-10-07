@@ -61,6 +61,12 @@ protocol LLMProvider: Actor {
     var isAvailable: Bool { get async }
     nonisolated var currentLatencyMs: Int { get }
 
+    /// Verified availability (N1). When `probe` is false the provider must answer
+    /// from cheap local facts only (NEVER the network) and is expected to return
+    /// `.unverified` when all it knows is "a key is configured". When `probe` is
+    /// true the provider MAY make a single bounded probe (≤ `ProviderAvailability.probeTimeout`).
+    func verifiedAvailability(probe: Bool) async -> ProviderAvailability
+
     func complete(
         messages: [Message],
         tools: [ToolDefinition]?,
@@ -86,5 +92,11 @@ extension LLMProvider {
         options: [String: any Sendable]
     ) -> AsyncThrowingStream<StreamChunk, any Error> {
         complete(messages: messages, tools: tools, stream: stream)
+    }
+
+    /// Default verified availability: derive from the provider's own boolean.
+    /// This never claims more than `isAvailable`, and never touches the network.
+    func verifiedAvailability(probe: Bool) async -> ProviderAvailability {
+        await isAvailable ? .available : .unavailable(reason: "not configured")
     }
 }

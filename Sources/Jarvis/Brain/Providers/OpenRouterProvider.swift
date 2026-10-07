@@ -22,6 +22,17 @@ actor OpenRouterProvider: LLMProvider {
         }
     }
 
+    /// N1: a configured key is *unverified*, not available (no network on this path).
+    func verifiedAvailability(probe: Bool) async -> ProviderAvailability {
+        guard await KeychainManager.shared.hasAPIKey(for: .openrouter) else {
+            return .unavailable(reason: "no OpenRouter API key configured")
+        }
+        guard await NetworkMonitor.shared.isOnline else {
+            return .unavailable(reason: "offline")
+        }
+        return .unverified(reason: "OpenRouter API key configured; live availability not verified")
+    }
+
     func complete(
         messages: [Message],
         tools: [ToolDefinition]?,

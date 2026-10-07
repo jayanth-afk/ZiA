@@ -68,6 +68,23 @@ actor ChatGPTDesktopProvider: LLMProvider {
         return false
     }
 
+    /// N1: the bridge is verified-available only when its health endpoint answers.
+    /// `probe: false` never touches the network — it returns the fresh cached
+    /// probe or a truthful `.unverified`. C3 extends this with key + opt-in gates.
+    func verifiedAvailability(probe: Bool) async -> ProviderAvailability {
+        if probe {
+            return await isAvailable
+                ? .available
+                : .unavailable(reason: "Agent Bridge ChatGPT endpoint is not responding")
+        }
+        if let cached = cachedAvailability, cached.timestamp.duration(to: .now) < availabilityTTL {
+            return cached.value
+                ? .available
+                : .unavailable(reason: "Agent Bridge ChatGPT endpoint is not responding")
+        }
+        return .unverified(reason: "Agent Bridge ChatGPT endpoint not probed this cycle")
+    }
+
     func complete(
         messages: [Message],
         tools: [ToolDefinition]?,

@@ -74,6 +74,13 @@ actor MLXProvider: LLMProvider {
         }
     }
 
+    /// N1: a cached local model is verified-available locally (no network is ever
+    /// involved). An uncached model is honestly unavailable.
+    func verifiedAvailability(probe: Bool) async -> ProviderAvailability {
+        if await isAvailable { return .available }
+        return .unavailable(reason: "no cached local model or MLX runtime for this slot")
+    }
+
     // MARK: - Environment resolution
 
     /// Locate the .venv-mlx interpreter, relative to the project root (CWD) first,

@@ -456,6 +456,9 @@ final class ProviderManager {
             let callStart = ContinuousClock.now
             do {
                 var responseText = ""
+                // Streaming commitment: once any of this worker's text has reached
+                // the caller, switching workers would concatenate two answers.
+                var emittedVisibleText = false
                 // Data minimization: credentials are redacted and size is
                 // bounded before text leaves the device for an external
                 // provider. Local providers receive the context unmodified.
@@ -467,7 +470,10 @@ final class ProviderManager {
                     switch chunk {
                     case .text(let text):
                         responseText += text
+                        if !text.isEmpty { emittedVisibleText = true }
                         onChunk?(text)
+                    case .rateLimited(let retryAfter):
+                        throw JarvisError.providerRateLimited(provider: provider.id, retryAfter: retryAfter)
                     case .error(let errorMsg):
                         throw JarvisError.providerError(provider: provider.id, message: errorMsg)
                     default:
@@ -480,7 +486,7 @@ final class ProviderManager {
                     let elapsed = callStart.duration(to: .now)
                     let ms = Double(elapsed.components.seconds) * 1000.0 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000.0
                     JarvisLogger.brain.info("Provider \(provider.id) completed in \(Int(ms))ms")
-                    recordSuccess(providerID: provider.id)
+                    recordSuccess(providerID: provider.id, latencyMs: Int(ms))
                     // User-visible provenance: which brain actually answered.
                     if provider.id == "chatgpt-desktop" {
                         let transport = await self.chatgptDesktop.lastTransport()
@@ -501,13 +507,34 @@ final class ProviderManager {
                     fallbackProvider: "next-in-chain"
                 ))
             } catch {
-                JarvisLogger.brain.warning("Provider \(provider.id) failed: \(error.localizedDescription)")
-                recordFailure(providerID: provider.id, error: error.localizedDescription)
-                EventBus.shared.publish(ProviderFailedEvent(
-                    provider: provider.id,
-                    error: error.localizedDescription,
-                    fallbackProvider: "next-in-chain"
-                ))
+                // Rate limiting is a temporary condition, not a proven failure:
+                // cool the worker down for the server-requested duration instead
+                // of counting it toward the hard-failure circuit breaker.
+                if let je = error as? JarvisError, case .providerRateLimited(_, let retryAfter) = je {
+                    let cooldown = recordRateLimit(providerID: provider.id, retryAfter: retryAfter)
+                    JarvisLogger.brain.warning("Provider \(provider.id) rate-limited; cooling down \(Int(cooldown))s")
+                    EventBus.shared.publish(ProviderFailedEvent(
+                        provider: provider.id,
+                        error: error.localizedDescription,
+                        fallbackProvider: "next-in-chain"
+                    ))
+                } else {
+                    JarvisLogger.brain.warning("Provider \(provider.id) failed: \(error.localizedDescription)")
+                    recordFailure(providerID: provider.id, error: error.localizedDescription)
+                    EventBus.shared.publish(ProviderFailedEvent(
+                        provider: provider.id,
+                        error: error.localizedDescription,
+                        fallbackProvider: "next-in-chain"
+                    ))
+                }
+                // Streaming commitment: if the caller already saw part of THIS
+                // worker's answer, a silent switch would produce a mixed
+                // response ("one ZiA answer" violated). End the turn truthfully.
+                if emittedVisibleText {
+                    throw JarvisError.providerError(
+                        provider: provider.id,
+                        message: "\(provider.id) failed mid-stream after partial output; not falling back to avoid a mixed answer")
+                }
             }
         }
 
@@ -559,6 +586,9 @@ final class ProviderManager {
             let callStart = ContinuousClock.now
             do {
                 var responseText = ""
+                // Streaming commitment: once any of this worker's text has reached
+                // the caller, switching workers would concatenate two answers.
+                var emittedVisibleText = false
                 let dispatchMessages = ContextSanitizer.sanitizedForDispatch(
                     messages, isLocal: provider.id.hasPrefix("mlx"))
                 let stream = await provider.complete(messages: dispatchMessages, tools: nil, stream: onChunk != nil)
@@ -567,7 +597,10 @@ final class ProviderManager {
                     switch chunk {
                     case .text(let text):
                         responseText += text
+                        if !text.isEmpty { emittedVisibleText = true }
                         onChunk?(text)
+                    case .rateLimited(let retryAfter):
+                        throw JarvisError.providerRateLimited(provider: provider.id, retryAfter: retryAfter)
                     case .error(let errorMsg):
                         throw JarvisError.providerError(provider: provider.id, message: errorMsg)
                     default:
@@ -580,7 +613,7 @@ final class ProviderManager {
                     let elapsed = callStart.duration(to: .now)
                     let ms = Double(elapsed.components.seconds) * 1000.0 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000.0
                     JarvisLogger.brain.info("Provider \(provider.id) completed tier [\(tier.rawValue)] in \(Int(ms))ms")
-                    recordSuccess(providerID: provider.id)
+                    recordSuccess(providerID: provider.id, latencyMs: Int(ms))
                     if provider.id == "chatgpt-desktop" {
                         let transport = await self.chatgptDesktop.lastTransport()
                         ChatGPTBrainProvenance.shared.recordChatGPT(transport: transport)
@@ -598,13 +631,34 @@ final class ProviderManager {
                     fallbackProvider: "next-in-chain"
                 ))
             } catch {
-                JarvisLogger.brain.warning("Provider \(provider.id) failed: \(error.localizedDescription)")
-                recordFailure(providerID: provider.id, error: error.localizedDescription)
-                EventBus.shared.publish(ProviderFailedEvent(
-                    provider: provider.id,
-                    error: error.localizedDescription,
-                    fallbackProvider: "next-in-chain"
-                ))
+                // Rate limiting is a temporary condition, not a proven failure:
+                // cool the worker down for the server-requested duration instead
+                // of counting it toward the hard-failure circuit breaker.
+                if let je = error as? JarvisError, case .providerRateLimited(_, let retryAfter) = je {
+                    let cooldown = recordRateLimit(providerID: provider.id, retryAfter: retryAfter)
+                    JarvisLogger.brain.warning("Provider \(provider.id) rate-limited; cooling down \(Int(cooldown))s")
+                    EventBus.shared.publish(ProviderFailedEvent(
+                        provider: provider.id,
+                        error: error.localizedDescription,
+                        fallbackProvider: "next-in-chain"
+                    ))
+                } else {
+                    JarvisLogger.brain.warning("Provider \(provider.id) failed: \(error.localizedDescription)")
+                    recordFailure(providerID: provider.id, error: error.localizedDescription)
+                    EventBus.shared.publish(ProviderFailedEvent(
+                        provider: provider.id,
+                        error: error.localizedDescription,
+                        fallbackProvider: "next-in-chain"
+                    ))
+                }
+                // Streaming commitment: if the caller already saw part of THIS
+                // worker's answer, a silent switch would produce a mixed
+                // response ("one ZiA answer" violated). End the turn truthfully.
+                if emittedVisibleText {
+                    throw JarvisError.providerError(
+                        provider: provider.id,
+                        message: "\(provider.id) failed mid-stream after partial output; not falling back to avoid a mixed answer")
+                }
             }
         }
 

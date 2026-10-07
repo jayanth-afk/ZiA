@@ -9,29 +9,29 @@ import Foundation
 /// Reasoning models receive compiled, read-only slices tailored to their tier,
 /// and never own the canonical state.
 @MainActor
-public final class ZiACanonicalState: ObservableObject {
-    public static let shared = ZiACanonicalState()
+final class ZiACanonicalState: ObservableObject {
+    static let shared = ZiACanonicalState()
 
     // MARK: - Identity & Personality
-    public let assistantName: String = ZiaIdentity.assistantName
-    public let defaultSystemPrompt: String = ZiaIdentity.systemPrompt(for: .fast, destination: .visual)
+    let assistantName: String = ZiaIdentity.assistantName
+    let defaultSystemPrompt: String = ZiaIdentity.systemPrompt(for: .fast, destination: .visual)
 
     // MARK: - Working Memory
     /// Short-lived context for active reasoning (current hypothesis, active files, uncommitted observations).
-    @Published public private(set) var activeHypothesis: String?
-    @Published public private(set) var activeFiles: [String] = []
-    @Published public private(set) var workingObservations: [String] = []
+    @Published private(set) var activeHypothesis: String?
+    @Published private(set) var activeFiles: [String] = []
+    @Published private(set) var workingObservations: [String] = []
 
     // MARK: - Conversational State
-    @Published public private(set) var currentTopic: String?
-    @Published public private(set) var conversationMode: String = "general"
+    @Published private(set) var currentTopic: String?
+    @Published private(set) var conversationMode: String = "general"
 
     private init() {}
 
     // MARK: - State Mutation (ZiA Authoritative Operations)
 
     /// Update current working memory with fresh observations or hypotheses.
-    public func updateWorkingContext(hypothesis: String? = nil, activeFiles: [String]? = nil, observation: String? = nil) {
+    func updateWorkingContext(hypothesis: String? = nil, activeFiles: [String]? = nil, observation: String? = nil) {
         if let hypothesis { self.activeHypothesis = hypothesis }
         if let activeFiles { self.activeFiles = activeFiles }
         if let observation {
@@ -43,7 +43,7 @@ public final class ZiACanonicalState: ObservableObject {
     }
 
     /// Clear transient working memory when a task or session completes.
-    public func clearWorkingContext() {
+    func clearWorkingContext() {
         self.activeHypothesis = nil
         self.activeFiles.removeAll()
         self.workingObservations.removeAll()
@@ -52,7 +52,7 @@ public final class ZiACanonicalState: ObservableObject {
 
     /// Record an authoritative decision in memory.
     @discardableResult
-    public func recordDecision(
+    func recordDecision(
         _ content: String,
         source: String = "conversation",
         level: MemoryRetentionLevel = .important,
@@ -70,7 +70,7 @@ public final class ZiACanonicalState: ObservableObject {
     }
 
     /// Authoritative snapshot of the current state for context compilation.
-    public func snapshot(goal: String, taskID: UUID? = nil) -> Snapshot {
+    func snapshot(goal: String, taskID: UUID? = nil) -> Snapshot {
         let activeTask: JarvisTask?
         if let taskID {
             activeTask = TaskStateMachine.shared.getTask(id: taskID)
@@ -92,13 +92,13 @@ public final class ZiACanonicalState: ObservableObject {
         )
     }
 
-    public struct Snapshot: Sendable {
-        public let goal: String
-        public let activeTask: JarvisTask?
-        public let conversationTurns: [Message]
-        public let activeHypothesis: String?
-        public let activeFiles: [String]
-        public let workingObservations: [String]
-        public let preferences: UserPreferences
+    struct Snapshot: Sendable {
+        let goal: String
+        let activeTask: JarvisTask?
+        let conversationTurns: [Message]
+        let activeHypothesis: String?
+        let activeFiles: [String]
+        let workingObservations: [String]
+        let preferences: UserPreferences
     }
 }

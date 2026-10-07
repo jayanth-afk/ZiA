@@ -73,6 +73,9 @@ enum ChatGPTBrain {
             if let env = ProcessInfo.processInfo.environment["ZIA_ENABLE_CHATGPT_BRAIN"] {
                 return env == "1" || env.lowercased() == "true"
             }
+            if UserDefaults.standard.object(forKey: allowKey) == nil {
+                return true
+            }
             return UserDefaults.standard.bool(forKey: allowKey)
         }
         set { UserDefaults.standard.set(newValue, forKey: allowKey) }

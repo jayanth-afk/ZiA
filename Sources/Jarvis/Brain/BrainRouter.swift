@@ -257,7 +257,7 @@ final class BrainRouter {
     }
 
     /// Primary routing method returning unified response with spoken & visual formats.
-    public func routeUnified(
+    func routeUnified(
         _ transcript: String,
         destination: OutputDestination = .visual,
         environment: TaskEnvironmentContext? = nil
@@ -346,7 +346,7 @@ final class BrainRouter {
     }
 
     /// Backward-compatible route method returning raw response string.
-    public func route(_ transcript: String) async throws -> String {
+    func route(_ transcript: String) async throws -> String {
         let response = try await routeUnified(transcript)
         return response.content
     }

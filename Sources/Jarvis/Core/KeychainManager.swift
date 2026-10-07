@@ -75,6 +75,7 @@ final class KeychainManager: @unchecked Sendable {
             case .elevenlabs: return "ElevenLabs"
             case .tavily: return "Tavily Search"
             case .openrouter: return "OpenRouter"
+            case .cerebras: return "Cerebras"
             case .agentBridge: return "Agent Bridge (ChatGPT brain)"
             }
         }

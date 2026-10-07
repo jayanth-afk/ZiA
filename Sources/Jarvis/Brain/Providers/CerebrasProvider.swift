@@ -72,6 +72,16 @@ actor CerebrasProvider: LLMProvider {
     enum ModelAvailability: Equatable, Sendable {
         case available
         case unavailable(reason: String)
+
+        var isAvailable: Bool {
+            if case .available = self { return true }
+            return false
+        }
+
+        var reason: String? {
+            if case .unavailable(let reason) = self { return reason }
+            return nil
+        }
     }
 
     func verifyModelAvailability() async -> ModelAvailability {

@@ -460,11 +460,11 @@ final class ProviderManager {
             ))
 
             let callStart = ContinuousClock.now
+            // Streaming commitment: once any of this worker's text has reached
+            // the caller, switching workers would concatenate two answers.
+            var emittedVisibleText = false
             do {
                 var responseText = ""
-                // Streaming commitment: once any of this worker's text has reached
-                // the caller, switching workers would concatenate two answers.
-                var emittedVisibleText = false
                 // Data minimization: credentials are redacted and size is
                 // bounded before text leaves the device for an external
                 // provider. Local providers receive the context unmodified.
@@ -590,11 +590,11 @@ final class ProviderManager {
             ))
 
             let callStart = ContinuousClock.now
+            // Streaming commitment: once any of this worker's text has reached
+            // the caller, switching workers would concatenate two answers.
+            var emittedVisibleText = false
             do {
                 var responseText = ""
-                // Streaming commitment: once any of this worker's text has reached
-                // the caller, switching workers would concatenate two answers.
-                var emittedVisibleText = false
                 let dispatchMessages = ContextSanitizer.sanitizedForDispatch(
                     messages, isLocal: provider.id.hasPrefix("mlx"))
                 let stream = await provider.complete(messages: dispatchMessages, tools: nil, stream: onChunk != nil)

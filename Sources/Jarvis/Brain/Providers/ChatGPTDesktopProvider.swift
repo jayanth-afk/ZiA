@@ -158,7 +158,7 @@ actor ChatGPTDesktopProvider: LLMProvider {
         options: [String: any Sendable]
     ) -> AsyncThrowingStream<StreamChunk, any Error> {
         AsyncThrowingStream { continuation in
-            Task {
+            let task = Task {
                 // Gate 1: explicit opt-in.
                 guard self.isEnabledProvider() else {
                     continuation.yield(.error("ChatGPT brain is off — enable it in Settings"))
@@ -198,6 +198,9 @@ actor ChatGPTDesktopProvider: LLMProvider {
                     }
                 }
             }
+            // Cancellation propagation: cancel the whole turn (including the
+            // bridge read + first-token watchdog) when the consumer stops.
+            continuation.onTermination = { _ in task.cancel() }
         }
     }
 
@@ -259,7 +262,14 @@ actor ChatGPTDesktopProvider: LLMProvider {
                 continuation.finish()
             }
         }
-        await readTask.value
+        await withTaskCancellationHandler {
+            await readTask.value
+        } onCancel: {
+            // The turn was interrupted: stop the bridge read and the watchdog
+            // instead of leaving an orphaned stream running to completion.
+            readTask.cancel()
+            watchdog.cancel()
+        }
         watchdog.cancel()
         if firstTokenSeen.value {
             let elapsed = started.duration(to: .now)

@@ -170,7 +170,7 @@ final class ProviderManager {
 
     /// All registered providers in deterministic order.
     var allProviders: [any LLMProvider] {
-        [claude, gemini, openai, groqFast, groqStrong, openrouter, chatgptDesktop, localNormal, localReflex]
+        [claude, gemini, openai, groqFast, groqStrong, cerebras, openrouter, chatgptDesktop, localNormal, localReflex]
     }
 
     /// Record an observed provider failure. Trips the circuit breaker once the

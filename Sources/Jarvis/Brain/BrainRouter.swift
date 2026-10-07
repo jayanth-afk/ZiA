@@ -200,6 +200,16 @@ final class BrainRouter {
                     isDeterministic: false,
                     requiresPlanning: ziaIntent.requiresPlanning
                 )
+            } else {
+                let groqStrong = ProviderManager.shared.groqStrong
+                return BrainRoutingDecision(
+                    tier: .strong,
+                    suggestedProviderID: groqStrong.id,
+                    reason: "deep architecture task: premium brain unavailable, falling back to strong brain (120B)",
+                    isDeterministic: false,
+                    requiresPlanning: ziaIntent.requiresPlanning,
+                    escalated: true
+                )
             }
         }
 

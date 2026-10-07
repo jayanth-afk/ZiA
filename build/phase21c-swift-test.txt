@@ -1,0 +1,655 @@
+Building for debugging...
+Build complete! (0.21 secs)
+◇ Test run started.
+↳ Testing Library Version: 6.4 (efd8d65801f569d)
+↳ Target Platform: arm64-apple-macosx
+◇ Suite CommandSandboxInterpreterTests started.
+◇ Suite CommandSandboxWrapperOptionValueTests started.
+◇ Suite KeychainBoundsTests started.
+◇ Suite CommandSandboxGitTrampolineTests started.
+◇ Suite GitRepositoryInspectionGuardTests started.
+◇ Suite SequentialLifecycleTests started.
+◇ Suite CommandSandboxArchiveExecutionTests started.
+◇ Suite LocalModelCatalogTests started.
+◇ Suite ContextSanitizerTests started.
+◇ Suite AppStateTests started.
+◇ Suite ZiaProjectInspectorTests started.
+◇ Suite GroqProviderTests started.
+◇ Suite ZiaDesignSystemTests started.
+◇ Suite RepoCapabilityTests started.
+◇ Suite FileSystemCapabilityTests started.
+◇ Suite CommandSandboxCapabilityBoundaryTests started.
+◇ Suite EventBusTests started.
+◇ Suite ToolExecutorArgumentBoundaryTests started.
+◇ Suite ProcessAuthorityTests started.
+◇ Suite RunShellImpactBoundaryTests started.
+◇ Suite ShellExecutorTests started.
+◇ Suite PlanNormalizerBTests started.
+◇ Suite TaskWorkerAuthoritativeEvidenceTests started.
+◇ Suite CommandSandboxSubstitutionTests started.
+◇ Suite CommandSandboxInteractiveEscapeTests started.
+◇ Suite TaskStateRetentionTests started.
+◇ Suite ZiaMemoryTrustTests started.
+◇ Suite PipelineTimerTests started.
+◇ Suite RecoveryPolicyTests started.
+◇ Suite RecoveryReplanIdentityTests started.
+◇ Suite CommandSandboxTextProcessorTests started.
+◇ Suite CommandSandboxWrapperBypassTests started.
+◇ Suite ZiaAutonomyTests started.
+◇ Suite RecoveryReplanTests started.
+◇ Suite ZiaSchedulerTests started.
+◇ Suite BrowserScriptSafetyTests started.
+◇ Suite CommandSandboxProgramGlueTests started.
+◇ Suite CommandSandboxRemoteExecutionTests started.
+◇ Suite LocalVsGroqBenchmarkScoringTests started.
+◇ Suite TaskEvidenceIdentityTests started.
+◇ Suite CommandSandboxLauncherTests started.
+◇ Suite StructuredProgramToolTests started.
+◇ Test hostileRepositoryStillAllowsRefsOnlyGit() started.
+◇ Test executionSubcommandsAreRejected() started.
+◇ Test legitimateGitCommandsRemainAllowed() started.
+◇ Test configOverrideCannotLaunchProgram() started.
+◇ Test defaultReadTimeoutIsBounded() started.
+◇ Test hostileRepositoryConfigRejectsWorktreeReadingGit() started.
+◇ Test customKeysRoundTrip() started.
+◇ Test interpreterNameAsArgumentOrFilenameIsNotBlocked() started.
+◇ Test doneWithFailedVerificationIsRejected() started.
+◇ Test slowReadTimesOutAndFailsClosed() started.
+◇ Test absolutePathAndWrappersCannotHideInterpreter() started.
+◇ Test roundTripsAndReportsConfiguredServices() started.
+◇ Test nonRepositoryFailsClosed() started.
+◇ Test otherInterpretersAreRejected() started.
+◇ Test stdbufNonNumericModeCannotHideLaunchedProgram() started.
+◇ Test swiftCodeEvaluationIsRejected() started.
+◇ Test zeroTimeoutReadsInline() started.
+◇ Test initialSequentialChainIsLegal() started.
+◇ Test executionFailureRecoveryChainIsLegal() started.
+◇ Test timeoutsAreBounded() started.
+◇ Test structuredEnvironmentNeutralizesGitConfigSources() started.
+◇ Test xargsPlaceholderCannotHideLaunchedProgram() started.
+◇ Test revalidationReChecksTheRepositoryAtLaunch() started.
+◇ Test doneWithAllStepsVerifiedPassedIsAccepted() started.
+◇ Test inertRepositoryAllowsWorktreeReadingGit() started.
+◇ Test establishedSafeCommandsRemainAllowed() started.
+◇ Test doneWithUnverifiedStepIsRejected() started.
+◇ Test tarToCommandAndCheckpointExecAreRejected() started.
+◇ Test doneWithZeroExecutedStepsIsRejected() started.
+◇ Test pythonCodeEvaluationIsRejected() started.
+◇ Test legitimateWrapperUsageRemainsAllowed() started.
+◇ Test internalGitEnvironmentNeutralizesAmbientConfig() started.
+◇ Test tarNameAsArgumentIsNotBlocked() started.
+◇ Test doneRejectionChainIsLegal() started.
+◇ Test tarExternalCompressProgramIsRejected() started.
+◇ Test dangerousConfigKeysAreClassified() started.
+◇ Test replanningCannotReachVerifyingOrCompleted() started.
+◇ Test minimizationBoundsText() started.
+◇ Test emptyCacheReportsNoModels() started.
+◇ Test defaultModelIsTheCachedPlannerModel() started.
+◇ Test legitimateArchiveUsageRemainsAllowed() started.
+◇ Test budgetExhaustionExitIsLegal() started.
+◇ Test planningFailureRecoveryChainIsLegalAndReturnsToRunning() started.
+◇ Test bundledShortOptionsAndAbbreviationsAreRejected() started.
+◇ Test detectsUsableCachedSnapshot() started.
+◇ Test sequentialPathNeverUsesIllegalTransitions() started.
+◇ Test detectsSecrets() started.
+◇ Test fallsBackToCachedModelWhenConfiguredIsNotCached() started.
+◇ Test validTransitions() started.
+◇ Test redactsCredentialsButNotProse() started.
+◇ Test tarOptionsEnvironmentInjectionIsRejected() started.
+◇ Test memoryPressureUpdates() started.
+◇ Test rejectsMissingWeightsAndMissingRepo() started.
+◇ Test cachedModelIDsRewritesOnlyTheFirstSeparator() started.
+◇ Test localDispatchIsUnmodified() started.
+◇ Test networkStatusUpdates() started.
+◇ Test detectsSwiftPackage() started.
+◇ Test resolvesConfiguredModelWhenCached() started.
+◇ Test configDefaultsUseTheCachedModelConstant() started.
+◇ Test disabledAssistantNeverReportsActivity() started.
+◇ Test sameStateIsNoOp() started.
+◇ Test archiveLaunchersAreNotHidableByPathOrWrapper() started.
+◇ Test invalidTransitionRejected() started.
+◇ Test appearanceOptionsCoverTheThreeSupportedModes() started.
+◇ Test overlayExposesEveryStateToThePresenceLayer() started.
+◇ Test controlHeightsAreUsable() started.
+◇ Test sendingRefreshesAndNeverStreamsFakeText() started.
+◇ Test overlayTranslatesErrorsIntoUserFacingText() started.
+◇ Test providerRowsOnlyClaimWhatWasProbed() started.
+◇ Test providerDisplayNamesAreHumanReadable() started.
+◇ Test onlyActiveStatesAnimate() started.
+◇ Test stopOverridesTheBackendPhase() started.
+◇ Test distinctStatesUseDistinctColours() started.
+◇ Test everyInteractionPhaseMapsToAPresenceState() started.
+◇ Test spacingScaleIsMonotonic() started.
+◇ Test permissionModelReportsRealTCCState() started.
+◇ Test semanticColorsResolveInBothAppearances() started.
+◇ Test radiusScaleIsMonotonic() started.
+◇ Test dangerousGitInvocationsAreRejected() started.
+◇ Test planValidatorAcceptsPinnedGitStatus() started.
+◇ Test activityModelOnlySurfacesRealTasks() started.
+◇ Test appearanceStorePersistsSelection() started.
+◇ Test motionDurationsAreShort() started.
+◇ Test searchAndGrepFindContent() started.
+◇ Test nonStreamingCompletionParsesSingleBody() started.
+◇ Test dynamicLoaderAndResolutionInjectionsAreRejected() started.
+◇ Test noSubscribersDoesNotCrash() started.
+◇ Test pinnedReadOnlyGitShapesAreAuthorized() started.
+◇ Test plainVariableTextInArgumentsIsNotInjection() started.
+◇ Test buildAndPackageRunnersAreRejected() started.
+◇ Test emptyCacheResolvesToDefaultWhichIsNotCached() started.
+◇ Test gitStatusCapabilityRunsStructurally() started.
+◇ Test planValidatorRejectsDangerousGitInvocation() started.
+◇ Test replaceInFileAllOccurrences() started.
+◇ Test gitIsNotAnUnrestrictedStructuredProgram() started.
+◇ Test movePathMovesAndVerifies() started.
+◇ Test listDirectoryRefusesSensitivePath() started.
+◇ Test legitimateReadAndTextProcessingRemainAllowed() started.
+◇ Test publishDeliversToSubscriber() started.
+◇ Test gitBranchCapabilityRunsStructurally() started.
+◇ Test eventTypeIsolation() started.
+◇ Test removeAllClearsEverything() started.
+◇ Test multipleSubscribersReceiveSameEvent() started.
+◇ Test replaceInFileFirstOccurrenceAndVerifies() started.
+◇ Test appendFileGrowsAndVerifies() started.
+◇ Test absolutePathAndWrapperCannotHideARunner() started.
+◇ Test deletePathRemovesAndVerifies() started.
+◇ Test replaceInFileRejectsAbsentText() started.
+◇ Test unsubscribeRemovesHandler() started.
+◇ Test undeclaredArgumentIsRejectedBeforeExecution() started.
+◇ Test createDirectoryCreatesAndVerifies() started.
+◇ Test negativeMissingCommand() started.
+◇ Test echoCapabilityRunsWithoutAShell() started.
+◇ Test wrongArgumentTypeIsRejectedBeforeExecution() started.
+◇ Test processGroupCleanup() started.
+◇ Test emptyCommandRejected() started.
+◇ Test missingRequiredArgumentIsRejectedBeforeExecution() started.
+◇ Test runShellIsDeclaredDestructive() started.
+◇ Test cancelAllIdempotent() started.
+◇ Test shellAndStructuredCapabilitiesNeverConflate() started.
+◇ Test stderrCapture() started.
+◇ Test reauthorizationIsDeterministicForTheSameRequest() started.
+◇ Test disabledToggleLeavesObjectUntouched() started.
+◇ Test operatorBearingValueIsQuotedNotAltered() started.
+◇ Test positiveListArgs() started.
+◇ Test relativeExecutableIsRejected() started.
+◇ Test authorizedRequestIsImmutableAgainstCallerMutation() started.
+◇ Test sandboxBlockedCommand() started.
+◇ Test negativeMissingArgs() started.
+◇ Test failureEvidenceCannotCrossTaskBoundary() started.
+◇ Test negativeWhitespaceInCommand() started.
+◇ Test taskCancellation() started.
+◇ Test normalExecution() started.
+◇ Test positiveLiteralPreservedExactly() started.
+◇ Test nonexistentWorkingDirectoryIsRejected() started.
+◇ Test negativeUnrelatedTool() started.
+◇ Test revalidationAcceptsAGenuineAuthorizedRequest() started.
+◇ Test nonZeroExitCode() started.
+◇ Test negativeExtraUnrelatedKey() started.
+◇ Test failureEvidenceBindsToAuthoritativeStepNotStaleSnapshot() started.
+◇ Test normalizerNeverIntroducesExampleValues() started.
+◇ Test deterministicStructuredExecutionCannotIntroduceUnknownExecutable() started.
+◇ Test negativeEmptyArgs() started.
+◇ Test expansionAndQuotingCannotObfuscateDangerousCommand() started.
+◇ Test negativeMalformedSteps() started.
+◇ Test authorizationIdentityBindsArgumentsAndExecutable() started.
+◇ Test positivePrintfSingleToken() started.
+◇ Test negativeWhitespaceInArgsValue() started.
+◇ Test ordinaryStructuredExecutionStillWorks() started.
+◇ Test shellExecutorRejectsRelativePathOutsideTrustedDirectories() started.
+◇ Test shellEnvironmentUsesFixedPathAndDropsLoaderVariables() started.
+◇ Test unknownBareExecutableIsRejected() started.
+◇ Test largeOutputNoPipeDeadlock() started.
+◇ Test negativeNonStringArgs() started.
+◇ Test negativeMultiStepPlan() started.
+◇ Test legitimateCommandsRemainAllowed() started.
+◇ Test shellPathPoisoningIsRejected() started.
+◇ Test symlinkToUnknownExecutableIsRejected() started.
+◇ Test allLiveStoreFailsClosed() started.
+◇ Test existingWorkingDirectoryIsAuthorizedExactly() started.
+◇ Test lineCountCapabilityRejectsMissingFile() started.
+◇ Test commandSubstitutionCannotHideDangerousCommand() started.
+◇ Test untrustedContentIsEphemeralOnly() started.
+◇ Test symlinkToAuthorizedExecutableBindsCanonicalIdentity() started.
+◇ Test recoveryStyleProposalCannotGrantItselfAuthority() started.
+◇ Test pagersAndDebuggersAndDatabaseCLIsAreRejected() started.
+◇ Test timeoutEnforcement() started.
+◇ Test untrustedProvenanceCannotBecomePermanentMemory() started.
+◇ Test atCapacityNewTaskEvictsOldestCompletedInsteadOfFailing() started.
+◇ Test escapeProgramsAreNotHidableByPathOrWrapper() started.
+◇ Test failedAndActiveTasksAreNeverEvicted() started.
+◇ Test emptyAndInvalidWritesAreRejected() started.
+◇ Test pagerAndGitConfigInjectionGapsAreRejected() started.
+◇ Test legitimateCapabilitiesRemainAllowed() started.
+◇ Test escapeProgramNameAsArgumentIsNotBlocked() started.
+◇ Test trustedRetrievalExcludesUntrustedRecords() started.
+◇ Test commandAndProcessSubstitutionAreRejected() started.
+◇ Test lineCountCapabilityRunsStructurallyAndVerifies() started.
+◇ Test nonRecoverableCategories() started.
+◇ Test renamedCopyOfAuthorizedExecutableIsRejected() started.
+◇ Test outputNotMatchingRecordIsNotPreserved() started.
+◇ Test recoverableCategories() started.
+◇ Test shellInterpreterWrappersAreRejected() started.
+◇ Test randomExecutableInTemporaryDirectoryIsRejected() started.
+◇ Test elapsedBetweenStages() started.
+◇ Test emptyReportHasZeroStages() started.
+◇ Test trustedProvenanceIsAdmitted() started.
+◇ Test trampolineExecutableIsNotStructurallyAuthorized() started.
+◇ Test marksStagesAndReportsDurations() started.
+◇ Test denylistDidNotClassifyUnknownExecutableButAuthorityRejectsIt() started.
+◇ Test reportSummaryIsFormatted() started.
+◇ Test canonicallyEquivalentArgumentsArePreserved() started.
+◇ Test bareNameNotInTrustedDirectoryIsRejected() started.
+◇ Test totalMsIncreasesOverTime() started.
+◇ Test editorsWithShellEscapeAreRejected() started.
+◇ Test authorizedSymlinkRepointedAfterAuthorizationCannotRedirectLaunch() started.
+◇ Test shellCapabilityStillExecutesOrdinaryCommands() started.
+◇ Test elapsedSinceStage() started.
+◇ Test structuredEnvironmentIsFixedAndCannotBeInjected() started.
+◇ Test staleOrphanRecordPoisonsTaskButReplacementDoesNot() started.
+◇ Test evidenceBoundToAnotherTaskIsNeverPreserved() started.
+◇ Test changedArgumentsAreNotPreserved() started.
+◇ Test removedStepIsNotPreservedAnywhere() started.
+◇ Test shellExecutorRejectsAbsolutePathOutsideTrustedDirectories() started.
+◇ Test preservedEvidenceSurvivesRestartAsCancelledContinuation() started.
+◇ Test reorderedPlanPreservesEachStepByItsOwnAction() started.
+◇ Test fewerDuplicatesThanResolvedDoesNotDuplicateEvidence() started.
+◇ Test bareAuthorizedNameResolvesThroughFixedSearch() started.
+◇ Test malformedEvidenceFingerprintIsNotPreserved() started.
+◇ Test insertedStepPreservesOnlyMatchingSteps() started.
+◇ Test missingStageReturnsNil() started.
+◇ Test changedToolIsNotPreserved() started.
+◇ Test completedStepWithoutBoundEvidenceIsNotPreserved() started.
+◇ Test knownAuthorizedExecutableIsAccepted() started.
+◇ Test legitimateTextProcessingRemainsAllowed() started.
+◇ Test duplicateIdentitiesMatchDeterministicallyInOrder() started.
+◇ Test identicalPlanPreservesResolvedStep() started.
+◇ Test validatedReplanIsExecutedAndItsEvidenceIsAttributedToIt() started.
+◇ Test awkPipeCannotExecuteBlockedPrograms() started.
+◇ Test trailingBackgroundCommandIsProgramChecked() started.
+◇ Test urlEscapingNeutralizesBackslashAndNewlines() started.
+◇ Test interpreterGluedToRedirectionIsRejected() started.
+◇ Test benignWrappedCommandsRemainAllowed() started.
+◇ Test textProcessorSystemAndSubstitutionRemainBlocked() started.
+◇ Test legitimateCapabilitiesRemainAllowed() started.
+◇ Test sshRemoteCommandAndLocalCommandAreRejected() started.
+◇ Test remoteProgramNameAsArgumentIsNotBlocked() started.
+◇ Test urlEscapingNeutralizesLiteralBreakout() started.
+◇ Test configClampsToSupportedRange() started.
+◇ Test benignUrlIsUnchanged() started.
+◇ Test maxRunsDisablesJob() started.
+◇ Test commandWrapperCannotSmuggleRm() started.
+◇ Test privilegeEscalationAlternativesAreBlocked() started.
+◇ Test establishedSafeCommandsRemainAllowed() started.
+◇ Test findExecCannotSmuggleRm() started.
+◇ Test levelGating() started.
+◇ Test intervalNextRunIsDeterministic() started.
+◇ Test remoteLaunchersInChainsAreRejected() started.
+◇ Test sortCompressProgramIsRejected() started.
+◇ Test benignRedirectionAndChainingStillAllowed() started.
+◇ Test invalidIntervalRejected() started.
+◇ Test remoteLaunchersAreNotHidableByPathOrWrapper() started.
+◇ Test dangerousProgramAsArgumentIsNotBlocked() started.
+◇ Test niceWithNumericOptionCannotSmuggleRm() started.
+◇ Test findExecdirCannotSmuggleRm() started.
+◇ Test directTaskIsCorrectOnlyWithNoExtraction() started.
+◇ Test envWrapperCannotSmuggleRm() started.
+◇ Test aGenuineGoalUrlIsNotFabrication() started.
+◇ Test legacySchemaEvidenceIsInvalidatedOnRestart() started.
+◇ Test literalMetricIsGoneAndGoalPasteCarriesNoSignal() started.
+◇ Test boundEvidenceRejectsEvidenceFromAnotherTask() started.
+◇ Test missingExtractionFailsArgumentFidelity() started.
+◇ Test nestedWrappersAndOptionVariantsCannotSmuggleRm() started.
+◇ Test boundEvidenceRejectsChangedArguments() started.
+◇ Test nohupWrapperCannotSmuggleRm() started.
+◇ Test establishedDangerousCommandsRemainBlocked() started.
+◇ Test xargsWrapperCannotSmuggleRm() started.
+◇ Test toolMetricMatchesExpectedTool() started.
+◇ Test remoteTransferProgramsAreRejected() started.
+◇ Test flagsInventedBrowserUrl() started.
+◇ Test programLaunchersAndDotBuiltinAreRejected() started.
+◇ Test ordinaryDotArgumentAndBenignCommandsRemainPermitted() started.
+◇ Test envAssignmentPrefixDoesNotHideProgram() started.
+◇ Test argumentFidelityRequiresByteExactLiteral() started.
+◇ Test decodeArgumentsFailsClosedOnMalformedInput() started.
+◇ Test hostileArgumentsRemainLiteralData() started.
+◇ Test planValidatorRejectsMalformedArguments() started.
+◇ Test planValidatorAcceptsAuthorizedRunProgram() started.
+◇ Test commandSubstitutionIsNotPerformed() started.
+◇ Test planValidatorRejectsUnknownExecutable() started.
+◇ Test runProgramToolRejectsShellInterpreter() started.
+◇ Test runProgramToolExecutesAllowlistedExecutableAndBindsEvidence() started.
+◇ Test runProgramIsRegisteredForThePlanner() started.
+◇ Test runProgramToolRejectsUnknownExecutableBeforeLaunch() started.
+✔ Test defaultReadTimeoutIsBounded() passed after 0.014 seconds.
+✔ Test doneWithFailedVerificationIsRejected() passed after 0.014 seconds.
+✔ Test customKeysRoundTrip() passed after 0.014 seconds.
+✔ Test doneWithAllStepsVerifiedPassedIsAccepted() passed after 0.014 seconds.
+✔ Test zeroTimeoutReadsInline() passed after 0.014 seconds.
+✔ Test doneWithUnverifiedStepIsRejected() passed after 0.014 seconds.
+✔ Test doneWithZeroExecutedStepsIsRejected() passed after 0.014 seconds.
+✔ Test minimizationBoundsText() passed after 0.014 seconds.
+✔ Test replanningCannotReachVerifyingOrCompleted() passed after 0.014 seconds.
+✔ Test sequentialPathNeverUsesIllegalTransitions() passed after 0.014 seconds.
+✔ Test defaultModelIsTheCachedPlannerModel() passed after 0.014 seconds.
+✔ Test roundTripsAndReportsConfiguredServices() passed after 0.015 seconds.
+✔ Test detectsSecrets() passed after 0.014 seconds.
+✔ Test redactsCredentialsButNotProse() passed after 0.014 seconds.
+✔ Test localDispatchIsUnmodified() passed after 0.014 seconds.
+✔ Test disabledAssistantNeverReportsActivity() passed after 0.014 seconds.
+✔ Test appearanceOptionsCoverTheThreeSupportedModes() passed after 0.014 seconds.
+✔ Test controlHeightsAreUsable() passed after 0.014 seconds.
+✔ Test onlyActiveStatesAnimate() passed after 0.014 seconds.
+✔ Test stopOverridesTheBackendPhase() passed after 0.014 seconds.
+✔ Test emptyCacheReportsNoModels() passed after 0.015 seconds.
+✔ Test providerDisplayNamesAreHumanReadable() passed after 0.014 seconds.
+✔ Test everyInteractionPhaseMapsToAPresenceState() passed after 0.014 seconds.
+✔ Test distinctStatesUseDistinctColours() passed after 0.014 seconds.
+✔ Test spacingScaleIsMonotonic() passed after 0.014 seconds.
+✔ Test radiusScaleIsMonotonic() passed after 0.014 seconds.
+✔ Test motionDurationsAreShort() passed after 0.014 seconds.
+✔ Test detectsSwiftPackage() passed after 0.015 seconds.
+✔ Test rejectsMissingWeightsAndMissingRepo() passed after 0.015 seconds.
+✔ Test detectsUsableCachedSnapshot() passed after 0.015 seconds.
+✔ Test emptyCacheResolvesToDefaultWhichIsNotCached() passed after 0.015 seconds.
+✔ Test positiveListArgs() passed after 0.014 seconds.
+✔ Test disabledToggleLeavesObjectUntouched() passed after 0.014 seconds.
+✔ Test operatorBearingValueIsQuotedNotAltered() passed after 0.014 seconds.
+✔ Test negativeWhitespaceInCommand() passed after 0.014 seconds.
+✔ Test negativeMissingArgs() passed after 0.014 seconds.
+✔ Test positiveLiteralPreservedExactly() passed after 0.014 seconds.
+✔ Test fallsBackToCachedModelWhenConfiguredIsNotCached() passed after 0.015 seconds.
+✔ Test negativeMissingCommand() passed after 0.014 seconds.
+✔ Test positivePrintfSingleToken() passed after 0.014 seconds.
+✔ Test negativeUnrelatedTool() passed after 0.014 seconds.
+✔ Test normalizerNeverIntroducesExampleValues() passed after 0.014 seconds.
+✔ Test negativeExtraUnrelatedKey() passed after 0.014 seconds.
+✔ Test negativeMalformedSteps() passed after 0.014 seconds.
+✔ Test negativeEmptyArgs() passed after 0.014 seconds.
+✔ Test negativeWhitespaceInArgsValue() passed after 0.014 seconds.
+✔ Test negativeMultiStepPlan() passed after 0.014 seconds.
+✔ Test negativeNonStringArgs() passed after 0.014 seconds.
+✔ Test resolvesConfiguredModelWhenCached() passed after 0.015 seconds.
+✔ Test untrustedContentIsEphemeralOnly() passed after 0.014 seconds.
+✔ Test emptyAndInvalidWritesAreRejected() passed after 0.014 seconds.
+✔ Test nonRecoverableCategories() passed after 0.014 seconds.
+✔ Test recoverableCategories() passed after 0.014 seconds.
+✔ Test untrustedProvenanceCannotBecomePermanentMemory() passed after 0.014 seconds.
+✔ Test cachedModelIDsRewritesOnlyTheFirstSeparator() passed after 0.015 seconds.
+✔ Test emptyReportHasZeroStages() passed after 0.014 seconds.
+✔ Test trustedProvenanceIsAdmitted() passed after 0.014 seconds.
+✔ Test reportSummaryIsFormatted() passed after 0.014 seconds.
+✔ Test outputNotMatchingRecordIsNotPreserved() passed after 0.014 seconds.
+✔ Test canonicallyEquivalentArgumentsArePreserved() passed after 0.014 seconds.
+✔ Test trustedRetrievalExcludesUntrustedRecords() passed after 0.014 seconds.
+✔ Test elapsedBetweenStages() passed after 0.014 seconds.
+✔ Test totalMsIncreasesOverTime() passed after 0.014 seconds.
+✔ Test elapsedSinceStage() passed after 0.014 seconds.
+✔ Test evidenceBoundToAnotherTaskIsNeverPreserved() passed after 0.014 seconds.
+✔ Test changedArgumentsAreNotPreserved() passed after 0.014 seconds.
+✔ Test fewerDuplicatesThanResolvedDoesNotDuplicateEvidence() passed after 0.014 seconds.
+✔ Test removedStepIsNotPreservedAnywhere() passed after 0.014 seconds.
+✔ Test malformedEvidenceFingerprintIsNotPreserved() passed after 0.014 seconds.
+✔ Test missingStageReturnsNil() passed after 0.014 seconds.
+✔ Test reorderedPlanPreservesEachStepByItsOwnAction() passed after 0.014 seconds.
+✔ Test completedStepWithoutBoundEvidenceIsNotPreserved() passed after 0.014 seconds.
+✔ Test marksStagesAndReportsDurations() passed after 0.014 seconds.
+✔ Test changedToolIsNotPreserved() passed after 0.014 seconds.
+✔ Test insertedStepPreservesOnlyMatchingSteps() passed after 0.014 seconds.
+✔ Test identicalPlanPreservesResolvedStep() passed after 0.014 seconds.
+✔ Test urlEscapingNeutralizesBackslashAndNewlines() passed after 0.014 seconds.
+✔ Test urlEscapingNeutralizesLiteralBreakout() passed after 0.014 seconds.
+✔ Test duplicateIdentitiesMatchDeterministicallyInOrder() passed after 0.014 seconds.
+✔ Test levelGating() passed after 0.014 seconds.
+✔ Test benignUrlIsUnchanged() passed after 0.014 seconds.
+✔ Test intervalNextRunIsDeterministic() passed after 0.014 seconds.
+✔ Test invalidIntervalRejected() passed after 0.014 seconds.
+✔ Test preservedEvidenceSurvivesRestartAsCancelledContinuation() passed after 0.014 seconds.
+✔ Test boundEvidenceRejectsEvidenceFromAnotherTask() passed after 0.014 seconds.
+✔ Test boundEvidenceRejectsChangedArguments() passed after 0.014 seconds.
+✔ Test staleOrphanRecordPoisonsTaskButReplacementDoesNot() passed after 0.014 seconds.
+✔ Test decodeArgumentsFailsClosedOnMalformedInput() passed after 0.014 seconds.
+✔ Test maxRunsDisablesJob() passed after 0.014 seconds.
+✔ Suite ContextSanitizerTests passed after 0.016 seconds.
+✔ Suite ZiaProjectInspectorTests passed after 0.016 seconds.
+✔ Suite PlanNormalizerBTests passed after 0.016 seconds.
+✔ Suite RecoveryPolicyTests passed after 0.016 seconds.
+✔ Suite PipelineTimerTests passed after 0.016 seconds.
+✔ Suite BrowserScriptSafetyTests passed after 0.016 seconds.
+✔ Suite ZiaSchedulerTests passed after 0.016 seconds.
+✔ Suite RecoveryReplanIdentityTests passed after 0.016 seconds.
+✔ Suite ZiaMemoryTrustTests passed after 0.016 seconds.
+✔ Test nonStreamingCompletionParsesSingleBody() passed after 0.018 seconds.
+◇ Test streamingCompletionParsesSSE() started.
+✔ Test legacySchemaEvidenceIsInvalidatedOnRestart() passed after 0.017 seconds.
+✔ Suite TaskEvidenceIdentityTests passed after 0.019 seconds.
+✔ Test streamingCompletionParsesSSE() passed after 0.001 seconds.
+◇ Test verifyModelAvailabilityConfirmsListedModel() started.
+✔ Test verifyModelAvailabilityConfirmsListedModel() passed after 0.001 seconds.
+◇ Test verifyModelAvailabilityReportsExactMissingModelReason() started.
+✔ Test verifyModelAvailabilityReportsExactMissingModelReason() passed after 0.001 seconds.
+◇ Test verifyModelAvailabilityReportsHTTPError() started.
+✔ Test verifyModelAvailabilityReportsHTTPError() passed after 0.001 seconds.
+◇ Test verifyModelAvailabilityFailsClosedWithoutKey() started.
+✔ Test verifyModelAvailabilityFailsClosedWithoutKey() passed after 0.001 seconds.
+◇ Test nonStreamingHTTPErrorIsReported() started.
+✔ Test nonStreamingHTTPErrorIsReported() passed after 0.001 seconds.
+✔ Suite GroqProviderTests passed after 0.022 seconds.
+✔ Test semanticColorsResolveInBothAppearances() passed after 0.036 seconds.
+✔ Test hostileRepositoryStillAllowsRefsOnlyGit() passed after 0.089 seconds.
+✔ Test executionSubcommandsAreRejected() passed after 0.090 seconds.
+✔ Test legitimateGitCommandsRemainAllowed() passed after 0.091 seconds.
+✔ Test configOverrideCannotLaunchProgram() passed after 0.091 seconds.
+✔ Suite CommandSandboxGitTrampolineTests passed after 0.092 seconds.
+✔ Test hostileRepositoryConfigRejectsWorktreeReadingGit() passed after 0.202 seconds.
+✔ Test absolutePathAndWrappersCannotHideInterpreter() passed after 0.203 seconds.
+✔ Test otherInterpretersAreRejected() passed after 0.203 seconds.
+✔ Test nonRepositoryFailsClosed() passed after 0.284 seconds.
+✔ Test initialSequentialChainIsLegal() passed after 0.407 seconds.
+✔ Test stdbufNonNumericModeCannotHideLaunchedProgram() passed after 0.407 seconds.
+✔ Test interpreterNameAsArgumentOrFilenameIsNotBlocked() passed after 0.407 seconds.
+✔ Test structuredEnvironmentNeutralizesGitConfigSources() passed after 0.407 seconds.
+✔ Test xargsPlaceholderCannotHideLaunchedProgram() passed after 0.408 seconds.
+✔ Test slowReadTimesOutAndFailsClosed() passed after 0.412 seconds.
+✔ Suite KeychainBoundsTests passed after 0.413 seconds.
+✔ Test revalidationReChecksTheRepositoryAtLaunch() passed after 0.485 seconds.
+✔ Test allLiveStoreFailsClosed() passed after 0.537 seconds.
+✔ Test executionFailureRecoveryChainIsLegal() passed after 0.771 seconds.
+✔ Test inertRepositoryAllowsWorktreeReadingGit() passed after 0.831 seconds.
+✔ Test timeoutsAreBounded() passed after 0.832 seconds.
+✔ Test tarToCommandAndCheckpointExecAreRejected() passed after 0.832 seconds.
+✔ Test swiftCodeEvaluationIsRejected() passed after 0.832 seconds.
+✔ Test establishedSafeCommandsRemainAllowed() passed after 0.832 seconds.
+✔ Test pythonCodeEvaluationIsRejected() passed after 0.832 seconds.
+✔ Suite CommandSandboxInterpreterTests passed after 0.833 seconds.
+✔ Test tarNameAsArgumentIsNotBlocked() passed after 0.832 seconds.
+✔ Test dangerousConfigKeysAreClassified() passed after 0.833 seconds.
+✔ Test failedAndActiveTasksAreNeverEvicted() passed after 0.832 seconds.
+✔ Test tarExternalCompressProgramIsRejected() passed after 0.833 seconds.
+✔ Test legitimateWrapperUsageRemainsAllowed() passed after 0.833 seconds.
+✔ Suite CommandSandboxWrapperOptionValueTests passed after 0.834 seconds.
+✔ Test doneRejectionChainIsLegal() passed after 1.109 seconds.
+✔ Test budgetExhaustionExitIsLegal() passed after 1.250 seconds.
+✔ Test bundledShortOptionsAndAbbreviationsAreRejected() passed after 1.250 seconds.
+✔ Test internalGitEnvironmentNeutralizesAmbientConfig() passed after 1.250 seconds.
+✔ Suite GitRepositoryInspectionGuardTests passed after 1.251 seconds.
+✔ Test planningFailureRecoveryChainIsLegalAndReturnsToRunning() passed after 1.617 seconds.
+✔ Suite SequentialLifecycleTests passed after 1.618 seconds.
+✔ Test legitimateArchiveUsageRemainsAllowed() passed after 1.617 seconds.
+✔ Test validTransitions() passed after 1.617 seconds.
+✔ Test tarOptionsEnvironmentInjectionIsRejected() passed after 1.618 seconds.
+✔ Test memoryPressureUpdates() passed after 1.618 seconds.
+✔ Test networkStatusUpdates() passed after 1.618 seconds.
+✔ Test configDefaultsUseTheCachedModelConstant() passed after 1.618 seconds.
+✔ Suite LocalModelCatalogTests passed after 1.619 seconds.
+✔ Test archiveLaunchersAreNotHidableByPathOrWrapper() passed after 1.618 seconds.
+✔ Suite CommandSandboxArchiveExecutionTests passed after 1.619 seconds.
+✔ Test invalidTransitionRejected() passed after 1.618 seconds.
+✔ Test sameStateIsNoOp() passed after 1.618 seconds.
+✔ Suite AppStateTests passed after 1.619 seconds.
+✔ Test overlayExposesEveryStateToThePresenceLayer() passed after 1.618 seconds.
+✔ Test sendingRefreshesAndNeverStreamsFakeText() passed after 1.618 seconds.
+✔ Test overlayTranslatesErrorsIntoUserFacingText() passed after 1.618 seconds.
+✔ Test permissionModelReportsRealTCCState() passed after 1.628 seconds.
+✔ Test dangerousGitInvocationsAreRejected() passed after 1.628 seconds.
+✔ Test appearanceStorePersistsSelection() passed after 1.629 seconds.
+✔ Test activityModelOnlySurfacesRealTasks() passed after 1.629 seconds.
+✔ Test planValidatorAcceptsPinnedGitStatus() passed after 1.641 seconds.
+✔ Test dynamicLoaderAndResolutionInjectionsAreRejected() passed after 1.642 seconds.
+✔ Test pinnedReadOnlyGitShapesAreAuthorized() passed after 1.696 seconds.
+✔ Test plainVariableTextInArgumentsIsNotInjection() passed after 1.696 seconds.
+✔ Test buildAndPackageRunnersAreRejected() passed after 1.697 seconds.
+✔ Test planValidatorRejectsDangerousGitInvocation() passed after 1.697 seconds.
+✔ Test gitIsNotAnUnrestrictedStructuredProgram() passed after 1.697 seconds.
+✔ Test replaceInFileAllOccurrences() passed after 1.698 seconds.
+✔ Test listDirectoryRefusesSensitivePath() passed after 1.698 seconds.
+✔ Test legitimateReadAndTextProcessingRemainAllowed() passed after 1.700 seconds.
+✔ Test movePathMovesAndVerifies() passed after 1.700 seconds.
+✔ Test absolutePathAndWrapperCannotHideARunner() passed after 1.701 seconds.
+✔ Test appendFileGrowsAndVerifies() passed after 1.701 seconds.
+✔ Suite CommandSandboxCapabilityBoundaryTests passed after 1.702 seconds.
+✔ Test createDirectoryCreatesAndVerifies() passed after 1.701 seconds.
+✔ Test undeclaredArgumentIsRejectedBeforeExecution() passed after 1.701 seconds.
+✔ Test wrongArgumentTypeIsRejectedBeforeExecution() passed after 1.702 seconds.
+✔ Test runShellIsDeclaredDestructive() passed after 1.702 seconds.
+✔ Test deletePathRemovesAndVerifies() passed after 1.702 seconds.
+◇ Test sandboxSafeShellCommandIsDeniedBelowDestructiveAutonomy() started.
+✔ Test missingRequiredArgumentIsRejectedBeforeExecution() passed after 1.702 seconds.
+✔ Suite ToolExecutorArgumentBoundaryTests passed after 1.703 seconds.
+✔ Test shellAndStructuredCapabilitiesNeverConflate() passed after 1.702 seconds.
+✔ Test reauthorizationIsDeterministicForTheSameRequest() passed after 1.702 seconds.
+✔ Test relativeExecutableIsRejected() passed after 1.702 seconds.
+✔ Test authorizedRequestIsImmutableAgainstCallerMutation() passed after 1.702 seconds.
+✔ Test replaceInFileFirstOccurrenceAndVerifies() passed after 1.703 seconds.
+✔ Test nonexistentWorkingDirectoryIsRejected() passed after 1.703 seconds.
+✔ Test replaceInFileRejectsAbsentText() passed after 1.703 seconds.
+✔ Test revalidationAcceptsAGenuineAuthorizedRequest() passed after 1.703 seconds.
+✔ Test expansionAndQuotingCannotObfuscateDangerousCommand() passed after 1.704 seconds.
+✔ Test authorizationIdentityBindsArgumentsAndExecutable() passed after 1.704 seconds.
+✔ Test unknownBareExecutableIsRejected() passed after 1.704 seconds.
+✔ Test legitimateCommandsRemainAllowed() passed after 1.705 seconds.
+✔ Test symlinkToUnknownExecutableIsRejected() passed after 1.705 seconds.
+✔ Test shellEnvironmentUsesFixedPathAndDropsLoaderVariables() passed after 1.705 seconds.
+✔ Test existingWorkingDirectoryIsAuthorizedExactly() passed after 1.705 seconds.
+✔ Test shellPathPoisoningIsRejected() passed after 1.706 seconds.
+✔ Test symlinkToAuthorizedExecutableBindsCanonicalIdentity() passed after 1.706 seconds.
+✔ Test commandSubstitutionCannotHideDangerousCommand() passed after 1.706 seconds.
+✔ Suite CommandSandboxSubstitutionTests passed after 1.708 seconds.
+✔ Test recoveryStyleProposalCannotGrantItselfAuthority() passed after 1.706 seconds.
+✔ Test pagersAndDebuggersAndDatabaseCLIsAreRejected() passed after 1.707 seconds.
+✔ Test escapeProgramsAreNotHidableByPathOrWrapper() passed after 1.707 seconds.
+✔ Test pagerAndGitConfigInjectionGapsAreRejected() passed after 1.708 seconds.
+✔ Test legitimateCapabilitiesRemainAllowed() passed after 1.709 seconds.
+✔ Test escapeProgramNameAsArgumentIsNotBlocked() passed after 1.709 seconds.
+✔ Test commandAndProcessSubstitutionAreRejected() passed after 1.709 seconds.
+✔ Test renamedCopyOfAuthorizedExecutableIsRejected() passed after 1.710 seconds.
+✔ Test shellInterpreterWrappersAreRejected() passed after 1.710 seconds.
+✔ Test randomExecutableInTemporaryDirectoryIsRejected() passed after 1.711 seconds.
+✔ Test denylistDidNotClassifyUnknownExecutableButAuthorityRejectsIt() passed after 1.712 seconds.
+✔ Test trampolineExecutableIsNotStructurallyAuthorized() passed after 1.712 seconds.
+✔ Test bareNameNotInTrustedDirectoryIsRejected() passed after 1.712 seconds.
+✔ Test authorizedSymlinkRepointedAfterAuthorizationCannotRedirectLaunch() passed after 1.713 seconds.
+✔ Test editorsWithShellEscapeAreRejected() passed after 1.713 seconds.
+✔ Suite CommandSandboxInteractiveEscapeTests passed after 1.715 seconds.
+✔ Test structuredEnvironmentIsFixedAndCannotBeInjected() passed after 1.713 seconds.
+✔ Test bareAuthorizedNameResolvesThroughFixedSearch() passed after 1.713 seconds.
+✔ Test knownAuthorizedExecutableIsAccepted() passed after 1.714 seconds.
+✔ Test legitimateTextProcessingRemainsAllowed() passed after 1.714 seconds.
+✔ Test awkPipeCannotExecuteBlockedPrograms() passed after 1.714 seconds.
+✔ Test trailingBackgroundCommandIsProgramChecked() passed after 1.715 seconds.
+✔ Test interpreterGluedToRedirectionIsRejected() passed after 1.715 seconds.
+✔ Test benignWrappedCommandsRemainAllowed() passed after 1.715 seconds.
+✔ Test textProcessorSystemAndSubstitutionRemainBlocked() passed after 1.716 seconds.
+✔ Suite CommandSandboxTextProcessorTests passed after 1.717 seconds.
+✔ Test legitimateCapabilitiesRemainAllowed() passed after 1.717 seconds.
+✔ Test remoteProgramNameAsArgumentIsNotBlocked() passed after 1.717 seconds.
+✔ Test configClampsToSupportedRange() passed after 1.717 seconds.
+✔ Suite ZiaAutonomyTests passed after 1.719 seconds.
+✔ Test commandWrapperCannotSmuggleRm() passed after 1.717 seconds.
+✔ Test privilegeEscalationAlternativesAreBlocked() passed after 1.717 seconds.
+✔ Test establishedSafeCommandsRemainAllowed() passed after 1.718 seconds.
+✔ Test findExecCannotSmuggleRm() passed after 1.718 seconds.
+✔ Test sshRemoteCommandAndLocalCommandAreRejected() passed after 1.718 seconds.
+✔ Test remoteLaunchersInChainsAreRejected() passed after 1.718 seconds.
+✔ Test sortCompressProgramIsRejected() passed after 1.718 seconds.
+✔ Test benignRedirectionAndChainingStillAllowed() passed after 1.719 seconds.
+✔ Suite CommandSandboxProgramGlueTests passed after 1.721 seconds.
+✔ Test remoteLaunchersAreNotHidableByPathOrWrapper() passed after 1.719 seconds.
+✔ Test dangerousProgramAsArgumentIsNotBlocked() passed after 1.719 seconds.
+✔ Test findExecdirCannotSmuggleRm() passed after 1.719 seconds.
+✔ Test directTaskIsCorrectOnlyWithNoExtraction() passed after 1.719 seconds.
+✔ Test envWrapperCannotSmuggleRm() passed after 1.719 seconds.
+✔ Test aGenuineGoalUrlIsNotFabrication() passed after 1.720 seconds.
+✔ Test literalMetricIsGoneAndGoalPasteCarriesNoSignal() passed after 1.720 seconds.
+✔ Test niceWithNumericOptionCannotSmuggleRm() passed after 1.720 seconds.
+✔ Test missingExtractionFailsArgumentFidelity() passed after 1.719 seconds.
+✔ Test nestedWrappersAndOptionVariantsCannotSmuggleRm() passed after 1.720 seconds.
+✔ Test nohupWrapperCannotSmuggleRm() passed after 1.720 seconds.
+✔ Test establishedDangerousCommandsRemainBlocked() passed after 1.720 seconds.
+✔ Test xargsWrapperCannotSmuggleRm() passed after 1.720 seconds.
+✔ Test toolMetricMatchesExpectedTool() passed after 1.720 seconds.
+✔ Test remoteTransferProgramsAreRejected() passed after 1.721 seconds.
+✔ Suite CommandSandboxRemoteExecutionTests passed after 1.723 seconds.
+✔ Test flagsInventedBrowserUrl() passed after 1.720 seconds.
+✔ Test programLaunchersAndDotBuiltinAreRejected() passed after 1.721 seconds.
+✔ Test envAssignmentPrefixDoesNotHideProgram() passed after 1.721 seconds.
+✔ Suite CommandSandboxWrapperBypassTests passed after 1.723 seconds.
+✔ Test ordinaryDotArgumentAndBenignCommandsRemainPermitted() passed after 1.721 seconds.
+✔ Suite CommandSandboxLauncherTests passed after 1.724 seconds.
+✔ Test argumentFidelityRequiresByteExactLiteral() passed after 1.721 seconds.
+✔ Suite LocalVsGroqBenchmarkScoringTests passed after 1.724 seconds.
+✔ Test planValidatorRejectsMalformedArguments() passed after 1.721 seconds.
+✔ Test planValidatorAcceptsAuthorizedRunProgram() passed after 1.721 seconds.
+✔ Test planValidatorRejectsUnknownExecutable() passed after 1.720 seconds.
+✔ Test runProgramIsRegisteredForThePlanner() passed after 1.719 seconds.
+✔ Test noSubscribersDoesNotCrash() passed after 1.723 seconds.
+✔ Test eventTypeIsolation() passed after 1.723 seconds.
+✔ Test removeAllClearsEverything() passed after 1.723 seconds.
+✔ Test multipleSubscribersReceiveSameEvent() passed after 1.723 seconds.
+✔ Test publishDeliversToSubscriber() passed after 1.723 seconds.
+✔ Test unsubscribeRemovesHandler() passed after 1.723 seconds.
+✔ Test sandboxSafeShellCommandIsDeniedBelowDestructiveAutonomy() passed after 0.021 seconds.
+✔ Test lineCountCapabilityRejectsMissingFile() passed after 1.723 seconds.
+✔ Suite EventBusTests passed after 1.725 seconds.
+◇ Test mutationIsContainedByTheImpactGateNotTheSandbox() started.
+✔ Test emptyCommandRejected() passed after 1.723 seconds.
+✔ Test searchAndGrepFindContent() passed after 1.724 seconds.
+✔ Suite FileSystemCapabilityTests passed after 1.725 seconds.
+✔ Test sandboxBlockedCommand() passed after 1.724 seconds.
+✔ Test mutationIsContainedByTheImpactGateNotTheSandbox() passed after 0.013 seconds.
+✔ Suite RunShellImpactBoundaryTests passed after 1.739 seconds.
+✔ Test shellExecutorRejectsRelativePathOutsideTrustedDirectories() passed after 1.738 seconds.
+✔ Test deterministicStructuredExecutionCannotIntroduceUnknownExecutable() passed after 1.739 seconds.
+✔ Test runProgramToolRejectsUnknownExecutableBeforeLaunch() passed after 1.735 seconds.
+✔ Test shellExecutorRejectsAbsolutePathOutsideTrustedDirectories() passed after 1.738 seconds.
+✔ Test failureEvidenceCannotCrossTaskBoundary() passed after 1.739 seconds.
+✔ Test taskCancellation() passed after 1.743 seconds.
+✔ Test cancelAllIdempotent() passed after 1.743 seconds.
+✔ Test normalExecution() passed after 1.743 seconds.
+✔ Test stderrCapture() passed after 1.743 seconds.
+✔ Test nonZeroExitCode() passed after 1.743 seconds.
+✔ Test largeOutputNoPipeDeadlock() passed after 1.748 seconds.
+✔ Test failureEvidenceBindsToAuthoritativeStepNotStaleSnapshot() passed after 1.752 seconds.
+✔ Suite TaskWorkerAuthoritativeEvidenceTests passed after 1.753 seconds.
+✔ Test commandSubstitutionIsNotPerformed() passed after 1.753 seconds.
+✔ Test echoCapabilityRunsWithoutAShell() passed after 1.756 seconds.
+✔ Test ordinaryStructuredExecutionStillWorks() passed after 1.756 seconds.
+✔ Test lineCountCapabilityRunsStructurallyAndVerifies() passed after 1.756 seconds.
+✔ Test runProgramToolExecutesAllowlistedExecutableAndBindsEvidence() passed after 1.753 seconds.
+✔ Test shellCapabilityStillExecutesOrdinaryCommands() passed after 1.756 seconds.
+✔ Suite ProcessAuthorityTests passed after 1.758 seconds.
+✔ Test runProgramToolRejectsShellInterpreter() passed after 1.755 seconds.
+✔ Test validatedReplanIsExecutedAndItsEvidenceIsAttributedToIt() passed after 1.764 seconds.
+✔ Suite RecoveryReplanTests passed after 1.766 seconds.
+✔ Test gitBranchCapabilityRunsStructurally() passed after 1.765 seconds.
+✔ Test gitStatusCapabilityRunsStructurally() passed after 1.767 seconds.
+✔ Suite RepoCapabilityTests passed after 1.768 seconds.
+✔ Test hostileArgumentsRemainLiteralData() passed after 1.780 seconds.
+✔ Suite StructuredProgramToolTests passed after 1.783 seconds.
+✔ Test providerRowsOnlyClaimWhatWasProbed() passed after 2.240 seconds.
+✔ Suite ZiaDesignSystemTests passed after 2.241 seconds.
+✔ Test timeoutEnforcement() passed after 2.783 seconds.
+✔ Test processGroupCleanup() passed after 2.798 seconds.
+✔ Suite ShellExecutorTests passed after 2.799 seconds.
+✔ Test atCapacityNewTaskEvictsOldestCompletedInsteadOfFailing() passed after 3.483 seconds.
+✔ Suite TaskStateRetentionTests passed after 3.484 seconds.
+✔ Test run with 282 tests in 42 suites passed after 3.485 seconds.
+RC=0

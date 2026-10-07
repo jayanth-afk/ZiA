@@ -1,0 +1,1302 @@
+# Solar Pro 4 Suggestions — Zia / Jarvis Feature, Depth, and Optimization Catalog
+# Contract: Frozen Architecture & Implementation Contract v1.0 (9 frozen principles + Principle 10).
+# Executive-facing working doc. Each item includes category, owner layer (file path), the "what", the test evidence needed, and the frozen-principle guardrail that constrains it.
+# Project root: /Users/jayanthpranaykonada/Zia
+# HEAD at time of writing: f8e4f79. Repo notes: build/phase21*.txt (gate logs, untracked); repo-root drift tracked at root (PolicyEvaluator.swift, .continuerules, output.txt, forbidden.txt, sources/); AQ-1..AQ-5 pending owner-only cleanup.
+
+# ============================================================================
+# HOW TO READ THIS FILE
+# ============================================================================
+# Categories:
+#  F  = Feature        (observable capability the user would notice)
+#  I  = Improvement    (honest, measurable upgrade to an existing capability)
+#  O  = Optimization   (latency / memory / I/O / energy / determinism / build)
+#  T  = Test           (test-first evidence the feature needs before it is green)
+#  R  = Reliability / Resilience / Observability
+#  S  = Security / Safety / Privacy
+#  D  = Docs / Roadmap / Clarity
+# Each entry:
+#   - Name
+#   - Category tags
+#   - Owner layer / file(s)
+#   - What it is, honestly
+#   - Why it fights generic "assistant" rot and leans into local-first + determinism
+#   - Test evidence needed before it is green
+#   - Guardrails / dependencies
+# ============================================================================
+
+# ============================================================================
+# A. Core identity and principles (anchor, not a feature)
+# ============================================================================
+- Name: Anchor the project's real identity to the user-facing story
+  Tags: D
+  Layer: docs/PROJECT_CONTEXT.md, README in repo, onboarding
+  What: The project's real story is local-first, deterministic-fast, tool-using, honest-verification, cloud-optional.
+  Why: "Siri but better" positioning fails if it becomes "bigger bot." The leverage is real machine changes, speed, verifiability, offline posture, and honest authority.
+  Test: docs/PROJECT_CONTEXT.md states v1.0 principles and current verified state.
+  Guardrail: Intelligence never equals authority. Model proposes, trusted code authorizes.
+
+- Name: Keep "evidence before green" cemented in the product
+  Tags: F I T R
+  Layer: SelfTest.swift, ToolDefinitions.swift, AgentLoop.swift (AgentStepOutcomePolicy)
+  What: Keep success = deterministic postcondition verification (VerificationOutcome.passed), not "provider returned text."
+  Why: This is the difference between a theater assistant and a machine that did something.
+  Test: ToolDefinitions, SelfTest, AgentLoop silent-action policy unchanged and re-verified.
+  Guardrail: Evidence before green. Fail closed on ambiguous authority.
+
+- Name: Preserve authority spine: PermissionGate + CommandSandbox + DestructiveActionManager
+  Tags: S I
+  Layer: Sources/Jarvis/Actions/PermissionGate.swift, CommandSandbox.swift, DestructiveActionManager.swift
+  What: The real gatekeepers stay untouched unless a task names them.
+  Why: This is the frozen backbone; do not weaken it for "capability feel."
+  Test: Existing suites for each; contract says do not modify unless a task names it.
+  Guardrail: Fail closed on ambiguous permission/sandbox; never default to permitting.
+
+# ============================================================================
+# B. Voice / speech / wake / interrupt / feedback (experience)
+# ============================================================================
+- Name: Interruptibility as a first-class voice feel
+  Tags: F I T O
+  Layer: VoicePipeline.swift, TTSEngine.swift, AudioPlayer.swift, VoiceTraceState.swift, VoiceActivityDetector.swift, EmergencyInterrupt.swift
+  What: Make voice interruptible and stop cleanly; make barge-in actually visible and fast.
+  Why: This is where many assistants feel laggy or unstoppable. Yours can be interruptible and honest.
+  Test: EmergencyInterrupt, barge-in timing, TTS stop-on-interrupt observed behavior; VoiceTraceState latency instrumentation.
+  Guardrail: Voice/VoicePipeline frozen in this session. Only additive UX + verification around it; no new mic/TTS behavior that weakens authority.
+
+- Name: Wake-word honest posture
+  Tags: F I T
+  Layer: WakeWordDetector.swift, SpeechRecognizer.swift, VoiceTraceState.swift
+  What: Keep wake detection from transcript; expose wake/no-wake honestly; expose that acoustic DSP wake is deferred, not "missing."
+  Why: Honest posture beats pretending.
+  Test: WakeWordDetector logic tests; transcription-respecting behavior.
+  Guardrail: No recorded audio; no mic/TTS edits; dormant-process/keychain hazard already mitigated.
+
+- Name: Speech recognition honest posture
+  Tags: F I T
+  Layer: SpeechRecognizer.swift, settings, onboarding, health
+  What: Expose on-device recognition posture and permission honestly; no pretending recognition is active if it isn't.
+  Why: Siri hides the awkward bits; honesty is the differentiator.
+  Test: Authorization state observed in settings/health/onboarding.
+
+- Name: TTS style + control + honest posture
+  Tags: F I T
+  Layer: TTSEngine.swift, settings, VoiceTraceState.swift
+  What: Adjustable voice/speed/pitch; TTS running state visible; barge-in stops TTS; honest about its capabilities.
+  Test: TTS behavior + interruption + latency instrumentation.
+  Guardrail: Frozen voice subsystem; do not add audio playback/mic behavior.
+
+- Name: Voice response model: "short, task-oriented, then action" rather than chatty
+  Tags: F I
+  Layer: AgentLoop, DirectComposition, response rendering
+  What: Favor concise task-oriented responses that lead to a verified action instead of a monologue.
+  Why: Chatty assistants feel like theater; task-oriented assistants feel like machines.
+  Test: Response content + action outcome both traced.
+
+- Name: Visible "I heard you / I am stopping / I am acting / I am done" feedback
+  Tags: F I T
+  Layer: Overlay/ResponseBubble, Pulse/Waveform, HUD, OverlayView, activity surfaces
+  What: Feedback that reflects real state transitions in TaskState (not pretend progress).
+  Why: Trust comes from state truth (TaskStateMachine).
+  Test: Overlay/activity UI reflects real task states; not invented.
+
+- Name: Multi-turn context with recency guards
+  Tags: F I T
+  Layer: ContextBuilder, ConversationManager, DirectComposer, PlannerExtraction
+  What: Bounded recent context; recency signals routed to tool/web when needed; do not pretend stale cache is current.
+  Why: Honest freshness prevents fake knowledge claims.
+  Test: recency enforcement existing tests; new cases if expanded.
+
+# ============================================================================
+# C. Deterministic + zero-model-call surface (the cheapest "better than Siri" path)
+# ============================================================================
+- Name: Expand zero-model-call route inventory
+  Tags: F I T O
+  Layer: DeterministicRouter.swift
+  What: Cover more standard commands with regex/prefix + verification, no model.
+  Why: Cheapest-sufficient-intelligence principle; fastest, cheapest, most reliable.
+  Test: DeterministicRouter tests + SelfTest deterministic command coverage.
+  Guardrail: Compound/malformed goals rejected from fast path; fail closed.
+
+- Name: Deterministic compound/malformed guards stay hard
+  Tags: F I T
+  Layer: DeterministicRouter.swift
+  What: Keep guard against ", then", ";", "&&", "|", shell metachars, echo-compound.
+  Why: Fast path must not be abused; fail closed.
+  Test: existing compound guard tests.
+
+- Name: Deterministic verification on fast commands always visible
+  Tags: F I T
+  Layer: DeterministicRouter.swift, tool observe/verify paths, UI reporting
+  What: Fast commands get a real verification readback (frontmost app, volume, brightness, clipboard, file, screenshot, etc.) and show it.
+  Why: Fast + verified + visible = trust.
+  Test: existing deterministic verification tests + UI reporting.
+
+- Name: Hotkey/text as first-class channel, not fallback
+  Tags: F I T
+  Layer: HotkeyManager, JarvisApp, text input surfaces, DeterministicRouter
+  What: Treat hotkey + text input as equal to voice; fast path still applies.
+  Why: Desk work lives in keyboard; "better than Siri" for desk work needs that.
+  Test: hotkey triggers route correctly; fast-path deterministic commands work via text.
+
+- Name: Destructive/sensitive commands always gated + previewable
+  Tags: S F T
+  Layer: DestructiveActionManager, PermissionGate
+  What: Two-phase preview→commit for destructive; no silent irreversible action.
+  Why: Authority is hard; destructive is harder.
+  Test: existing DestructiveActionManager tests; self-test path.
+
+# ============================================================================
+# D. Local tools / local workspace (where "do real things" happens)
+# ============================================================================
+- Name: Local filesystem envelope as a real strength
+  Tags: F I T
+  Layer: FileManagerJarvis.swift, BuiltinTools (read_file/write_file/search_files/grep_files/replace_in_file/create_directory/append_file/move_path/copy_path/delete_path), ToolExecutor
+  What: Real bounded file operations + deterministic verification.
+  Why: Many assistants talk about files but don't reliably do them here; this is real.
+  Test: FileSystemCapabilityTests + SelfTest file operations.
+
+- Name: Sensitive-path refusal + bounds explicit
+  Tags: S I T
+  Layer: FileManagerJarvis isSensitivePath, SensitivePaths
+  What: Refuse sensitive credential locations; visible bounds.
+  Why: Safety + honesty; not overreach.
+  Test: existing sensitive-path handling.
+
+- Name: Local project / workspace inspection
+  Tags: F I T
+  Layer: ProjectInspector, project_info tool, CodeIntelligence (find_symbol/find_markers/changed_files)
+  What: Real project-level awareness + verification where possible.
+  Why: Desk-native + useful, not hallucinated "I know your repo."
+
+- Name: Local system controls envelope
+  Tags: F I T
+  Layer: SystemControl, SystemControl.swift, AppLauncher, ClipboardManager, NotificationSender, ShellExecutor
+  What: Real system controls (volume/brightness/lock/sleep/screenshot/log/power/pasteboard) + verification where possible.
+  Why: These are instant, local, and verifiable.
+  Test: existing system control tests/self-test.
+
+- Name: Notification + scheduling as real follow-through
+  Tags: F I T
+  Layer: NotificationSender, ScheduleTaskTool, TaskScheduler
+  What: Real scheduled follow-ups and notifications where the platform allows.
+  Why: Assistant that "remembers to do it later" feels more capable.
+  Test: TaskScheduler/schedule-tool tests.
+
+- Name: Ambient awareness bounded + honest
+  Tags: F I T
+  Layer: Ambient context snapshots, current_app slot, freshness guards, ambient slots, accessibility/ambient capture where real
+  What: Snapshot frontmost app / ambient state with freshness guards; refuse unsupported slots honestly.
+  Why: Eyes on the room without pretending to see everything.
+  Test: ambient slot freshness/unavailable handling.
+
+- Name: Browser automation with real Safari honesty
+  Tags: F I T S
+  Layer: BrowserManager.swift, Web/Browser automation docs
+  What: DOM inspect/extract/click/fill/navigation where supported; Safari "Allow JavaScript from Apple Events" requirement surfacing honestly; not pretending it works without the permission.
+  Why: Real tool surface, real permission reality.
+  Test: BrowserScriptSafetyTests; permission-surface in onboarding/health/settings.
+
+- Name: Accessibility computer-control posture honest
+  Tags: F I T S
+  Layer: AccessibilityBridge.swift, FastUIMode.swift, AccessibilityTools (inspect_ui/click_element/set_text)
+  What: AX inspection/press/set with postcondition verification; accessibility permission state honest.
+  Why: Real control, real permission reality.
+  Test: accessibility tools verification; AXIsProcessTrusted state.
+
+- Name: Notifications surface as real delivery where the platform allows
+  Tags: F I T
+  Layer: NotificationSender.swift, UserNotificationCenterDelivery
+  What: Real notification delivery for reminders/schedule/turns; visible delivery state.
+  Why: Follow-through plus local-first feel.
+  Test: notification delivery tests/self-test.
+
+# ============================================================================
+# E. Brain, planning, routing, extraction (the core reasoning story)
+# ============================================================================
+- Name: Keep cheapest-sufficient-intelligence hierarchy explicit in routing
+  Tags: F I R T
+  Layer: DeterministicRouter, IntentClassifier, DirectAnswerRouter, ProviderManager, AgentLoop
+  What: 0 model calls > local reflex (3B) > local planner (0.5B) > local normal (7B) > cloud (groq/openrouter/claude/openai). Document and preserve.
+  Why: This is the architectural spine for latency/cost/reliability.
+  Test: routing decision records; benchmark evidence; no model on fast path.
+
+- Name: PlanValidator stays authoritative and untouched authoritatively
+  Tags: S I
+  Layer: PlanValidator.swift, PlannerExtraction.compile
+  What: Schema/argument/reference/sandbox validation mandatory for every route; compiler uses canonical validator.
+  Why: Authority boundary; no alternate authority path.
+  Test: PlanValidator suites; compile→validate path.
+
+- Name: Extraction prompt honesty + regeneration logic for clock-shift + prompt-portability concerns
+  Tags: F I T
+  Layer: MLXPlanner.swift, PlannerExtraction, buildExtractionPrompt
+  What: Keep extraction prompt honest (no invented example values); if cloud is used, do not send the 0.5B-tuned prompt blindly; prompt-portability must be solved before cloud extraction is trusted.
+  Why: Phase 2.1's prompt mismatch finding; cloud is not a free lunch.
+  Test: extraction prompt tests; prompt-portability/routing tests if cloud extraction added.
+
+- Name: Recoverable / structured extraction shapes with deterministic compile
+  Tags: F I T
+  Layer: PlannerExtraction (parse, structuralRepair, compile), PlanValidator
+  What: Keep deterministic structural repair; no semantic re-asking; no content substitution; no fabrication.
+  Why: Honest failure modes; no contamination of real content.
+  Test: PlannerExtraction tests/self-test.
+
+- Name: Recency + time-sensitive routing deterministic
+  Tags: F I T
+  Layer: PlannerExtraction.recencySignals / requiresFreshData, enforceRecency
+  What: Fresh-data requests forced onto tool/web path deterministically; no stale-cache answers on current facts.
+  Why: Honest freshness again.
+  Test: recency enforcement tests.
+
+- Name: Pipelining / tracing that is real, not theatrical
+  Tags: F I R T
+  Layer: PipelineTimer.swift, ExecutionTelemetry, VoiceTraceState, activity/state tracing
+  What: Real stage timing that traces planning→execute→verify where it runs; no fake progress.
+  Why: Debuggability + trust; real metrics, not theater.
+  Test: PipelineTimer tests; telemetry observed.
+
+# ============================================================================
+# F. Providers, availability, privacy, health (honest intelligence layer)
+# ============================================================================
+- Name: Provider availability + health honest everywhere
+  Tags: F I R T S
+  Layer: ProviderManager, HealthService, ZiaProviderModel, ProviderHealthSummary, Diagnostics pane
+  What: What's available/degraded/blocked/unconfigured; which provider/model actually responds; exact unavailable reasons.
+  Why: Honesty as product; no pretend-it-worked.
+  Test: health self-test; provider availability tests; Groq provider tests.
+
+- Name: Provider model verification for every provider that cares about model existence
+  Tags: F I R T S
+  Layer: GroqProvider.verifyModelAvailability (and analogous discipline for other providers where model existence matters)
+  What: Verify configured model against provider discovery before pretending it works; exact unavailable reason.
+  Why: Phase 2.1/2.2 evidence; configured model may not exist for the account.
+  Test: GroqProviderTests mocked; provider-specific discovery tests where applicable.
+
+- Name: Streaming honest per provider
+  Tags: F I R T S
+  Layer: Each provider's complete stream path; Groq SSE parsing done; others audited honestly
+  What: Don't advertise streaming where the provider can't give it; parse what the provider actually returns.
+  Why: Honest capability labels; no overclaim.
+  Test: provider stream tests; non-stream-equivalent tests.
+
+- Name: Keychain + offline + bounded reads everywhere they touch provider availability
+  Tags: S R T
+  Layer: KeychainManager (bounded 2s reads, injectable backend, fail-closed), KeychainBoundsTests, providers (groq/claude/openai/gemini/openrouter)
+  What: Every provider availability read is bounded and fail-closed; offline=false-not-configured honest; no hang on keychain/securityd.
+  Why: Phase 2.1c hazard mitigated; repeat in every path that touches keychain.
+  Test: KeychainBoundsTests; provider availability tests; self-test via keychain-dependent paths.
+
+- Name: Privacy gate (DataClassifier) never bypassed, even for escalation
+  Tags: S F T
+  Layer: DataClassifier.swift, EscalationPipeline, AgentLoop privacy-gate call
+  What: Sensitive/highly sensitive data refuses cloud escalation deterministically; no bypass.
+  Why: Privacy posture as product; fail closed on sensitive.
+  Test: privacy gate tests; EscalationAudit.
+
+- Name: Latency/cost bounded + budget honest
+  Tags: O I T R
+  Layer: UsageManager, Config.dailyBudgetUSD, ProviderManager routing/recordFailure
+  What: Cloud budget ceiling; cost/latency observability; honest when cloud is slow/expensive.
+  Why: Finite quota must not become hidden bottleneck.
+  Test: budget/usage tests; routing fallback on budget/exhaustion.
+
+- Name: Provider fallback chain honest + observable
+  Tags: F I T
+  Layer: ProviderManager executeWithFallback / routingDecision, recordFailure
+  What: Fallback never silent; record why a provider was passed over; degraded/circuit-breaker states observable.
+  Why: Fail-closed on unavailable; no silent substitution.
+  Test: routing decision tests; fallback/circuit-breaker observability.
+
+# ============================================================================
+# G. Tasks, autonomy, memory, learning (the "assistant that withholds correctly" story)
+# ============================================================================
+- Name: TaskStateMachine authority + verification enforcement stays strict
+  Tags: S F T
+  Layer: TaskStateMachine.swift, AgentLoop
+  What: Terminal states only reachable under real rules; zero-step/unverified tasks fail closed; completion requires all steps passed.
+  Why: This is the "state over transcript" principle; not narrative.
+  Test: TaskStateMachine/TaskStateRetention/TaskEvidenceIdentity/TaskWorkerAuthoritativeEvidence.
+
+- Name: Two-phase destructive preview→commit integrated with autonomy
+  Tags: S F T
+  Layer: DestructiveActionManager, PermissionGate
+  What: Destructive actions always gated/previewable; no silent irreversible; user/commit gate visible.
+  Why: Authority + irreversibility; not theater.
+  Test: destructive-action tests.
+
+- Name: Autonomy levels honest and bounded
+  Tags: S I T
+  Layer: Config.autonomyLevel, PermissionGate, settings
+  What: Levels 0..5 mapped to real authority; raising level never removes authority checks.
+  Why: Honest authority; not "higher level = god mode."
+  Test: autonomy tests; permission-gate mapping.
+
+- Name: Memory trust + classification + recall honesty
+  Tags: F I T S
+  Layer: ZiaMemoryStore, MemoryManager, MemoryRecord, MemoryTrust, UserProfile, RecallMemoryTool, RememberFactTool
+  What: Memory classified/trusted; recall honest; sensitive memory handled carefully; no pretend recall.
+  Why: Memory is trust-adjacent; don't blur.
+  Test: MemoryTrustTests, recall/remember tests.
+
+- Name: Opt-in workflow learning with re-validation
+  Tags: F I T S
+  Layer: Config.proceduralLearningEnabled, PreferenceStore, PlanValidator, PermissionGate, workflow/procedure layer
+  What: Off by default; any learned procedure re-validated by PlanValidator/PermissionGate before reuse; no silent background automation.
+  Why: Learning without authority creep; re-validation first.
+  Test: procedural-learning off by default; re-validation tests before procedure execution.
+
+- Name: Conversation/context boundedness + privacy minimization in dispatch
+  Tags: S I T R
+  Layer: ContextBuilder, ConversationManager, ContextSanitizer, ProviderManager dispatch path
+  What: Context bounded; credentials/sensitive content minimized/redacted before any external dispatch; local providers receive context unmodified.
+  Why: Data minimization as default; privacy gate integrity.
+  Test: ContextSanitizer tests; dispatch privacy tests.
+
+# ============================================================================
+# H. Users, surface, UI, accessibility, onboarding (the feel + truth)
+# ============================================================================
+- Name: Settings/health/diagnostics live and honest
+  Tags: F I T
+  Layer: Settings/SettingsView, SettingsDetailViews, DiagnosticsSettingsModel, HealthService, ZiaProviderModel, APIKeysView, PermissionSettingsView
+  What: Settings reflect real state; health/diagnostics probe-live honestly; providers + model status visible; permissions honest.
+  Why: Settings as truth surface, not a facade.
+  Test: settings/health rendering tests; provider card tests.
+
+- Name: Onboarding honest about permissions + requirements
+  Tags: F I T D
+  Layer: OnboardingView.swift, PermissionSettingsView, docs/OWNER_CHECKLIST.md, ZiaPermissionModel
+  What: Tell user which permissions are needed, current state, how to grant (TCC deep links), Safari JS requirement, screen recording app-vs-host dependency.
+  Why: Honesty beats pretending; mic/screen/accessibility/automation are real grants.
+  Test: permission state observed; onboarding text accurate.
+
+- Name: App UI accessibility (keyboard + VoiceOver + contrast + focus)
+  Tags: F I T
+  Layer: UI/, ZiaControls, ZiaSurfaces, ZiaStatusCards, OverlayView, ZiaWindowView, settings/rows
+  What: Keyboard navigable, VoiceOver labels, contrast/focus, real empty/error/blocked states.
+  Why: Ship real accessibility, not just desktop presence.
+  Test: UI accessibility review; keyboard/VoiceOver checks.
+
+- Name: Typed errors, empty states, blocked states that mean something
+  Tags: F I T
+  Layer: Errors.swift, UI error views, tool verification outcomes, activity surfaces
+  What: Errors typed; empty/blocked states real; no fake success.
+  Why: Trust; no theater.
+  Test: error/empty-state rendering tests; verification outcomes feed UI.
+
+- Name: Voice + text + hotkey surfaces consistent in behavior
+  Tags: F I T
+  Layer: JarvisApp (args routing), VoicePipeline, Overlay/text input surfaces, DeterministicRouter/IntentClassifier/DirectAnswerRouter
+  What: Same quality of routing/verification regardless of input channel; hotkey/text not inferior to voice.
+  Why: Multi-channel product, not voice novelty.
+  Test: routing parity across channels; deterministic paths same on voice/text/hotkey.
+
+# ============================================================================
+# I. Performance, latency, memory, I/O, energy, build (honest optimization)
+# ============================================================================
+- Name: Latency as primary product metric for fast path + planning
+  Tags: O I T
+  Layer: PipelineTimer, VoiceTraceState, ExecutionTelemetry, benchmarks, SelfTest halt latency
+  What: Track first-meaningful-latency, planning latency, execution latency, verification latency honestly; optimize the cheap paths first.
+  Why: Speed is the differentiator for "better than Siri."
+  Test: latency instrumentation tests; benchmarks; self-test halt-latency.
+
+- Name: First-meaningful-token vs request latency honestly separated
+  Tags: O I T
+  Layer: MLXProvider/ttft/requestLatency; Provider latency reporting; VoiceTraceState
+  What: Don't conflate Swift wall time with TTFT; Groq/non-stream providers report n/a or real.
+  Why: Honest metrics; no theater latency.
+  Test: latency separation tests; provider latency reporting.
+
+- Name: Local model memory/resident honesty + bounded usage
+  Tags: O I T R
+  Layer: MLXProvider RSS reporting, ResourceManager, model idle eviction, memory reserve, LocalModelCatalog
+  What: Honest local worker RSS; bounded model usage; eviction/idle policy; never download at runtime.
+  Why: Memory honesty; no surprises; local-first.
+  Test: MLXProvider RSS tests; ResourceManager; LocalModelCatalog cached-only resolution.
+
+- Name: I/O + subprocess hygiene for worker/bridge/provider calls
+  Tags: O R T
+  Layer: WorkerProcess (mlx), Provider sessions, URLFetcher, WebSearch, ShellExecutor, ProcessAuthority, ExternalAgentTransport (if any)
+  What: Process groups, timeouts, bounded I/O, no unbounded reads; child lifetimes observed.
+  Why: Stability + protecting the machine from runaway subprocesses.
+  Test: subprocess/timeout handling tests; worker reuse tests; provider session tests.
+
+- Name: Build + release + usage strings for Apple requirements
+  Tags: D O T
+  Layer: Package.swift, Scripts/build-app.sh, Scripts/Info.plist, release build
+  What: Release build assembly; Info.plist usage strings for mic/speech/screen etc.; honest attribution.
+  Why: Real shipability; Apple permission usage strings matter.
+  Test: release build; Info.plist usage strings present for relevant permissions.
+
+- Name: Deterministic route expansion for latency gain
+  Tags: O F T
+  Layer: DeterministicRouter, IntentClassifier, DirectAnswerRouter
+  What: More commands done without a model; cheaper/faster; expand thoughtfully.
+  Why: Cheapest-sufficient principle; latency + cost + reliability.
+  Test: deterministic coverage tests; not claiming model capability where deterministic.
+
+- Name: Prompt size/context budget discipline for local + cloud
+  Tags: O I T
+  Layer: ContextBuilder, Builder options, Provider max_tokens/temperature/budget
+  What: Bounded prompts; appropriate budgets; no unbounded context for expensive providers.
+  Why: Cost/latency discipline; no waste.
+  Test: context budget tests; provider option tests.
+
+- Name: Offline/local no-download guarantees remain at runtime
+  Tags: S I R
+  Layer: LocalModelCatalog, MLXProvider, Config
+  What: No downloads at runtime; available only if cached; fail closed if not cached.
+  Why: Real local-first; no surprise bandwidth.
+  Test: LocalModelCatalog cached-only resolution; MLXProvider load fails closed if uncached.
+
+# ============================================================================
+# J. Resillience, observability, diagnostics, auditing (the "shows it's real" layer)
+# ============================================================================
+- Name: Self-test breadth + honesty maintained
+  Tags: R T D
+  Layer: SelfTest.swift, ZiaSubsystemSelfTests.swift
+  What: 1067 passed/0 failed/0 skipped; broad deterministic + physical where possible; honest failures; no weakening.
+  Why: Self-test is the backbone evidence; not ceremonial.
+  Test: self-test run this session; no count decrease.
+
+- Name: Swift test suite breadth + integrity
+  Tags: R T
+  Layer: Tests/JarvisTests/
+  What: 282 tests/42 suites passing; no test weakened/fabriced; behavior changes ship with tests.
+  Why: Gate discipline; not ceremonial.
+  Test: swift test this session; no skip to fake green.
+
+- Name: Health/diagnostics probe-live honestly + bounded
+  Tags: R F T
+  Layer: HealthService (report; verifyExternalModels opt-in), ZiaProviderModel refresh, DiagnosticsSettingsModel
+  What: Health probe-live; external model verification opt-in only so deterministic callers stay offline; bounds respected.
+  Why: Honest health; no hidden network in deterministic callers.
+  Test: health self-test; diagnostics pane tests.
+
+- Name: Telemetry/diagnostics that help users/developers see what happened
+  Tags: R F T
+  Layer: ExecutionTelemetry, PipelineTimer, VoiceTraceState, activity/state surfaces, health report, provider recordFailure/reportSuccess
+  What: Real stage timing, execution outcomes, provider records, task activity.
+  Why: Debuggability + trust; real observability.
+  Test: telemetry/record tests; observability in surfaces.
+
+- Name: Failure recovery / crash-recovery honesty
+  Tags: R T
+  Layer: CrashRecovery, recovery_status tool, SelfTest crash-recovery logic
+  What: Recovery state observed honestly; no fake recovery claims.
+  Why: Honest failure surface.
+  Test: crash-recovery logic tests; recovery_status tool behavior.
+
+- Name: Task continuity, scheduling, retry honesty
+  Tags: F R T
+  Layer: TaskScheduler, TaskContinuity, AgentLoop retry/replan
+  What: Retry/replan bounded; no infinite replan loops; task continuity observable.
+  Why: Honest task lifecycle; no runaway.
+  Test: task continuity/schedule tests; retry bounded tests.
+
+- Name: Provider failure/circuit-breaker observability
+  Tags: R F T
+  Layer: ProviderManager recordFailure/recordSuccess/quarantine
+  What: Provider failures observed; quarantines with reason; no silent fallback.
+  Why: Fail-closed; observability of degraded state.
+  Test: routing/circuit-breaker tests; recordFailure observed.
+
+# ============================================================================
+# K. Security, safety, privacy, authority (non-negotiable spine)
+# ============================================================================
+- Name: No secret logging / no key in config/plaintext
+  Tags: S
+  Layer: KeychainManager, Logging, Config, logger categories
+  What: Keys in keychain; no secrets logged; no fabricated secrets.
+  Why: Security posture; not theater.
+  Test: Keychain tests; logging tests; no secrets in logs.
+
+- Name: Authority never from model; fail-closed on ambiguous permission/sandbox
+  Tags: S
+  Layer: PermissionGate, CommandSandbox, DestructiveActionManager, PlanValidator
+  What: These stay the authority spine; no weakening; fail closed.
+  Why: Frozen principles 1/2.
+  Test: existing authority suites; do not modify unless a task names it.
+
+- Name: Data classifier privacy gate deterministic + strict
+  Tags: S T
+  Layer: DataClassifier, EscalationPipeline privacy gate
+  What: Sensitive/highly sensitive content refuses cloud escalation deterministically; no bypass.
+  Why: Privacy posture; fail closed.
+  Test: privacy gate tests; EscalationAudit.
+
+- Name: Sensitive paths refused + bounded
+  Tags: S T
+  Layer: FileManagerJarvis isSensitivePath, SensitivePaths
+  What: Refuse sensitive credential locations; visible bounds.
+  Why: Safety; no overreach.
+  Test: sensitive-path tests.
+
+- Name: Shell/exec sandbox authority honest
+  Tags: S T
+  Layer: CommandSandbox, ProcessAuthority, ShellExecutor, StructuredProgramTool
+  What: Sandbox blocklist/validation; structured exec authority; destructive keyword screening; no bypass.
+  Why: Real authority; no shell games.
+  Test: CommandSandbox + ProcessAuthority suites.
+
+# ============================================================================
+# L. Documentation, clarity, roadmaps (the "no lying about status" spine)
+# ============================================================================
+- Name: PROJECT_CONTEXT.md + docs keep current verified state
+  Tags: D
+  Layer: PROJECT_CONTEXT.md, docs/, ledger
+  What: Document real verified state; no stale claims; no pretend-completion.
+  Why: Honesty as process; no lying.
+  Test: PROJECT_CONTEXT.md current; ledger current.
+
+- Name: Owner checklist real (hardware/permission-verified boundary)
+  Tags: D F
+  Layer: docs/OWNER_CHECKLIST.md
+  What: Mic "Not Determined"/exact-zero samples; Accessibility/Screen Recording/Automation; wake word/barge-in/TTS; live UI; Safari JS requirement; host-vs-app Screen Recording dependency.
+  Why: The honest boundary between verified-by-tests and owner-at-machine.
+  Test: checklist present; items honest.
+
+- Name: Completion ledger + capability audit honest
+  Tags: D
+  Layer: docs/COMPLETION_LEDGER.md, docs/CAPABILITY_AUDIT.md
+  What: Real task rows, real gates, real tool counts (42 production), real classes (19 REAL/23 PARTIAL/0 STUB); no fabricated completion.
+  Why: Evidence before green as process.
+  Test: ledger/audit current.
+
+- Name: Don't claim cloud better than local without re-measurement on same contract
+  Tags: D F
+  Layer: docs/, routing policy docs, benchmarks
+  What: Any claim "cloud more reliable/correct" requires re-measurement on the production contract; not from prompt mismatch.
+  Why: Phase 2.1/2.2 evidence; honest comparison.
+  Test: benchmark/re-measure evidence; no unfounded claims.
+
+- Name: Frozen-layer discipline documented in every report + commit
+  Tags: D
+  Layer: reports, commits, ledger
+  What: Every report states v1.0; frozen layers not modified unless a task names them; no silent changes.
+  Why: Governance; no rot.
+  Test: report/commit discipline observed.
+
+# ============================================================================
+# M. "More too" — deeper/cross-cutting catalog (still frozen-principle honest)
+# ============================================================================
+- Name: Real deterministic routing depth + test coverage
+  Tags: F I T
+  Layer: DeterministicRouter, IntentClassifier, DirectAnswerRouter, SelfTest
+  What: More zero-model-call routes; more direct-answer coverage; tests for each new route; not just one happy path.
+  Why: Speed/reliability; cheapest path.
+  Test: invariant + positive/negative tests per route.
+
+- Name: Real plan compilation + validation coverage
+  Tags: F I T
+  Layer: PlannerExtraction.compile, PlanValidator, AgentLoop
+  What: Compile→validate path exercised for extraction, repair, reference resolution, shell sandbox, recency.
+  Why: Authority integrity for planning.
+  Test: compile/validation suites; reference/resolution tests.
+
+- Name: Real memory/recall/preference/patch round-trips with tests
+  Tags: F I T
+  Layer: ZiaMemoryStore/recall/remember, PreferenceStore/set/get, PatchEngine
+  What: Tool wrappers tested on real round-trips, not just "service answered."
+  Why: Honest coverage; no "service answered = done."
+  Test: memory/preference/patch tests; no "answered only" labels.
+
+- Name: Real browser/accessibility/Safari-JS surface with honesty + tests
+  Tags: F I T S
+  Layer: BrowserManager, AccessibilityBridge, BrowserScriptSafetyTests
+  What: DOM tools with real tests; Safari JS requirement visible; accessibility permission visible; no pretend-live-DOM claims.
+  Why: Real capabilities, real permission truth.
+  Test: browser safety tests; permission-surface tests.
+
+- Name: Real health/diagnostics coverage
+  Tags: F R T
+  Layer: HealthService, DiagnosticsSettingsModel, ZiaProviderModel, ProviderManager
+  What: Health/diagnostics probed-live; provider status real; degraded/unavailable reasons real.
+  Why: Trust surface; no pretend health.
+  Test: health self-test; diagnostics/provider card tests.
+
+- Name: Real long-running/async resilience
+  Tags: R T
+  Layer: VoicePipeline, VoiceTurn, Overlay, activity, worker/bridge/provider calls, TaskWorkerPool, TaskStateMachine
+  What: Async resilience for long operations; cancellation surfaced; no fake progress; bounded retries.
+  Why: Real app behavior under load/time.
+  Test: async/cancellation/retry tests; worker lifecycle tests.
+
+- Name: Real release/build/usage-string readiness
+  Tags: D O T
+  Layer: Package.swift, build scripts, Info.plist
+  What: Release build; Info.plist usage strings for permissions; honest attribution.
+  Why: Real shipability; Apple requirements.
+  Test: release build; usage strings present.
+
+- Name: Deterministic verification for every real effect tool
+  Tags: F I T
+  Layer: ToolDefinitions, ToolExecutor, tool observe/verify paths
+  What: Every tool that performs an effect has a deterministic postcondition; no tool marked passed without it.
+  Why: Evidence before green; no false success.
+  Test: tool verification tests; SelfTest tool coverage.
+
+- Name: Prompt-portability discipline before any cloud extraction is "trusted"
+  Tags: F I T S
+  Layer: MLXPlanner.buildExtractionPrompt, PlannerExtraction, ProviderManager, routing docs
+  What: If cloud is used for extraction, the prompt/contract must work for the cloud model; prompt mismatch must not be mistaken for model strength.
+  Why: Phase 2.1 finding; cloud is not a free lunch.
+  Test: prompt-portability re-measurement; routing tests before cloud extraction trusted.
+
+- Name: Honest device permission posture (mic/speech/screen/a11y/automation) in every relevant surface
+  Tags: F I T D
+  Layer: Onboarding, PermissionSettingsView, ZiaPermissionModel, health, settings, voice surfaces
+  What: Permission state visible everywhere it matters; not just one place.
+  Why: Honesty as product; user can see reality.
+  Test: permission state observed across surfaces.
+
+- Name: No "always listening / always recording" sloppy posture
+  Tags: S I
+  Layer: VoicePipeline, audio capture, wake detection
+  What: Capture on demand / bounded; no sloppy always-listening behavior; wake from transcript, not raw always-on.
+  Why: Privacy/energy; honest posture.
+  Test: capture-on-demand behavior; wake-from-transcript.
+
+- Name: Cursor/keyboard/hotkey as equal channels with real routing
+  Tags: F I T
+  Layer: JarvisApp args routing, hotkey manager, text surfaces
+  What: Equal quality across channels; no inferior treatment of text/hotkey.
+  Why: Desk-native product; not voice novelty.
+  Test: routing parity tests.
+
+- Name: Email/notifications/reminders/follow-through tool chain real + bounded
+  Tags: F I T
+  Layer: NotificationSender, ScheduleTaskTool, TaskScheduler, task continuity
+  What: Real notifications/schedule/follow-through; bounded; no fake reminder claims.
+  Why: Follow-through as capability; real not theatrical.
+  Test: notification/schedule/follow-through tests.
+
+- Name: File system tool set real + bounded + verified
+  Tags: F I T
+  Layer: FileManagerJarvis, filesystem tool set, ToolExecutor
+  What: Real file operations bounded; sensitive-path refusal; verification.
+  Why: Real local workspace capability; not hallucinated file work.
+  Test: filesystem capability tests; sensitive-path tests.
+
+- Name: Tool registry + tool definition honesty
+  Tags: F T
+  Layer: ToolRegistry, ToolDefinitions, ToolExecutor
+  What: Tools have real execute→observe→verify; no canned data; definitions reflect real spec.
+  Why: Honest capability surface; no fake tools.
+  Test: tool coverage tests; SelfTest tool presence.
+
+- Name: Failure modes documented honestly + testable
+  Tags: D R T
+  Layer: Errors.swift, SelfTest, tool verification outcomes, provider failures
+  What: Real failure modes documented; failures mean something; no fake green.
+  Why: Honest product; evidence before green.
+  Test: error/verification-outcome tests; provider failure tests.
+
+- Name: Latency/cost/budget observability visible to user/developer
+  Tags: O R F T
+  Layer: UsageManager, PipelineTimer, VoiceTraceState, ExecutionTelemetry, health, settings
+  What: Real observability; not theater metrics.
+  Why: Honest performance/product story.
+  Test: observability tests; UI observability.
+
+- Name: Provider independence: product boots/runs without cloud
+  Tags: S R T
+  Layer: ProviderManager fallback chain, Config, MLXProvider
+  What: Boot/route/execute fully offline without cloud; cloud is optional acceleration.
+  Why: Frozen principle; no hidden cloud dependency.
+  Test: offline path tests; local-only routing tests.
+
+- Name: Clean repo hygiene as part of product credibility
+  Tags: D
+  Layer: repo root, .gitignore, AQ queue, docs
+  What: Unreferenced tracked files handled via AQ/owner cleanup; no sloppy tracked junk; secrets in .agents not in build.
+  Why: Product credibility; not just build.
+  Test: repo hygiene docs; AQ queue current.
+
+# ============================================================================
+# PART II — external-research-deep-catalog (appended 2026-10-07)
+# ============================================================================
+# Method here is different from PART I.
+#   - I searched current public sources and specialized surfaces before writing
+#     this section, not just from memory.
+#   - A few hard anchors are real and dated and should be treated as such:
+#       - WWDC26 Session 232 "Run local agentic AI on the Mac using MLX"
+#         (developer.apple.com/videos/play/wwdc26/232) — available and indexed by
+#         multiple secondary sources within the last day of the session.
+#       - A peer-reviewed-ish source on Apple Silicon LLM throughput cites
+#         ~525 tokens/sec on M4 Max for text and large image-query speedups
+#         (arXiv 2601.19139).
+#       - Multiple 2026 sources argue prompt-based safety is architecturally
+#         insufficient for executing agents, and recommend architecturally-imposed
+#         separation/authority/least-privilege/auditability (Parallax; IBM Zero
+#         Trust for agents; default-deny sandbox discussions).
+#   - The rest are generalized observations from the current 2026 assistant-agent
+#     market (local-first, privacy-first, transparent UX, memory, scheduling,
+#     drafts-before-ask, multi-tool action, etc.) and are framed as
+#     "what the field looks like / what users notice," not as "Zia must copy X."
+#   - Sources referenced inline by URL/title where I could; some are best-effort
+#     sourced and should be re-confirmed before treating as hard evidence.
+#
+# IMPORTANT: this section is suggestions + observations, not commitments. None of
+# it is green without tests, none of it may weaken the frozen spine, and nothing
+# here modifies a frozen layer unless a task names it.
+# ============================================================================
+
+# -------------------------------------------------------------------------
+# N. External anchors worth knowing (dated / sourced where possible)
+# -------------------------------------------------------------------------
+- Name: WWDC26 Session 232 — local agentic loop with MLX
+  Tags: D F I R
+  Layer: Sources/Jarvis/Brain/Workers/mlx_worker.py; MLXProvider; Planner agent loop; docs/
+  What: Apple's WWDC26 Session 232 is explicitly about running agentic AI locally on Mac with MLX — model reasons, calls tools, observes results, in a loop, without cloud/apikeys. Multiple secondary sources summarize the loop as "user -> agent -> model -> tools" with local tool-use + observation.
+  Why: Your project is built on exactly this loop with mlx_worker.py + local models + local tool use. It is useful context for what Apple is surfacing as "the story" for local on-device agents in 2026.
+  Test: notes → verify by re-watching/reading WWDC26 232 yourself.
+  Source: https://developer.apple.com/videos/play/wwdc26/232 ; wwdcnotes.com summary; blakecrosley.com blog.
+
+- Name: WWDC26 Session 233 — distributed MLX inference/training across Macs
+  Tags: I O R D
+  Layer: MLXProvider architecture (future); WorkerProcess; distributed serving; docs
+  What: WWDC26 Session 233 is about scaling MLX workloads across multiple Macs (interconnect efficiency, large model inference, request batching).
+  Why: If/when you ever consider serving multiple concurrent local requests or larger models, this is the Apple-flavored direction to watch.
+  Test: notes; not implemented.
+  Source: https://developer.apple.com/videos/play/wwdc26/233
+
+- Name: WWDC26 broader ML/AI session cluster including Foundation Models + Private Cloud Compute framing
+  Tags: D F I
+  Layer: docs; future Apple platform alignment
+  What: WWDC26 ML guide and related sessions cover on-device AI, Foundation Models, Private Cloud Compute, Core AI framing, and agentic app experiences.
+  Why: Useful context for how Apple is positioning on-device + private-cloud hybrid AI in 2026; not directly code to copy, but useful market framing.
+  Source: developer.apple.com/wwdc26/guides/machine-learning
+
+- Name: Throughput/performance reference numbers for Apple Silicon LLM inference are real and large in 2026
+  Tags: O I
+  Layer: MLXProvider; benchmarks; docs
+  What: Public 2026 sources (incl. arXiv 2601.19139) claim native LLM/MLLM throughput at scale on Apple Silicon (e.g. ~525 tokens/sec on M4 Max for text; large speedups on repeated image queries), and dedicated MLX serving layers (oMLX, MLX-LM server) add continuous batching for concurrent requests.
+  Why: If your project cares about latency/throughput as a differentiator, then there are real numbers and real serving approaches (continuous batching, prefix sharing, Copy-on-Write caches, OpenAI-compatible local serving) to evaluate later — not to claim as yours without measuring.
+  Test: measure, don't claim. Any number you cite must be yours or sourced.
+  Source: arXiv 2601.19139; oMLX blog; MLX-LM server discussion; perlexity.app optimization blog.
+
+- Name: Local-first / privacy-first personal assistant market is large and increasingly "owned data / no account / no keys" positioned
+  Tags: F I D
+  Layer: whole product positioning; docs; onboarding
+  What: 2026 sources commonly list "local-first personal assistants" — anythingllm, LM Studio's Locally AI, Jan, open-source local agents, etc. — as privacy/ownership/nokeys/no account options.
+  Why: Good market context for how users think about "AI assistant" in 2026: privacy/ownership/local as a selling point, and as an honest differentiator when true.
+  Test: market survey; not code.
+  Source: vellum.ai local assistants list; anythingllm.com; lmstudios's Locally AI on the App Store; openai community thread; agent37 list.
+
+- Name: Users notice "drafts before you ask / interface / trainable on your data / multi-tool action / calendar/email/messaging" as common assistant value props in 2026
+  Tags: F I
+  Layer: whole product; docs; onboarding
+  What: Public product discussions frequently call out: seamless interface, drafts-before-ask, trainable on your data, calendar/task/email/messaging action, web/tool action across apps, proactive suggestions.
+  Why: Useful context for what users *expect* an assistant to do in 2026, so you can see where Zia is strong and where it is absent — and which gaps are worth closing honestly vs leaving closed.
+  Source: gmelius.com best AI assistant features; zapier best AI personal assistants; vellum what a personal assistant can do; slack personal AI assistants.
+
+- Name: Arena of "best AI assistant / best local AI assistant / best local on Mac" is crowded in 2026 and competition framing is real
+  Tags: D I
+  Layer: positioning; docs
+  What: Multiple 2026 rankings exist: local assistants, Mac local agents, open-source personal assistants, general assistants. This is a real competitive landscape to read before claiming "better than Siri/X."
+  Why: Don't overclaim; know the field. Useful for honest positioning.
+  Source: vellum best local AI assistants; blog.buildbetter.ai best local Mac agents; similare alternatives lists; redit local-llama threads.
+
+- Name: Deterministic + auditable agent architectures are being written about heavily in 2026 as the "reliable" alternative to pure probabilistic agents
+  Tags: F I R S
+  Layer: PlanValidator; TaskStateMachine; EscalationPipeline; deterministic routing; audit record
+  What: Multiple 2026 sources say deterministic modules + explicit state machines + audit records + policy verification make AI agents more reliable/auditable and reduce hallucination-driven failure. Some specifically frame "prompt-based safety is architecturally insufficient" and stress architectural separation of reasoning from action.
+  Why: This is exactly the shape Zia already takes (TaskStateMachine + PlanValidator + deterministic compiler + verification outcomes + escalation with losslessness + author authority never from model). Good external sign that the architectural bet is aligned with a live 2026 discourse.
+  Source: arxiv 2602.10479; oracle blog formal policy verification for agentic systems; konghq deterministic AI architecture; elementum deterministic vs probabilistic; zingtree deterministic AI + guardrails; parallax paper (arxiv 2604.12986); IBM securing AI agents zero trust; nhimg default-deny sandbox; nvidia practical security guidance for sandboxing agentic workflows.
+
+- Name: Security discourse about agents treating model as untrusted insider + sandbox escape risks + secret injection + audit logs is active in 2026
+  Tags: S
+  Layer: CommandSandbox; PermissionGate; DestructiveActionManager; Keychain; audit logs; escalation privacy gate
+  What: Security threads in 2026 emphasize: treat agent as insider threat, sandbox must not rely on agent compliance, isolation independently enforced, secret injection/exposure risk, audit logs of decisions/inputs/outputs, fail-closed when auth layer unsure.
+  Why: Reinforces your frozen spine and the "authority never from model" stance; suggests audit-logging of decisions is more important the more power the agent has.
+  Source: coalitionforsecureai treat agent like insider threat; accuknox sandbox escape + zero trust; cloudtweaks fail-closed; wso2 beyond prompt guardrails; nvidia sandboxing guidance.
+
+# -------------------------------------------------------------------------
+# O. Product/UX depth suggestions — small and large
+# -------------------------------------------------------------------------
+- Name: "Edit mode" — small fast local edit assistant with explicit review
+  Tags: F I T S
+  Layer: ToolRegistry (patch_file/replace_in_file/append_file/write_file), PatchEngine, PermissionGate, review/confirm UI
+  What: A compact local edit assistant that proposes small local edits (replace, append, patch) and requires explicit review/confirm, with exact byte diff and deterministic verification before anything persists.
+  Why: A genuine "assistant that edits on your machine" use case that is local-first, bounded, and auditable — not a chatbot answering about edits.
+  Test: patch/replace/append tool tests; review/commit flow; verification.
+
+- Name: "Search my machine and tell me where things actually live" as a first-class feature
+  Tags: F I T
+  Layer: search_files, grep_files, file_metadata, list_directory, project_info, CodeIntelligence find_symbol/find_markers/changed_files
+  What: A real local search/recall feature: find files, grep, metadata, symbol/marker/changed-files, project context, with bounded enumeration and honest results.
+  Why: Many generic assistants are weak at real local search; a local-first machine can be honestly better here.
+  Test: filesystem + code intelligence tests + verification.
+
+- Name: "Schedule + reminders + follow-through" as real, not theatrical
+  Tags: F I T R
+  Layer: TaskScheduler, ScheduleTaskTool, NotificationSender, task continuity
+  What: Real scheduled follow-ups/reminders/follow-through where the platform allows; bounded; visible; failure means something.
+  Why: A capability gap many assistants talk about but don't reliably do; local-first can mean real follow-through.
+  Test: scheduler/schedule-tool/notification tests.
+
+- Name: "Proactive local ambient awareness" kept bounded and honest
+  Tags: F I T R S
+  Layer: ambient context (current_app, etc.), freshness guards, ambient slots, accessibility/ambient capture where real
+  What: A bounded, honestly-scoped ambient layer (frontmost app, recent activity, short context) that can proactively suggest or summarize, without pretending omniscience.
+  Why: Proactive assistants are expected in 2026; Zia can do a real local ambient layer honestly instead of faking awareness.
+  Test: ambient freshness/unavailable handling; no overreach.
+
+- Name: "Do-this-for-me" macro recorder with re-validation, opt-in
+  Tags: F I T S
+  Layer: workflow/procedure layer; TaskStateMachine; PlanValidator; PermissionGate; procedural learning flag
+  What: A macro/repeat workflow facility that records a successful localized workflow and can replay it only after re-validation and permission/authority checks; off by default.
+  Why: Local-first "learn once, replay safely" is a believable assistant feature when re-validation is mandatory and authority never from model.
+  Test: procedural-learning off by default; re-validation before replay; navigation/authority tests.
+
+- Name: "Explain what you would do before you do it" preview-first everywhere for risky actions
+  Tags: F I T S
+  Layer: DestructiveActionManager; PermissionGate; preview/confirm UI; review surface
+  What: Any risky action gets a clear preview of what will happen, what authority/permission is needed, and a confirm step; no silent irreversible action.
+  Why: Trust through preview; aligns with two-phase destructive gating already present.
+  Test: preview/confirm flow tests; destructive gating.
+
+- Name: "Undo / recoverable local actions" as a real posture when possible
+  Tags: F I T R S
+  Layer: file/system actions; CommandSandbox; backup/recover paths; PatchEngine backups; recovery_status
+  What: For local actions that can be undone/reversed, support an undo/recovery posture where feasible (file ops, patches with backups, etc.); where not undoable, route through destructive preview/commit.
+  Why: Local machine control is more trusted when reversible actions are reversible and destructive ones are gated.
+  Test: file/patch undo/recovery tests; destructive gating.
+
+- Name: "Session/after-action summary" with what happened, what verified, what didn't, why
+  Tags: F I T
+  Layer: Activity/state surfaces; verification outcomes; turn summaries; activity model; history
+  What: After a turn or task, show a concise honest summary: what was attempted, what was verified, what failed, why, what needs permissions or is unavailable.
+  Why: Users trust more when they get an honest outcome summary rather than a vague "done."
+  Test: outcome summary rendering; verification outcomes feed summary.
+
+- Name: "Confidence / provenance signal" when it helps, never as fake certainty
+  Tags: F I T S
+  Layer: UI; routing/verification signals; response rendering
+  What: When useful, show provenance or certainty-level signals (e.g. "deterministic", "verified", "model-chosen", "unverified", "needs permission") without pretending false certainty.
+  Why: Transparent confidence is a real 2026 UX theme; but must be honest — never a fake certainty.
+  Test: signaling truthful; no false certainty.
+
+- Name: Multichannel input parity (hotkey / text / voice) treated as equal
+  Tags: F I T
+  Layer: JarvisApp args routing; hotkey manager; voice pipeline; text input surfaces
+  What: Same routing/verification quality across input channels; text/hotkey not second-class; no channel gets authoritative power another doesn't.
+  Why: Desk-native product quality; not voice novelty.
+  Test: routing parity tests across channels.
+
+- Name: "Pause / stop / interrupt" controls visible and honest
+  Tags: F I T R
+  Layer: VoicePipeline, TTSEngine, AudioPlayer, EmergencyInterrupt, Overlay/activity surfaces
+  What: Clear stop/pause/interrupt controls that are real, fast, observable; no pretend-stop.
+  Why: Interruptibility + control are high-impact feel features when real.
+  Test: interruption/stop behavior tests.
+
+- Name: "Explain in plain language what you need from me" for permission/setup
+  Tags: F I D
+  Layer: Onboarding; permission settings; health; settings; docs/OWNER_CHECKLIST
+  What: When something is blocked by a permission or missing setup, explain plainly what is needed, where to grant it, and what it unlocks — honestly, with Apple TCC deep links.
+  Why: Onboarding truth is a differentiator vs opaque assistant experiences.
+  Test: onboarding/permission text accurate; deep links correct.
+
+- Name: Memory + recall with clear trust boundaries + no creep
+  Tags: F I T S
+  Layer: ZiaMemoryStore; MemoryManager; MemoryTrust; recall/remember; context sanitizer
+  What: Memory is explicitly classified/trusted; recall honest; sensitive handling; opt-in where appropriate; no silent background memory creep.
+  Why: Memory is trust-adjacent; honest memory posture is better than pretending.
+  Test: memory trust/classification tests; recall tests.
+
+# -------------------------------------------------------------------------
+# P. Capability depth — where the project can plausibly go deep
+# -------------------------------------------------------------------------
+- Name: Real local tool envelope: file, system, clipboard, notifications, browser (where granted), accessibility (where granted)
+  Tags: F I T
+  Layer: FileManagerJarvis; SystemControl; ClipboardManager; NotificationSender; BrowserManager; AccessibilityBridge; tools list
+  What: Deepen the real local tool envelope with real tests and verification; honest visibility of which require grants.
+  Why: This is the "do real things on the machine" layer — the core of local-first advantage.
+  Test: tool/verification tests; grant-surface honesty.
+
+- Name: Bounded local web/web-search/fetch where useful, with offline-degradation honesty
+  Tags: F I T R
+  Layer: WebSearch; URLFetcher; SourceManager; offline handling
+  What: Web tools where useful, but with honest offline-degradation tests; no live-network-only assertions as green.
+  Why: Network-dependent tools should degrade honestly; this matches the project's planned posture.
+  Test: offline-degradation tests.
+
+- Name: Local schedule/automation for real follow-through
+  Tags: F I T
+  Layer: TaskScheduler; schedule task; task continuity; notifications
+  What: Real scheduling/automation for follow-through; bounded; observable; failure means something.
+  Why: Follow-through capability is a real personal-assistant value prop.
+  Test: schedule/continuity tests.
+
+- Name: Local "search your machine + project" intelligence as a differentiator
+  Tags: F I T
+  Layer: FileSystem tools; CodeIntelligence; ProjectInspector; project_info
+  What: Honest local search/project intelligence: where files are, what changed, what symbols/markers are present, project context.
+  Why: Real local workspace intelligence is where a local machine assistant can beat a remote chit-chat bot.
+  Test: project/code-intelligence tests.
+
+- Name: Real verification-first culture: every effect tool has a deterministic postcondition test
+  Tags: F I T
+  Layer: ToolDefinitions; ToolExecutor; verifyDetailed paths; SelfTest
+  What: Expand deterministic postcondition testing so every effect-capable tool is covered, not just "service answered."
+  Why: Evidence-before-green is the spine; this is the operationalization.
+  Test: per-tool verification tests.
+
+- Name: Browser + Safari JavaScript-from-Apple-Events honestly surfaced
+  Tags: F I T S
+  Layer: BrowserManager; browser docs; onboarding
+  What: Browser DOM tools where supported, with Safari JS requirement and permission truth surfaced honestly; not pretend-live-DOM claims.
+  Why: Real capability with real permission reality.
+  Test: browser safety tests; permission-surface tests.
+
+- Name: Accessibility computer-control honestly surfaced
+  Tags: F I T S
+  Layer: AccessibilityBridge; FastUIMode; inspect_ui/click_element/set_text; AXIsProcessTrusted
+  What: Accessibility control where granted, with postcondition verification and honest permission visibility.
+  Why: Real control, real permission reality.
+  Test: accessibility verification tests; trust-state visibility.
+
+# -------------------------------------------------------------------------
+# Q. Optimization / performance / infrastructure depth (honest)
+# -------------------------------------------------------------------------
+- Name: Latency as first-class metric; optimize cheapest paths first
+  Tags: O I T R
+  Layer: PipelineTimer; VoiceTraceState; ExecutionTelemetry; benchmarks; SelfTest halt latency
+  What: Track first-meaningful-latency, planning latency, execution latency, verification latency honestly; optimize cheapest paths (deterministic) first.
+  Why: Speed is a real differentiator; cheapest-first is the frozen principle.
+  Test: latency instrumentation + benchmarks; no false latency claims.
+
+- Name: Honest separation of TTFT vs request latency for providers
+  Tags: O I T
+  Layer: MLXProvider; provider latency reporting; VoiceTraceState
+  What: Do not conflate Swift wall time with true TTFT for local; for streaming/non-stream providers report real or n/a honestly.
+  Why: Honest metrics; no theater latency.
+  Test: latency separation tests.
+
+- Name: Local model RSS/resident honesty + bounded usage
+  Tags: O I T R
+  Layer: MLXProvider RSS reporting; ResourceManager; model idle eviction; memory reserve; LocalModelCatalog
+  What: Honest local worker RSS; bounded model usage; idle eviction; no runtime downloads.
+  Why: Memory honesty; no surprises.
+  Test: MLXProvider RSS tests; ResourceManager; LocalModelCatalog cached-only resolution.
+
+- Name: Subprocess/I/O hygiene for worker/bridge/provider calls
+  Tags: O R T
+  Layer: WorkerProcess; provider sessions; URLFetcher; WebSearch; ShellExecutor; ProcessAuthority
+  What: Process groups, timeouts, bounded I/O, no unbounded reads; child lifetimes observed.
+  Why: Stability + protecting the machine from runaway subprocesses.
+  Test: subprocess/timeout handling tests; worker reuse tests.
+
+- Name: Release build + Info.plist usage strings + real shipability
+  Tags: D O T
+  Layer: Package.swift; build scripts; Info.plist; release build
+  What: Release build assembly; Info.plist usage strings for relevant permissions; honest attribution.
+  Why: Real shipability; Apple permission usage strings matter.
+  Test: release build; usage strings present.
+
+- Name: Prompt size / context budget discipline for local + cloud
+  Tags: O I T
+  Layer: ContextBuilder; provider options; budget discipline
+  What: Bounded prompts; appropriate budgets; no unbounded context for expensive providers.
+  Why: Cost/latency discipline; no waste.
+  Test: context budget tests; provider option tests.
+
+- Name: Offline/local no-download guarantees remain at runtime
+  Tags: S I R
+  Layer: LocalModelCatalog; MLXProvider; Config
+  What: No downloads at runtime; available only if cached; fail closed if not cached.
+  Why: Real local-first; no surprise bandwidth.
+  Test: LocalModelCatalog cached-only resolution; MLX load fails closed if uncached.
+
+- Name: Provider streaming honesty per provider
+  Tags: F I T R S
+  Layer: Each provider's stream path; Groq SSE done; others audited honestly
+  What: Don't advertise streaming where the provider can't give it; parse what the provider actually returns; failures mean something.
+  Why: Honest capability labels; no overclaim.
+  Test: provider stream tests; non-stream-equivalent tests.
+
+- Name: Provider model verification discipline for every provider that cares about model existence
+  Tags: F I R T S
+  Layer: GroqProvider.verifyModelAvailability and analogous discipline elsewhere
+  What: Verify configured model before pretending availability; exact unavailable reason; no silent substitution.
+  Why: Phase 2.1/2.2 finding; configured model may not exist for account.
+  Test: provider discovery tests.
+
+- Name: Provider fallback + circuit breaker + observability honest
+  Tags: F I T R
+  Layer: ProviderManager routing/recordFailure/recordSuccess/quarantine
+  What: Fallback never silent; provider failures observed; quarantines with reason; degraded state observable.
+  Why: Fail-closed + observability of degraded state.
+  Test: routing/fallback/circuit-breaker tests.
+
+- Name: Bounded retry/recovery/failover; no runaway replan loops
+  Tags: R T
+  Layer: AgentLoop retry/replan; TaskStateMachine; crash recovery
+  What: Retry/replan bounded; crash-recover/recovery state honest; no runaway.
+  Why: Honest task lifecycle; no runaway.
+  Test: retry/recovery tests.
+
+- Name: Telemetry/observability that is real, not theatrical
+  Tags: R F T
+  Layer: ExecutionTelemetry; PipelineTimer; VoiceTraceState; task activity; health report; provider records
+  What: Real stage timing, execution outcomes, provider records, task activity.
+  Why: Debuggability + trust; real observability.
+  Test: telemetry/record tests.
+
+# -------------------------------------------------------------------------
+# R. Security / safety / privacy / authority depth (frozen-spine reinforced)
+# -------------------------------------------------------------------------
+- Name: Authority never from model; fail-closed on ambiguous permission/sandbox
+  Tags: S
+  Layer: PermissionGate; CommandSandbox; DestructiveActionManager; PlanValidator
+  What: Keep these as the authority spine; never weaken for "capability feel"; fail closed.
+  Why: Frozen principles 1/2.
+  Test: existing authority suites; do not modify unless a task names it.
+
+- Name: Privacy gate (DataClassifier) deterministic + strict, never bypassed
+  Tags: S T
+  Layer: DataClassifier; escalation privacy gate
+  What: Sensitive/highly sensitive content refuses cloud escalation deterministically; no bypass.
+  Why: Privacy posture; fail closed.
+  Test: privacy gate tests; EscalationAudit.
+
+- Name: Sensitive paths refused + bounded
+  Tags: S T
+  Layer: FileManagerJarvis isSensitivePath; SensitivePaths
+  What: Refuse sensitive credential locations; visible bounds.
+  Why: Safety; no overreach.
+  Test: sensitive-path tests.
+
+- Name: Shell/exec sandbox authority honest
+  Tags: S T
+  Layer: CommandSandbox; ProcessAuthority; ShellExecutor; StructuredProgramTool
+  What: Blocklist/validation; structured exec authority; destructive keyword screening; no bypass.
+  Why: Real authority; no shell games.
+  Test: CommandSandbox + ProcessAuthority suites.
+
+- Name: No secret logging; keys in keychain; no fabricated secrets
+  Tags: S
+  Layer: KeychainManager; Logging; Config; logger categories
+  What: Keys in keychain; no secrets logged; no fabricated secrets.
+  Why: Security posture; not theater.
+  Test: keychain tests; logging tests; no secrets in logs.
+
+- Name: Audit records of decisions / inputs / outputs for actions taken
+  Tags: S R T
+  Layer: activity/state surfaces; EscalationPipeline; provider records; audit surfaces
+  What: If the agent takes actions, keep an immutable/honest record of decisions/inputs/outputs where feasible, especially for impactful actions.
+  Why: External 2026 security discourse emphasizes audit logs for agents.
+  Test: audit record tests; no fabricated audit.
+
+- Name: Treat agent as untrusted even internally — least privilege + scoped access
+  Tags: S
+  Layer: authority spine; tool scoping; permission gating; provider dispatch
+  What: Least-privilege posture; scoped tool access; no "agent can do everything."
+  Why: External 2026 discourse: sandboxes can't rely on agent compliance.
+  Test: authority/scoping tests.
+
+# -------------------------------------------------------------------------
+# S. Market + positioning depth (honest, not overclaim)
+# -------------------------------------------------------------------------
+- Name: Don't claim "better than Siri/X" on vibes; claim on evidence + honesty
+  Tags: D F
+  Layer: docs; onboarding; positioning
+  What: Position around real differentiators where the project is actually strong (deterministic + local tools with verification, offline posture, honest authority/health/permissions), and never claim superiority on things not re-measured or verified.
+  Why: Honest positioning; claims supported by evidence only.
+  Test: positioning doc; evidence requirements.
+
+- Name: Understand the crowded 2026 assistant/agent field before overclaiming
+  Tags: D I
+  Layer: docs; positioning
+  What: Read the current 2026 field (local assistants, Mac local agents, open-source personal assistants, general assistants) before marketing claims.
+  Why: Honest positioning; reduces overclaim risk.
+  Source: vellum best local assistants; buildbetter best local Mac agents; similare alternatives.
+
+- Name: Make the "owned/private/local" story honest, not marketing
+  Tags: D F
+  Layer: docs; onboarding
+  What: If you claim privacy/ownership/local-first, ensure it's real and visible everywhere it matters (what is local vs cloud, what requires grants, what is sent where).
+  Why: Trust; honesty over vibes.
+  Test: privacy/visibility surfaces honest.
+
+# -------------------------------------------------------------------------
+# T. Docs / process depth (no lying about status)
+# -------------------------------------------------------------------------
+- Name: Keep docs + ledger + capability audit reflecting real verified state
+  Tags: D
+  Layer: PROJECT_CONTEXT; COMPLETION_LEDGER; CAPABILITY_AUDIT; OWNER_CHECKLIST
+  What: Real current state; no stale claims; no pretend-completion.
+  Why: Honesty as process; no lying.
+  Test: docs current.
+
+- Name: Owner checklist real (hardware/permission-verified boundary)
+  Tags: D F
+  Layer: OWNER_CHECKLIST
+  What: Mic "Not Determined"/exact-zero samples; Accessibility/Screen Recording/Automation; wake word/barge-in/TTS; live UI; Safari JS requirement; host-vs-app Screen Recording dependency.
+  Why: The honest boundary between verified-by-tests and owner-at-machine.
+  Test: checklist present and honest.
+
+- Name: Every report states v1.0 + frozen-layer discipline
+  Tags: D
+  Layer: reports; commits; ledger
+  What: Every report states v1.0; frozen layers not modified unless a task names them; no silent changes.
+  Why: Governance; no rot.
+  Test: report/commit discipline observed.
+
+# -------------------------------------------------------------------------
+# U. Cooling + energy + machine-orientation (often overlooked)
+# -------------------------------------------------------------------------
+- Name: Energy/thermal-awareness for local MLX work
+  Tags: O I R
+  Layer: MLXProvider; ResourceManager; worker lifecycle
+  What: Be honest and thoughtful about thermal/energy implications of sustained local inference; avoid runaway sustained compute without user awareness where possible.
+  Why: Local ML on Apple Silicon can be fast but sustained compute has thermal/power realities; an honest assistant doesn't surprise the machine/user.
+  Test: resource/memory/worker tests; no runaway.
+
+- Name: Bounded idle eviction + memory reserve honesty
+  Tags: O I R
+  Layer: ResourceManager; Config.modelIdleEvictionSeconds; memoryReserveMB
+  What: Real idle eviction; real memory reserve; honest reporting.
+  Why: Local-first means the machine's memory matters; honesty + bounds matter.
+  Test: resource/eviction tests.
+
+# -------------------------------------------------------------------------
+# V. "More too" — deep cross-cutting extras
+# -------------------------------------------------------------------------
+- Name: Deterministic routing expansion with tests
+  Tags: F I T
+  Layer: DeterministicRouter; IntentClassifier; DirectAnswerRouter; SelfTest
+  What: More zero-model-call routes; more direct-answer coverage; tests per route; not one happy path.
+  Why: Speed/reliability; cheapest path.
+  Test: invariant + positive/negative tests per route.
+
+- Name: Deterministic compile/validation coverage expansion
+  Tags: F I T
+  Layer: PlannerExtraction.compile; PlanValidator; AgentLoop
+  What: Compile→validate path exercised for extraction/repair/reference/shell/recency.
+  Why: Authority integrity.
+  Test: compile/validation suites.
+
+- Name: Tool round-trip tests for memory/preference/patch
+  Tags: F I T
+  Layer: ZiaMemoryStore/recall/remember; PreferenceStore; PatchEngine
+  What: Tool wrappers tested on real round-trips, not just "service answered."
+  Why: Honest coverage.
+  Test: memory/preference/patch tests.
+
+- Name: Browser/accessibility/Safari-JS honestly + tests
+  Tags: F I T S
+  Layer: BrowserManager; AccessibilityBridge; BrowserScriptSafetyTests
+  What: DOM tools with real tests; Safari JS requirement visible; accessibility permission visible; no pretend-live-DOM claims.
+  Why: Real capability + real permission truth.
+  Test: browser safety tests; permission-surface tests.
+
+- Name: Health/diagnostics coverage + provider status real
+  Tags: F R T
+  Layer: HealthService; DiagnosticsSettingsModel; ZiaProviderModel; ProviderManager
+  What: Health probed-live; provider status real; degraded/unavailable reasons real.
+  Why: Trust surface; no pretend health.
+  Test: health self-test; diagnostics/provider card tests.
+
+- Name: Async/resilience coverage for long operations
+  Tags: R T
+  Layer: VoicePipeline; VoiceTurn; Overlay; activity; worker/bridge/provider calls; TaskWorkerPool; TaskStateMachine
+  What: Async resilience for long operations; cancellation surfaced; no fake progress; bounded retries.
+  Why: Real app behavior under load/time.
+  Test: async/cancellation/retry tests; worker lifecycle tests.
+
+- Name: Release/build/usage-string readiness
+  Tags: D O T
+  Layer: Package.swift; build scripts; Info.plist
+  What: Release build; Info.plist usage strings for permissions; honest attribution.
+  Why: Real shipability; Apple requirements.
+  Test: release build; usage strings present.
+
+- Name: Deterministic verification for every effect-capable tool
+  Tags: F I T
+  Layer: ToolDefinitions; ToolExecutor; verifyDetailed paths
+  What: Every tool that performs an effect has a deterministic postcondition; no tool marked passed without it.
+  Why: Evidence before green; no false success.
+  Test: tool verification tests.
+
+- Name: Prompt-portability discipline before cloud extraction is "trusted"
+  Tags: F I T S
+  Layer: MLXPlanner.buildExtractionPrompt; PlannerExtraction; ProviderManager; routing docs
+  What: If cloud used for extraction, test prompt/contract works for the cloud model; prompt mismatch must not be mistaken for model strength.
+  Why: Phase 2.1 finding; cloud is not free lunch.
+  Test: prompt-portability re-measurement; routing tests.
+
+- Name: Honest permission posture in every relevant surface
+  Tags: F I T D
+  Layer: Onboarding; PermissionSettingsView; ZiaPermissionModel; health; settings; voice surfaces
+  What: Permission state visible everywhere it matters; not just one place.
+  Why: Honesty as product; user can see reality.
+  Test: permission state observed across surfaces.
+
+- Name: No "always listening / always recording" sloppy posture
+  Tags: S I
+  Layer: VoicePipeline; audio capture; wake detection
+  What: Capture on demand / bounded; no sloppy always-listening behavior; wake from transcript, not raw always-on.
+  Why: Privacy/energy; honest posture.
+  Test: capture-on-demand behavior; wake-from-transcript.
+
+- Name: Email/notifications/reminders/follow-through tool chain real + bounded
+  Tags: F I T
+  Layer: NotificationSender; ScheduleTaskTool; TaskScheduler; task continuity
+  What: Real notifications/schedule/follow-through; bounded; no fake reminder claims.
+  Why: Follow-through as capability; real not theatrical.
+  Test: notification/schedule/follow-through tests.
+
+- Name: File system tool set real + bounded + verified
+  Tags: F I T
+  Layer: FileManagerJarvis; filesystem tool set; ToolExecutor
+  What: Real file operations bounded; sensitive-path refusal; verification.
+  Why: Real local workspace capability; not hallucinated file work.
+  Test: filesystem capability tests; sensitive-path tests.
+
+- Name: Tool registry/definition honesty
+  Tags: F T
+  Layer: ToolRegistry; ToolDefinitions; ToolExecutor
+  What: Tools have real execute→observe→verify; no canned data; definitions reflect real spec.
+  Why: Honest capability surface; no fake tools.
+  Test: tool coverage tests; SelfTest tool presence.
+
+- Name: Failure modes documented honestly + testable
+  Tags: D R T
+  Layer: Errors.swift, SelfTest, tool verification outcomes, provider failures
+  What: Real failure modes documented; failures mean something; no fake green.
+  Why: Honest product; evidence before green.
+  Test: error/verification-outcome tests; provider failure tests.
+
+- Name: Latency/cost/budget observability visible to user/developer
+  Tags: O R F T
+  Layer: UsageManager; PipelineTimer; VoiceTraceState; ExecutionTelemetry; health; settings
+  What: Real observability; not theater metrics.
+  Why: Honest performance/product story.
+  Test: observability tests; UI observability.
+
+- Name: Provider independence — product boots/runs without cloud
+  Tags: S R T
+  Layer: ProviderManager fallback chain; Config; MLXProvider
+  What: Boot/route/execute fully offline without cloud; cloud is optional acceleration.
+  Why: Frozen principle; no hidden cloud dependency.
+  Test: offline path tests; local-only routing tests.
+
+- Name: Clean repo hygiene as part of product credibility
+  Tags: D
+  Layer: repo root; .gitignore; AQ queue; docs
+  What: Unreferenced tracked files handled via AQ/owner cleanup; no sloppy tracked junk; secrets in .agents not in build.
+  Why: Product credibility; not just build.
+  Test: repo hygiene docs; AQ queue current.
+
+# ============================================================================
+# END
+# ============================================================================
+# Reading note:
+#   - PART I = my own map + honest suggestions for this project's climate.
+#   - PART II = external 2026 market/tech/security map + sourced anchors + honest
+#     takeaways, written for you to hand to other LLMs for opinion/review.
+#   - None of this is green without tests; none weakens the frozen spine; nothing
+#     modifies a frozen layer unless a task names it.

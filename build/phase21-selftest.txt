@@ -1,0 +1,1225 @@
+╔══════════════════════════════════════════╗
+║      JARVIS — Self-Test Suite           ║
+╚══════════════════════════════════════════╝
+
+
+─── Durable TaskState Restart Recovery ───
+  ✓ TaskState persistence: valid v2 snapshot restores verified evidence
+  ✓ TaskState persistence: v1 migrates to v3 without inventing environment context or trusting legacy verification
+  ✓ TaskState persistence: unsupported schema version fails closed
+  ✓ TaskState persistence: malformed JSON fails closed
+  ✓ TaskState persistence: oversized snapshot fails closed
+  ✓ TaskState persistence: task count above limit fails closed
+  ✓ TaskState persistence: completed step with missing ResolutionRecord fails closed
+  ✓ TaskState persistence: completed step with wrong tool name fails closed
+  ✓ TaskState persistence: completed step with non-passed verification fails closed
+  ✓ TaskState persistence: completed step whose rawOutput differs from step.output fails closed
+  ✓ TaskState persistence: task marked COMPLETED while a required step is unverified fails closed
+  ✓ TaskState persistence: step claiming passed verification in an impossible CREATED state fails closed
+  ✓ TaskState persistence: resolution record pointing at a missing step fails closed
+  ✓ TaskState persistence: task with retryCount above its retry budget fails closed
+  ✓ TaskState persistence: snapshot task missing its required goal field fails closed
+  ✓ TaskState persistence: sensitive environment context is never written (enrolled=false, leaked=false)
+  ✓ TaskState persistence: stale restored ambient context cannot become authoritative
+  ✓ TaskState persistence: failed durable checkpoint cannot create in-memory COMPLETED state
+  ✓ TaskState persistence: valid state followed by corrupt replacement leaves no partial tasks
+  ✓ TaskState continuation: emergency stop during resumed execution cancels the task before the next step starts
+  ✓ TaskWorker restart resume: stale task input reloads authority, skips verified work, resolves references, and rejects duplicate execution
+[task-state-probe:A] PASS task identity and original goal created
+[task-state-probe:A] PASS step 1 executed through ToolExecutor and independently verified
+[task-state-probe:A] PASS step 2 persisted unresolved; snapshot checkpointed
+[task-state-probe:B] PASS fresh process restored original task identity and original goal
+[task-state-probe:B] PASS step 1 remains independently verified after restart
+[task-state-probe:B] PASS interrupted running step 2 restored unresolved, not complete
+[task-state-probe:B] PASS reference to missing/unverified step output fails closed
+[task-state-probe:B] PASS literal continue resumed the original goal
+[task-state-probe:B] PASS previously verified step 1 executed zero additional times
+[task-state-probe:B] PASS $step.1.output resolved from persisted evidence and reached ToolExecutor concretely
+[task-state-probe:B] PASS step 2 independently verified; task completed only after all steps resolved
+
+  ✓ TaskState process boundary: fresh child restores, continues original goal, skips verified step, resolves persisted reference, verifies terminal completion
+
+─── Structured Execution Telemetry ───
+  ✓ telemetry: deterministic lifecycle sequence preserves event order
+  ✓ telemetry: multi-step task maintains task and step ordering
+  ✓ telemetry: event retains the verifier's explicit outcome
+  ✓ telemetry: recovery records the actual attempt count
+  ✓ telemetry: failure categories map deterministically to the closed vocabulary
+  ✓ telemetry: cancellation is represented as stopped
+  ✓ telemetry: recording does not grant or mutate permission
+  ✓ telemetry: recording is observational and leaves action results unchanged
+  ✓ telemetry: repeated recording with the same event ID is deduplicated
+  telemetry append benchmark: 1.112 µs/event (10,000 in-memory records)
+  ✓ activity history combines authoritative task outcome with observed verifier evidence
+  ✓ activity history ignores conversational task envelopes that contain no action
+  ✓ recent activity question routes deterministically without planner generation
+  ✓ activity history explains failure from the recorded category and failed TaskState step
+  ✓ task continuity handoff reports the uniquely active task, verified progress, and next unverified step without resuming it
+  ✓ what's left derives only the unverified TaskState steps
+  ✓ failed continuation reports actual TaskState failure and refuses unsafe automatic replay
+  ✓ emergency-interrupted continuation reports recorded stop and never resumes
+  ✓ failed task at its retry limit is not resumable
+  ✓ stale task state cannot be continued
+  ✓ no TaskState means there is no task to continue
+  ✓ completed task has no remaining work, while did-that-work requires nonempty independent verification evidence
+  ✓ multiple active or equally recent task candidates require clarification
+  ✓ conversation, user memory, and model text cannot create task continuity authority
+  ✓ task continuity phrases route deterministically to TaskState without the planner
+  ✓ artifact follow-up reports only a completed write with passed TaskState and verifier evidence
+  ✓ artifact follow-up excludes inconclusive verification even when the path exists
+  ✓ cross-turn file reference resolves only the latest completed, verified write
+  ✓ conversation or memory without TaskState write evidence cannot resolve a file reference
+  ✓ inconclusive writes cannot resolve a cross-turn file reference
+  ✓ a deleted verified artifact cannot resolve a cross-turn file reference
+  ✓ exact 'run that command again' wording resolves from verified TaskState
+  ✓ verified shell command references resolve from the latest completed run_shell evidence
+  ✓ conversation-only command mention cannot resolve without authoritative TaskState
+  ✓ user-memory-only command mention cannot resolve without authoritative TaskState
+  ✓ no authoritative command state fails closed
+  ✓ failed command TaskState cannot establish a cross-turn reference
+  ✓ stale verified command evidence cannot be reopened as a fresh cross-turn rerun
+  ✓ a newer failed shell attempt blocks fallback to an older verified command
+  ✓ multiple verified shell commands in the latest task require clarification
+  ✓ a newer ambiguous shell task blocks fallback to an older verified command
+  ✓ ambiguous or missing exact command references clarify instead of reaching the planner
+  ✓ verified webpage references resolve to the latest passed fetch_url or browser URL evidence
+  ✓ conversation-only webpage mention cannot resolve without authoritative TaskState
+  ✓ no authoritative webpage state fails closed
+  ✓ failed webpage TaskState cannot establish a cross-turn reference
+  ✓ ambiguous verified webpage evidence requires clarification
+  ✓ a newer ambiguous webpage task blocks fallback to an older verified URL
+  ✓ ambiguous or missing webpage references clarify instead of reaching the planner
+  ✓ stale verified webpage evidence cannot be reopened as a fresh cross-turn page reference
+  ✓ a newer failed webpage attempt blocks fallback to an older verified URL
+  ✓ multiple verified file outputs from the latest task require clarification
+  ✓ same-time independent writes have no deterministic latest reference
+  ✓ a newer failed write prevents fallback to an older verified artifact
+  ✓ state-grounded artifact and recent-failure questions route without planner generation
+  ✓ information router assigns conversation, memory, development, activity and artifact status to their evidence owners
+  ✓ conversation answer renders actual bounded user/assistant turns and omits system instructions
+  ✓ development answer renders Git commit evidence rather than conversational claims
+  ✓ development history reads actual local Git commits from the Zia checkout
+  ✓ artifact status is based on a live filesystem check and distinguishes missing from present
+  ✓ failed/inconclusive or stale artifact evidence cannot be promoted to current file status
+  ✓ transcript-only file, command and webpage references remain fail-closed before planning
+  ✓ AgentLoop E2E: verified artifact follow-up answers from TaskState without planner execution
+  ✓ AgentLoop E2E: verified write → bare file follow-up → normal validated read execution
+  ✓ AgentLoop E2E: continue at L0 reads verified TaskState and does not mutate, resume, plan, or execute
+  ✓ TaskWorker E2E: independently verified completion records the evidence required to avoid rerunning it on continuation
+  ✓ continuation E2E: interrupted in-flight step remains unknown, never promoted to success
+  ✓ continuation E2E: destructive saved step remains blocked by PermissionGate until L2
+  ✓ continuation E2E: same TaskState resumes at step 2, preserves verified step 1, validates, executes, verifies, and records telemetry
+  ✓ continuation E2E: a completed task answers continue without creating a task or executing another step
+  ✓ continuation E2E: ToolExecutor preserves inconclusive and unavailable verification without converting either to success
+  ✓ AgentLoop E2E: transcript-only exact command follow-up clarifies before task creation or execution
+  ✓ AgentLoop E2E: exact command follow-up resolves verified TaskState, compiles, passes PermissionGate and executes via ToolExecutor
+  ✓ webpage reference E2E: verified URL resolves, canonical plan validates, and ToolExecutor enforces PermissionGate without browser navigation
+
+─── AppState ───
+  ✓ Initial state is OFF
+  ✓ OFF → SLEEP works
+  ✓ SLEEP → ACTIVE works
+  ✓ ACTIVE → SLEEP works
+  ✓ SLEEP → OFF works
+  ✓ OFF → ACTIVE rejected (invalid)
+  ✓ Same-state is no-op
+  ✓ Network offline update
+  ✓ Network online update
+  ✓ Memory pressure warning
+  ✓ Memory pressure nominal
+
+─── EventBus ───
+  ✓ Publish delivers to subscriber
+  ✓ Multiple subscribers all receive
+  ✓ Event types are isolated
+  ✓ Unsubscribe stops delivery
+  ✓ removeAll clears all handlers
+  ✓ No subscribers does not crash
+  ✓ Semantic interaction events deliver every production phase in order
+  ✓ Semantic interaction event preserves task correlation without transcript content
+  ✓ Speech overlays and then restores live backend phase instead of implying a long task is idle
+
+─── PipelineTimer ───
+  ✓ Report has correct ID
+  ✓ Report has 3 stages
+  ✓ Total time greater than 0
+  ✓ Elapsed between stages greater than 0
+  ✓ Missing stage returns nil
+  ✓ Empty timer has no stages
+  ✓ Summary contains ID
+
+─── Config ───
+  ✓ Wake word has default
+  ✓ Autonomy level in range
+  ✓ Budget has default
+  ✓ Memory reserve has default
+
+─── ResourceManager ───
+  ✓ Total memory detected: 16384MB
+  ✓ Model registered
+  ✓ Model memory tracked
+  ✓ Model unregistered
+  ✓ Model memory freed
+
+─── Phase 2: Audio Permissions & Capture ───
+  ✓ Microphone authorization status returns valid enum state (Authorized)
+  ✓ AudioCapture buffer injection delivers PCM frames to registered tap handlers
+
+─── Phase 2: Voice Activity Detector ───
+  ✓ VAD default threshold is positive
+  ✓ VAD hangover frames > 0
+  ✓ VAD uses a longer endpoint pause when a transcript appears mid-clause
+  ✓ VAD uses a short endpoint pause for a complete-sounding command
+  ✓ VAD preserves a longer pause after continuation words
+  ✓ VAD reset clears speaking state
+
+─── Phase 2: Wake Word Detector & Aliases ───
+  ✓ Wake word detector is active
+  ✓ Detects 'Jarvis' at sentence start
+  ✓ Emits WakeWordDetectedEvent
+  ✓ Ignores sentences without wake word
+  ✓ Detects 'Jarvis' in compound sentence
+  ✓ Positive: 'Jarvis, what time is it'
+  ✓ Positive: 'Hey Jarvis, what time is it'
+  ✓ Positive: 'Zia, what time is it'
+  ✓ Positive: 'Hey Zia, what time is it'
+  ✓ Positive: 'Ziya, what time is it'
+  ✓ Positive: 'Hey Ziya, what time is it'
+  ✓ Action: 'Zia, open Safari' -> app.open
+  ✓ Action: 'Ziya, open Downloads' -> folder.open
+  ✓ Action: 'Ziya, what's my battery' -> system.battery
+  ✓ Negative: Unrelated sentence containing 'jarvis' does not activate
+  ✓ Negative: Mid-sentence 'jarvis' does not activate
+  ✓ Negative: 'piazza' does not activate 'zia'
+  ✓ Negative: 'eating at the piazza' does not activate
+  ✓ Negative: 'terzia' does not activate
+  ✓ Negative: 'ziyaphobia' does not activate 'ziya'
+  ✓ Negative: 'zian' does not activate 'zia'
+  ✓ Wake word detector stopped
+
+─── Phase 2: Apple Speech Recognition ───
+  ✓ Speech recognition authorization status returns valid enum state (Not Determined)
+  ✓ Partial transcript delivered via TranscriptPartialEvent
+  ✓ Final transcript delivered via TranscriptFinalEvent with duration metric
+
+─── Phase 2: Emergency Interrupt & Cancellation ───
+  ✓ Emergency stop production subscribers registered (>= 6)
+  ✓ Detects standalone 'stop'
+  ✓ Emits EmergencyStopEvent
+  ✓ Emergency stop halt latency is sub-50ms (median of 5: 0.00ms, max 0.00ms)
+  ✓ Case-insensitive emergency detection
+  ✓ Punctuation-tolerant emergency detection
+  ✓ Prefix emergency detection ('jarvis stop')
+  ✓ Emergency: 'Jarvis, stop'
+  ✓ Emergency: 'Zia, stop'
+  ✓ Emergency: 'Ziya, stop'
+  ✓ Does not false-positive on casual usage ('don't stop')
+
+─── Phase 2: TTS Engine & Barge-In ───
+  ✓ TTS is idle initially
+  ✓ TTS stop when idle does not crash
+  ✓ UserInterruptedEvent halts TTS immediately (barge-in)
+
+─── Phase 2: Audio Player ───
+  ✓ AudioPlayer is idle initially
+  ✓ AudioPlayer stop when idle does not crash
+
+─── Phase 2: Voice Pipeline & Decoupling ───
+  ✓ VoicePipeline initially not running before start
+  ✓ VoicePipeline starts cleanly
+  ✓ VoicePipeline status reflects active runtime
+  ✓ VoicePipeline reports microphone authorization truthfully
+  ✓ VoicePipeline reports speech authorization truthfully
+  ✓ Voice interaction loop remains responsive after command handoff
+  ✓ Emergency stop cleans up all in-flight voice background tasks
+
+─── Phase 3: Deterministic Router ───
+  ✓ Matches 'open Safari'
+  ✓ Intent is app.open
+  ✓ Extracts app name 'safari'
+  ✓ Matches quit command
+  ✓ Matches volume set command
+  ✓ Extracts volume level 65
+  ✓ Matches mute command
+  ✓ Matches volume up
+  ✓ Matches time query
+  ✓ Matches date query
+  ✓ Matches lock screen
+  ✓ Matches empty trash
+  ✓ Empty trash is classified destructive
+  ✓ PermissionGate blocks destructive empty trash at default L1
+  ✓ Matches 'switch to Safari'
+  ✓ Matches 'open Downloads'
+  ✓ Matches 'show my Desktop'
+  ✓ Matches battery query
+  ✓ Matches Wi-Fi query
+  ✓ Battery status query returns real data: Your battery is at 54% on battery power.
+  ✓ Wi-Fi status query returns real data: Connected to the internet via unknown, not Wi-Fi.
+  ✓ Matches read clipboard
+  ✓ Matches 'copy this:'
+  ✓ Matches system status
+  ✓ Complex queries yield nil (forwarded to LLM)
+  ✓ Rejects 'delete everything'
+  ✓ Rejects 'shut down'
+  ✓ Rejects 'run rm -rf /'
+  ✓ Positive: 'open safari' -> app.open
+  ✓ Positive: 'switch to terminal' -> app.switch
+  ✓ Positive: 'open downloads' -> folder.open
+  ✓ Positive: 'what's my battery' -> system.battery
+  ✓ Positive: 'check wifi' -> system.wifi
+  ✓ Negative: 'what is Safari?' falls through to LLM
+  ✓ Negative: 'Safari is slow today' falls through to LLM
+  ✓ Negative: 'download the file' falls through to LLM
+  ✓ Negative: 'terminal velocity' falls through to LLM
+  ✓ Negative: 'clean up my system' falls through to LLM
+  ✓ Negative: 'can you switch to Safari' falls through to LLM
+  ✓ Anaphoric app references fail closed instead of fabricating an application (10 phrases)
+  ✓ Explicit app launches (including article-like names) still route deterministically
+  ✓ Compound: 'open safari and search for cats' rejected from deterministic router
+  ✓ Compound: 'open safari and then open terminal' rejected from deterministic router
+  ✓ Compound: 'switch to Safari and increase volume' rejected from deterministic router
+  ✓ Compound: 'open safari and search' rejected from deterministic router
+  ✓ Echo fast path: 'echo hello' routes deterministically
+  ✓ Echo fast path: 'echo hello world' routes deterministically
+  ✓ Echo fast path: 'run echo hello' routes deterministically
+  ✓ Echo fast path: 'run the command echo hello' routes deterministically
+  ✓ Compound echo: 'echo a, then use tool, then echo b' falls through to planner
+  ✓ Compound echo: 'echo hello, then do something else' falls through to planner
+  ✓ Compound echo: 'echo hello and then open Safari' falls through to planner
+  ✓ Compound echo: 'run echo hello, then search the web' falls through to planner
+  ✓ Compound echo: 'echo hello, open Safari' falls through to planner
+  ✓ Compound echo: 'echo hello and open Safari' falls through to planner
+  ✓ Compound echo: 'echo hello then empty trash' falls through to planner
+  ✓ Compound echo: 'echo one, two, three' falls through to planner
+
+─── Planner Reliability: DirectAnswerRouter ───
+
+─── Agent Step Outcome Policy ───
+  ✓ Agent accepts successful tool result with meaningful output
+  ✓ Agent accepts empty output when deterministic verification passed
+  ✓ Agent rejects empty output when deterministic verification failed
+  ✓ Agent rejects whitespace-only output without verification evidence
+  ✓ Agent rejects failed execution even if verification claims passed
+  ✓ Unsafe request → explicit unsafeRequest refusal
+  ✓ Unsupported capability → explicit unsupportedCapability refusal
+  ✓ Empty/malformed request → explicit malformedRequest refusal
+  ✓ Unresolved reference 'open that app' → explicit unresolvedReference refusal/clarification
+  ✓ Unresolved reference 'read that file' → explicit unresolvedFileReference refusal
+  ✓ Unresolved reference 'read the file I mentioned' → explicit unresolvedFileReference refusal
+  ✓ Unresolved reference 'write that to the file' → explicit unresolvedWriteReference refusal
+  ✓ Unresolved reference 'fetch that URL' → explicit unresolvedURLReference refusal
+  ✓ Unresolved reference 'search for that' → explicit unresolvedSearchReference refusal
+  ✓ Unresolved reference 'run that command' → explicit unresolvedCommandReference refusal
+  ✓ Unresolved reference 'increase it' → explicit unresolvedVolumeReference refusal
+  ✓ Unresolved reference 'set it to that' → explicit unresolvedVolumeReference refusal
+  ✓ Unresolved pronouns ('it'/'this'/'that') clarify instead of reaching the planner (10 phrases)
+  ✓ Knowledge question → direct answer
+  ✓ Explanation request → direct answer
+  ✓ Question about a search engine does not trigger web-action routing
+  ✓ Explicit search action still routes to planner
+  ✓ Time question classified direct-answer (deterministic router still runs first in AgentLoop)
+  ✓ Web task → planner
+  ✓ Shell task → planner
+  ✓ Question containing action verb stays ambiguous → planner (no over-refusal)
+  ✓ Literary question containing 'play' routes to directAnswer (not action verb)
+
+─── Planner Reliability: named-tool hint grounding ───
+  ✓ Goal-named tools are force-included in planner catalog
+  ✓ Shell hint still fires for echo goals
+
+─── Phase 3: Clipboard Manager ───
+  ✓ Clipboard write and read back
+  ✓ Clipboard cleared
+
+─── Phase 3: File Manager & Security Sandbox ───
+  ✓ Path resolution expands tilde
+  ✓ Security sandbox blocks writing to /System
+  ✓ File path safety matches protected path components, not string prefixes
+  ✓ File write and read-back work in a controlled user cache path
+  ✓ File sandbox blocks symlink traversal into protected system paths
+  ✓ Lists home directory successfully
+
+─── Phase 3: System Control ───
+  ✓ Reads valid system volume: 0%
+
+─── Phase 3: 11 Deterministic macOS Controls ───
+  ✓ Control 1: 'open Safari' routes to app.open with .safeMutation impact
+  ✓ Control 2: 'quit Notes' routes to app.quit with .safeMutation impact
+  ✓ Control 3: Foreground aliases ('bring to front', 'bring to foreground', 'focus', 'foreground') route to app.switch
+  ✓ Control 4: 'set volume to 45' routes to system.volume.set (.safeMutation)
+  ✓ Control 4: 'volume down' routes to system.volume.down (.safeMutation)
+  ✓ Control 4: 'what is the volume' routes to system.volume.get (.readOnly)
+  ✓ Control 5: 'set brightness to 60' routes to system.brightness.set (.safeMutation)
+  ✓ Control 5: 'brightness up' routes to system.brightness.up (.safeMutation)
+  ✓ Control 5: 'dim screen' routes to system.brightness.down (.safeMutation)
+  ✓ Control 5: 'what is the brightness' routes to system.brightness.get (.readOnly)
+  ✓ Control 5: polite screen-brightness request routes deterministically with exact level
+  ✓ Control 5: 'can you set brightness to 25' preserves the numeric argument
+  ✓ Control 5: malformed brightness level fails closed to the planner path
+  ✓ Control 5: compound brightness request never steals the planner route
+  ✓ Control 5: Reads physical display brightness: 44%
+  ✓ Control 6: 'what's on my clipboard' routes to clipboard.read (.readOnly)
+  ✓ Control 7: 'copy ... to clipboard' routes to clipboard.write (.safeMutation)
+  ✓ Control 7: 'clear clipboard' routes to clipboard.clear (.safeMutation)
+  ✓ Control 7: Physical clipboard write and readback verified
+  ✓ Control 8: 'open documents' routes to folder.open (.safeMutation)
+  ✓ Control 8: 'list downloads' routes to folder.list (.readOnly)
+  ✓ Control 8: 'list desktop' routes to folder.list (.readOnly)
+  ✓ Control 8: Physical directory listing for ~/Downloads verified
+  ✓ Control 9: 'take a screenshot' routes to system.screenshot (.readOnly)
+  ✓ Control 9: 'capture screen' routes to system.screenshot (.readOnly)
+  ✓ Control 9: Physical screenshot execution & artifact size verification verified
+  ✓ Control 10: 'lock mac' routes to system.lock (.safeMutation)
+  ✓ Control 11: 'sleep mac' routes to system.sleep with .destructive impact
+  ✓ Control 11: 'preview sleep' routes to system.sleep.preview with .safeMutation impact
+  ✓ Control 11: 'confirm sleep' routes to system.sleep.commit with .destructive impact
+  ✓ Control 11: 'cancel pending action' routes to system.action.cancel with .readOnly impact
+  ✓ DestructiveActionManager initial state is clean
+  ✓ Preview registers pending destructive action
+  ✓ Preview returns descriptive user guidance
+  ✓ Pending action matches commit intent
+  ✓ Cancellation clears pending destructive action
+  ✓ Control 11: PREVIEW -> COMMIT executes safely with dry-run verification: 'System put to sleep (verified, dry-run).'
+  ✓ Committed action cleans up pending state
+
+─── Phase 3: PermissionGate Matrix & Invariants ───
+  ✓ Autonomy Level set to L0 Read-Only
+  ✓ PermissionGate L0: .readOnly is AUTHORIZED
+  ✓ PermissionGate L0: .safeMutation is DENIED
+  ✓ PermissionGate L0: .destructive is DENIED
+  ✓ Autonomy Level set to L1 Supervised
+  ✓ PermissionGate L1: .readOnly is AUTHORIZED
+  ✓ PermissionGate L1: .safeMutation is AUTHORIZED
+  ✓ PermissionGate L1: Unconfirmed .destructive is DENIED
+  ✓ PermissionGate L1: Confirmed .destructive via Preview/Commit is AUTHORIZED
+  ✓ Autonomy Level set to L2 Autonomous
+  ✓ PermissionGate L2: .readOnly is AUTHORIZED
+  ✓ PermissionGate L2: .safeMutation is AUTHORIZED
+  ✓ PermissionGate L2: .destructive is AUTHORIZED
+  ✓ ActionEngine Choke-Point: Deterministic action CANNOT bypass PermissionGate at L0
+
+─── Phase 3 Hardening: Routing Conservatism & Boundary Audit ───
+  ✓ Valid route: 'open Safari' -> app.open
+  ✓ Valid route: 'switch to Terminal' -> app.switch
+  ✓ Valid route: 'bring Safari to front' -> app.switch
+  ✓ Valid route: 'volume up' -> system.volume.up
+  ✓ Valid route: 'mute' -> system.volume.mute
+  ✓ Valid route: 'brightness up' -> system.brightness.up
+  ✓ Valid route: 'screenshot' -> system.screenshot
+  ✓ Valid route: 'list Downloads' -> folder.list
+  ✓ Valid route: 'open Downloads' -> folder.open
+  ✓ Valid route: 'what is my battery' -> system.battery
+  ✓ Valid route: 'what time is it' -> system.time
+  ✓ Conservatism: 'what is Safari?' must NOT route deterministically (got: nil)
+  ✓ Conservatism: 'Safari is slow today' must NOT route deterministically (got: nil)
+  ✓ Conservatism: 'download the file' must NOT route deterministically (got: nil)
+  ✓ Conservatism: 'terminal velocity' must NOT route deterministically (got: nil)
+  ✓ Conservatism: 'clean up my system' must NOT route deterministically (got: nil)
+  ✓ Conservatism: 'can you switch to Safari' must NOT route deterministically (got: nil)
+  ✓ Conservatism: 'open Safari and search for cats' must NOT route deterministically (got: nil)
+  ✓ Conservatism: 'open Safari and then open Terminal' must NOT route deterministically (got: nil)
+  ✓ Conservatism: 'switch to Safari and increase volume' must NOT route deterministically (got: nil)
+  ✓ Arg integrity: open Safari -> app='safari'
+  ✓ Arg integrity: switch to Terminal -> app='terminal'
+  ✓ Arg integrity: bring Safari to front -> app='safari'
+  ✓ Arg integrity: set volume to 75% -> level='75'
+  ✓ Arg integrity: set screen brightness to 40% -> level='40'
+  ✓ Arg integrity: list downloads -> folder='Downloads'
+  ✓ Arg integrity: open downloads -> folder='Downloads'
+  ✓ Arg integrity: copy to clipboard -> text='meeting at 3pm'
+  ✓ Destructive preview does NOT execute action
+  ✓ Destructive action is staged in pendingAction
+  ✓ Destructive cancel does NOT execute action
+  ✓ Destructive cancel clears pendingAction
+  ✓ Unrelated speech cannot commit destructive action
+  ✓ Unrelated app command cannot commit destructive action
+  ✓ Generic 'confirm' matches staged destructive action
+  ✓ Destructive action executed on explicit commit
+  ✓ Staged action cleared immediately upon commit (cannot be reused)
+  ✓ Confirmation expired/cleared after commit
+  ✓ Destructive action 2 is staged
+  ✓ Emergency stop aborts and clears pending destructive action
+
+─── Phase 3: Emergency Stop Production Pipeline & Latch Invariance ───
+  ✓ emergency stop: 'stop' handled deterministically through production AgentLoop (returns 'Stopped.')
+  ✓ emergency stop: 'Jarvis, stop' handled deterministically through production AgentLoop (returns 'Stopped.')
+  ✓ emergency stop: zero model calls verified via MLXPlanner attempt ledger
+  ✓ emergency stop latch invariance: Turn 2 'open Calculator' succeeds after stop (no latch poisoning)
+  ✓ emergency stop latch invariance: Turn 3 'what time is it' succeeds after stop
+  ✓ emergency stop destructive safety: cancels pending action in DestructiveActionManager and subsequent commit fails closed
+
+─── Phase 4: Conversation & Message Model ───
+  ✓ Initial conversation has system prompt
+  ✓ First message is system role
+  ✓ User message appended
+  ✓ Last message is user role
+  ✓ Assistant message appended
+  ✓ Last message is assistant role
+  ✓ Trims history to maxHistoryCount + system
+  ✓ Preserves system prompt after trim
+
+─── Phase 4: Provider & Capabilities ───
+  ✓ MLXProvider has textGeneration capability
+  ✓ MLXProvider has toolCalling capability
+  ✓ MLXProvider reports valid latency
+
+─── Phase 4: Intent Classifier ───
+  ✓ Classifies code request as .coding
+  ✓ Routes coding to Claude
+  ✓ Classifies deep question as .deepReasoning
+  ✓ Classifies web request as .webSearch
+  ✓ Classifies general chat as .conversation
+  ✓ Does not mistake 'research' for the 'search' web intent
+  ✓ Routes system-state questions to the system-query category
+
+─── Phase 5: Cloud Providers ───
+  ✓ ClaudeProvider has ID 'anthropic'
+  ✓ Claude has codeGeneration capability
+  ✓ GeminiProvider has ID 'gemini'
+  ✓ Gemini has vision capability
+  ✓ OpenAIProvider has ID 'openai'
+  ✓ OpenAI has realtimeVoice capability
+  ✓ GroqProvider has ID 'groq'
+  ✓ Groq has 150ms target latency
+
+─── Phase 5: Fallback Chains ───
+  ✓ Coding fallback chain starts with ChatGPT Desktop
+  ✓ Coding chain includes Claude fallback
+  ✓ Coding chain includes on-device MLX fallback
+  ✓ Deep reasoning chain starts with ChatGPT Desktop
+  ✓ Deep reasoning chain includes Claude fallback
+  ✓ Web search chain starts with ChatGPT Desktop
+  ✓ Web search chain includes Groq fallback
+
+─── Phase 5: Context Builder ───
+  ✓ Estimates positive token count (8)
+  ✓ Built context has system prompt at index 0
+  ✓ System prompt injects JARVIS metadata
+
+─── Phase 5: Usage Manager ───
+  ✓ Reset zeroes daily spent amount
+  ✓ Reset zeroes total tokens
+  ✓ Tracks recorded tokens
+  ✓ Computes positive USD expenditure
+  ✓ Within daily budget initially
+
+─── Phase 6: Data Classifier ───
+  ✓ Normal queries classified as .publicLevel
+  ✓ Normal public data can route to cloud
+  ✓ Password classified as .highlySensitive
+  ✓ Highly sensitive data strictly blocked from cloud
+  ✓ API keys classified as .highlySensitive
+  ✓ Financial credentials classified as sensitive
+
+─── Phase 6: Permission Gate & Sandbox ───
+  ✓ Default permission level is L1 Supervised
+  ✓ L0 Read-only actions permitted at L1
+  ✓ L1 Safe mutations permitted at L1
+  ✓ Destructive action blocked without L2 autonomy
+  ✓ Safe read commands permitted
+  ✓ Safe git command permitted
+  ✓ Dangerous 'rm -rf /' command blocked
+  ✓ Privileged 'sudo' command blocked
+  ✓ Pipe-to-shell command blocked
+  ✓ App launcher 'open -a Terminal <script>' blocked
+  ✓ Bundle launcher 'open -b <terminal> <script>' blocked
+  ✓ Launchable-document 'open <file>.command' blocked
+  ✓ Dot/source builtin blocked
+  ✓ Wrapped dot/source builtin blocked
+  ✓ '.' used as an ordinary argument stays permitted
+  ✓ Authority allowlists the canonical /bin/echo
+  ✓ Authority rejects an unknown executable in /tmp
+  ✓ Authority rejects a relative executable
+  ✓ Authority rejects an interpreter hidden in a shell command
+  ✓ Authority rejects a /tmp executable path in a shell command
+  ✓ Authority authorizes a known structured executable
+  ✓ Structured authority binds to the canonical executable path
+  ✓ Structured execution uses a fixed environment
+  ✓ run_program is registered for the planner
+  ✓ run_program decodes a JSON array of string arguments
+  ✓ run_program rejects malformed argument arrays
+  ✓ pinned read-only git status is authorized
+  ✓ mutating git invocation is not authorized
+  ✓ git config override is not authorized
+  ✓ authority rejects a mutating git invocation
+  ✓ AppleScript string escaping neutralizes an embedded quote
+  ✓ a repository-defined filter driver is treated as program-launching
+  ✓ core.fsmonitor is treated as program-launching
+  ✓ benign repository config is still inert
+  ✓ shell capability runs with startup files disabled (-f)
+  ✓ authority rejects a non-positive timeout
+  ✓ authority rejects an unbounded timeout
+  ✓ structured execution neutralizes repository config sources for git
+  ✓ internal fixed git launches carry authority-owned config overrides
+  ✓ repository config enumeration is not polluted by authority overrides
+
+─── Phase 6: ShellExecutor & Process Lifecycle ───
+  ✓ ShellExecutor executes command and captures stdout
+  ✓ ShellExecutor handles >64KB output without pipe deadlock
+  ✓ ShellExecutor terminates command on deterministic timeout
+  ✓ ShellExecutor terminates process upon Swift Task cancellation
+  ✓ ShellExecutor cancelAll is idempotent and cleans process groups
+  ✓ ShellExecutor preserves process isolation between concurrent commands
+  ✓ ShellExecutor prevents false success when process traps SIGTERM
+  ✓ ShellExecutor honors pre-launch task cancellation
+
+─── Phase 6: Tool Registry & Tools ───
+  ✓ Tool 'open_app' registered
+  ✓ Tool 'set_volume' registered
+  ✓ Tool 'run_shell' registered
+  ✓ Unregistered tool lookup returns nil
+  ✓ At least 3 builtin tools registered
+  ✓ Generated schemas for all tools
+  ✓ 'open_app' tool has .safeMutation impact
+  ✓ 'run_shell' tool has .destructive impact
+
+─── Phase 7: Task State Machine ───
+  ✓ CREATED -> PLANNING permitted
+  ✓ PLANNING -> RUNNING permitted
+  ✓ RUNNING -> VERIFYING permitted
+  ✓ VERIFYING -> COMPLETED permitted
+  ✓ CREATED -> COMPLETED rejected
+  ✓ RUNNING -> FAILED permitted on error
+  ✓ FAILED -> RECOVERING permitted
+  ✓ RECOVERING -> REPLANNING permitted
+  ✓ REPLANNING -> RUNNING permitted
+  ✓ Active RUNNING can be CANCELLED
+  ✓ Active PLANNING can be CANCELLED
+  ✓ COMPLETED is terminal state
+  ✓ CANCELLED is terminal state
+  ✓ Terminal COMPLETED cannot transition
+
+─── Phase 7: Task Lifecycle & Progress ───
+  ✓ Newly created task has CREATED state
+  ✓ Task registered and retrievable by ID
+  ✓ Active tasks includes newly created task
+  ✓ Transition to PLANNING successful
+  ✓ Task steps assigned successfully
+  ✓ Transition to RUNNING successful
+  ✓ Step 1 marked completed
+  ✓ Task progress accurately calculated as 50%
+  ✓ Transition to VERIFYING successful
+  ✓ Transition to COMPLETED successful
+  ✓ Completed timestamp recorded
+  ✓ Completed task removed from active tasks list
+  ✓ Task audit history records all state transitions (5 states)
+  ✓ Invalid transition from terminal COMPLETED throws error
+
+─── Experiment A: Sequential Lifecycle ───
+  ✓ SeqA initial chain CREATED → PLANNING → RUNNING legal
+  ✓ SeqA planning-failure recovery chain legal and returns to RUNNING
+  ✓ SeqA DONE-accept exit legal after fixed recovery chain
+  ✓ RUNNING → PLANNING remains illegal (Bug A)
+  ✓ REPLANNING → VERIFYING remains illegal (Bug A residue)
+  ✓ DONE with zero executed steps rejected (Bug B)
+  ✓ DONE with unverified step rejected (Bug B)
+  ✓ DONE with failed-verification step rejected (Bug B)
+  ✓ DONE accepted only with ≥1 verified-passed step (Bug B)
+
+─── Phase 7: Task Worker & Pool ───
+  ✓ Worker pool capacity configured for Apple Silicon M4
+  ✓ Task safely cancelled
+  ✓ Cancelled task removed from active tasks
+
+─── Phase 8: Accessibility Bridge ───
+  ✓ Accessibility trust check executes without error
+  ✓ AXElementInfo stores element role
+  ✓ AXElementInfo stores element title
+  ✓ AXElementInfo stores element actions
+
+─── Phase 8: Fast UI Mode ───
+  ✓ ActionableUIElement stores label
+  ✓ ActionableUIElement stores role
+  ✓ Fast UI Mode describes UI or gracefully returns nil if untrusted
+
+─── Phase 8: Screen Capture & Deep Visual Mode ───
+  ✓ ScreenCaptureKit singleton instantiated
+  ✓ DeepVisualMode subsystem instantiated
+
+─── Phase 9: User Profile ───
+  ✓ Explicit user fact remembered
+  ✓ Explicit user fact is persisted separately from conversation history
+  ✓ Profile stores 1 fact
+  ✓ Profile summary includes remembered fact
+  ✓ Temporary session memory stored
+  ✓ Profile stores 2 facts
+  ✓ purgeTemporaryFacts cleans session memories
+  ✓ Explicit memories preserved across purge
+  ✓ Empty forget query cannot erase the complete profile
+  ✓ Forgot 1 fact matching query
+  ✓ Profile cleared after forgetting
+
+─── Phase 9: Conversation Store (SQLite) ───
+  ✓ SelfTest uses isolated in-memory SQLite and cannot clear the production conversation archive
+  ✓ Loaded 1 persisted message from SQLite
+  ✓ Persisted message content verified
+  ✓ Cleared SQLite test conversation
+
+─── Phase 9: Embedding Engine & Vector Search ───
+  ✓ Generated 64-dimensional embedding vector
+  ✓ Accelerate vDSP unit normalization verified (norm ≈ 1.0)
+  ✓ Identical text produces identical embedding vector
+  ✓ Vector search returned top match
+  ✓ Semantic vector search retrieved hardware match
+  ✓ Cosine similarity score exceeds 0.4 (0.88)
+
+─── Phase 9: Memory Manager Orchestrator ───
+  ✓ MemoryManager stores and formats memories
+  ✓ MemoryManager semantic retrieval injects relevant context
+  ✓ Explicit memory survives a profile reload boundary in SQLite
+  ✓ Retrieved profile memory changes planner context without a model call
+  ✓ Forgetting a profile fact removes its indexed memory record
+  ✓ Forgotten user memory is absent from subsequent semantic retrieval
+  ✓ Disabling inferred memory suppresses already-indexed inferred facts from context
+
+─── Phase 10: Source Manager ───
+  ✓ SourceManager deduplicates URLs with trailing slash difference
+  ✓ Duplicate source returns existing Source record
+  ✓ SourceManager stores 2 distinct sources
+  ✓ Citations format contains [1]
+  ✓ Citations format contains [2]
+  ✓ SourceManager cleared successfully
+
+─── Phase 10: Web Search & URL Fetcher ───
+  ✓ WebSearch singleton instantiated
+  ✓ SearchResult stores title
+  ✓ SearchResult stores URL
+  ✓ SearchResult stores snippet
+  ✓ URLFetcher singleton instantiated
+
+─── Phase 10: Browser Automation Subsystem ───
+  ✓ BrowserManager singleton instantiated
+  ✓ BrowserManager supports at least 5 browser types (Default, Safari, Chrome, Arc, Brave)
+  ✓ BrowserTabInfo stores title
+  ✓ BrowserTabInfo stores browser type
+
+─── Phase 10: Web Tools & Function Calling Schemas ───
+  ✓ Tool 'web_search' registered in ToolRegistry
+  ✓ 'web_search' has .readOnly impact
+  ✓ Tool 'fetch_url' registered in ToolRegistry
+  ✓ 'fetch_url' has .readOnly impact
+  ✓ Tool 'open_browser' registered in ToolRegistry
+  ✓ 'open_browser' has .safeMutation impact
+  ✓ ToolRegistry contains at least 6 registered tools (43)
+
+─── Phase 11: Offline Mode & Graceful Degradation ───
+  ✓ Deterministic routing operates fully offline with 0 network calls
+  ✓ DataClassifier blocks sensitive data offline
+  ✓ Sensitive data blocked from cloud routing under offline policy
+  ✓ Conversation store functions completely offline via local SQLite
+
+─── Phase 11: Memory Pressure & Eviction Simulation ───
+  ✓ Model registered with ResourceManager
+  ✓ Simulated memory pressure transition to CRITICAL
+  ✓ Refuses model load under CRITICAL memory pressure
+  ✓ ResourceManager marks test model for eviction under pressure
+  ✓ Model unloaded and RAM freed
+  ✓ Memory pressure restored to NOMINAL
+
+─── Phase 11: Emergency Stop System-Wide Propagation ───
+  ✓ Task running prior to emergency stop
+  ✓ AudioPlayer stopped on emergency signal
+  ✓ TTSEngine stopped on emergency signal
+  ✓ Task aborted and evicted from active task set
+
+─── Phase 12: Design Tokens & Styling ───
+  ✓ DesignTokens specifies 24pt panel corner radius
+  ✓ DesignTokens specifies 8pt small spacing
+  ✓ DesignTokens specifies 16pt medium spacing
+  ✓ DesignTokens specifies 24pt large spacing
+
+─── Phase 12: Floating Panel HUD Architecture ───
+  ✓ FloatingPanel window level is .floating
+  ✓ FloatingPanel is designated as floating panel
+  ✓ FloatingPanel can join all spaces
+  ✓ FloatingPanel is full-screen auxiliary overlay
+  ✓ FloatingPanel styleMask contains .nonactivatingPanel
+  ✓ FloatingPanel styleMask contains .borderless
+
+─── Phase 12: UI View Models & Settings Stores ───
+  ✓ APIKeyInputStore manages in-memory credentials safely
+  ✓ OverlayViewModel manages HUD input text
+  ✓ OverlayViewModel tracks assistant response text
+
+─── Phase 13: Agent Plan Parser & Validator ───
+  ✓ Valid plan JSON parses
+  ✓ Parsed plan preserves goal
+  ✓ Parsed plan has 1 step
+  ✓ Parsed step references open_app
+  ✓ Valid plan passes ToolRegistry-grounded validation
+  ✓ Fenced/prose-wrapped JSON extracts
+  ✓ Unknown/hallucinated tool rejected with unknownTool
+  ✓ Missing required argument rejected
+  ✓ Undeclared (smuggled) argument rejected
+  ✓ Non-integer value for int argument rejected
+  ✓ Unsafe shell command rejected by plan-time sandbox check
+  ✓ Protected system path rejected for write_file by PlanValidator
+  ✓ Protected system path rejected for read_file by PlanValidator
+  ✓ Unresolved application reference 'that_app' rejected by PlanValidator ('open that app' regression)
+  ✓ Unresolved command reference 'your_command' rejected by PlanValidator ('run that command' regression)
+  ✓ Unresolved file reference '/path/to/non-system/file' rejected by PlanValidator ('read that file' regression)
+  ✓ Fabricated URL placeholder 'https://example.com' rejected by PlanValidator ('fetch that URL' regression)
+  ✓ Memory reference contract: remembered path stays context-only; file/URL/command/app/folder follow-ups remain unresolved
+  ✓ Unresolved search query 'that' rejected by PlanValidator ('search for that' regression)
+  ✓ Unresolved write content reference rejected by PlanValidator ('write that to the file' regression)
+  ✓ SSRF guard rejects loopback/private/link-local/metadata/internal/credential/numeric fetch_url plans (19 hostile URLs)
+  ✓ SSRF guard still permits an ordinary public https fetch_url plan
+  ✓ URLSafety deterministically classifies public vs hostile hosts without network I/O
+  ✓ URLFetcher execution boundary blocks an SSRF URL before any network I/O
+  ✓ FileManagerJarvis blocks writes into sensitive credential subpaths at the execution boundary
+  ✓ Non-JSON output rejected with noJSONFound
+  ✓ Empty steps array rejected
+  ✓ tool:null composition step validates
+  ✓ JSON number argument coerced to string for typed validation
+  ✓ Replan failure context clipped to 160 chars
+  ✓ Replan keeps at most 2 prior observations
+  ✓ Planner conversation turns survive replan context derivation
+  ✓ Planner conversation turns preserve chronological order across replans
+  ✓ Planner conversation section embeds rendered turns
+  ✓ Planner conversation section keeps assistant turns
+  ✓ Planner conversation section is marked context-only
+  ✓ Planner prompt has no conversation section when history is empty
+  ✓ Planner prompt SHA changes when conversation context is present
+  ✓ Planner prompt SHA computation succeeds for both variants
+
+─── Phase 14: Planner Reliability Hardening (D.5) ───
+  ✓ Multi-object output parses to the first valid plan
+  ✓ Orphaned purpose brace-slip repaired
+  ✓ Orphaned purpose with omitted root brace repaired
+  ✓ Orphaned purpose with omitted array bracket repaired
+  ✓ JSON terminator echo stripped from goal/arguments
+  ✓ Boolean argument stringifies as true/false
+  ✓ Empty shell command rejected as unsafe
+  ✓ Router + hint layer: safe echo, metachar refusal, clipboard write, say, no semantic overreach, hint decisions (15 checks)
+
+─── Phase 15: Real Reference Resolution Engine (Dataflow & State) ───
+  ✓ Literal argument remains literal
+  ✓ Valid $step.1.output parses
+  ✓ Valid $step.1 defaults to output
+  ✓ Valid $step.1.field parses
+  ✓ Valid ambient reference $ambient.current_app parses
+  ✓ Malformed $step rejected
+  ✓ Malformed step number $step.foo rejected
+  ✓ Step 0 reference $step.0.output rejected
+  ✓ Forward reference ($step.3 from step 2) rejected
+  ✓ Self reference ($step.2 from step 2) rejected
+  ✓ Missing step output fails with missingStepOutput
+  ✓ Unverified/failed prior step cannot be consumed
+  ✓ Structured JSON field extracted from verified step output
+  ✓ Plain-text field extraction rejected deterministically
+  ✓ Type adaptation string -> int for parameterSpec.kind == .int
+  ✓ Invalid type adaptation throws typeMismatch
+  ✓ Unavailable ambient slot fails cleanly with ambientSlotUnavailable
+  ✓ conversation, memory, and activity data cannot substitute for an unavailable verified artifact slot
+  ✓ Ambient current_app resolves from environmentContext
+  ✓ PlanValidator accepts valid reference syntax without type error
+  ✓ PlanValidator rejects forward reference at plan validation time
+  ✓ PlanValidator rejects malformed reference at plan validation time
+  ✓ Permission gate / sandbox checks resolved concrete command
+  ✓ Normal literal-only plan validates unchanged
+  ✓ Single-step plan validates unchanged
+  ✓ End-to-end dataflow: Step 1 output correctly bound to Step 2 argument
+
+─── Phase 16: Milestone 1 — Live Desktop Ambient Context Binding ───
+  ✓ Live capture returns frontmost app from NSWorkspace
+  ✓ TaskStateMachine preserves environmentContext upon task creation
+  ✓ ReferenceResolver resolves $ambient.current_app to captured app
+  ✓ Empty currentApp throws ambientSlotUnavailable deterministically
+  ✓ Stale ambient currentApp throws staleAmbientSlot deterministically
+  ✓ Malformed ambient slot name throws malformedReference
+  ✓ Unsupported ambient slot $ambient.current_file throws ambientSlotUnavailable
+  ✓ CommandSandbox evaluates resolved concrete ambient command
+
+─── Phase 17: Milestone 2 — Accessibility Bridge & Fast UI Tooling ───
+  ✓ Tool 'inspect_ui' registered in ToolRegistry
+  ✓ Tool 'click_element' registered in ToolRegistry
+  ✓ Tool 'set_text' registered in ToolRegistry
+  ✓ 'inspect_ui' declared with .readOnly impact
+  ✓ 'click_element' declared with .safeMutation impact
+  ✓ 'set_text' declared with .safeMutation impact
+  ✓ ToolRegistry contains at least 9 registered tools (43)
+  ✓ ToolDefinition for 'inspect_ui' generated
+  ✓ ToolDefinition for 'click_element' includes element_label
+  ✓ ToolDefinition for 'set_text' includes text
+  ✓ 'Delete File' classified as destructive label
+  ✓ 'Empty Trash' classified as destructive label
+  ✓ 'Submit Form' not classified as destructive label
+  ✓ Destructive click target 'Delete Database' blocked by PermissionGate at L1
+  ✓ Untrusted accessibility throws error on inspect_ui execution
+  ✓ Untrusted accessibility throws error on click_element execution
+  ✓ inspect_ui executes successfully with mock tree
+  ✓ inspect_ui output includes 'Submit' button
+  ✓ Filtered inspect_ui includes matched element
+  ✓ Filtered inspect_ui excludes non-matched element
+  ✓ click_element executes successfully on enabled element
+  ✓ click_element confirms clicked element
+  ✓ click_element on disabled element throws deterministic error
+  ✓ click_element on nonexistent element throws element not found error
+  ✓ set_text executes successfully on editable field
+  ✓ set_text output confirms updated text
+  ✓ set_text on nonexistent field throws not found error
+  ✓ Multi-step plan with accessibility tools validates against ToolRegistry
+  ✓ PlanValidator rejects click_element missing required 'element_label'
+
+─── Phase 18: Milestone 3 — Lossless Escalation Pipeline ───
+  ✓ No escalation occurs when Tier A succeeds
+  ✓ Escalation pipeline succeeds when Tier A planning/recovery exhausted
+  ✓ User intent (originalGoal) byte-for-byte preserved across escalation
+  ✓ Structured Task IR (completedSteps, stepNumber) preserved across escalation
+  ✓ Verified step outputs preserved across escalation
+  ✓ Structured PlanValidator failure reason preserved across escalation
+  ✓ Repair history and attempt counts preserved across escalation
+  ✓ DataClassifier blocks cloud escalation for SENSITIVE tasks
+  ✓ DataClassifier blocks cloud escalation for HIGHLY_SENSITIVE tasks
+  ✓ Tier B provider failure propagates deterministically without false success
+  ✓ Emergency stop safety preserved during/after escalation
+  ✓ Completed steps not re-executed post-escalation
+  ✓ Reference continuity ($step.1.token) preserved post-escalation
+  ✓ Tier B plans strictly validated against PlanValidator (Intelligence != Authority)
+  ✓ Cloud escalation permitted for PUBLIC data level
+
+─── Phase 19: Milestone 4A — High-Reliability Deterministic Verification ───
+  ✓ TEST A: False positive rejected when observation detects error despite expected.success == true
+  ✓ TEST B: OpenApp fails verification when observed frontmost app contradicts expected app
+  ✓ TEST C: OpenApp passes verification when observed frontmost matches expected app
+  ✓ TEST D.1: ObservationResult.unavailable produces .unavailable outcome and does not pass
+  ✓ TEST D.2: Action without deterministic postcondition produces .inconclusive and does not pass
+  ✓ TEST E: Accessibility SetText fails verification when observed field value contradicts expected text
+  ✓ TEST F: Accessibility SetText passes verification when observed field value matches expected text
+  ✓ TEST G: RunShell fails verification when expected side-effect file does not exist despite exit code 0
+  ✓ TEST G.0.1: Browser navigation passes only when the observed URL matches
+  ✓ TEST G.0.2: Browser navigation rejects a mismatched observed URL
+  ✓ TEST G.0.3: Browser navigation reports unavailable observation honestly
+  ✓ TEST G.0.4: Browser page snapshot must be valid DOM JSON for the observed URL
+  ✓ TEST G.0.5: Browser page snapshot rejects stale or mismatched URL state
+  ✓ TEST G.0.6: Browser extraction verifies one observed DOM text result
+  ✓ TEST G.0.7: Browser extraction rejects ambiguous selectors
+  ✓ TEST G.0.8: Browser link click passes after observed navigation
+  ✓ TEST G.0.9: Browser link click fails when the active page did not navigate
+  ✓ TEST G.0.10: Browser link click preserves unavailable AX/automation state
+  ✓ TEST G.0.11: Browser text entry passes only on exact live value match
+  ✓ TEST G.0.12: Browser text entry fails when the live field differs
+  ✓ TEST G.0.13: Browser text entry reports unavailable observation honestly
+  ✓ TEST G.1: FileSystemObserver reports actual temporary file state
+  ✓ TEST G.2: FileSystemObserver reports absent state without guessing
+  ✓ TEST H.1: SetVolume passes verification when observed volume matches target level
+  ✓ TEST H.2: SetVolume fails verification when observed volume deviates from target level
+  ✓ TEST I: ReferenceResolver deterministically blocks consuming outputs from steps with .inconclusive verification
+
+─── Phase 20: Planner Decomposition & Direct-Answer Routing ───
+  ✓ CASE 1: knowledge question routes DIRECT ANSWER
+  ✓ Time question classified direct-answer at the router layer (L0 still runs first)
+  ✓ CASE 2: explicit search request routes TOOL PATH (planner)
+  ✓ CASE 3: recency question forced to TOOL/WEB path despite question phrasing
+  ✓ Recency safety net detects 'current'/'today's' signals
+  ✓ Recency: 'latest' forces tool path
+  ✓ Recency: 'right now' forces tool path
+  ✓ Recency: 'as of'/'this week' forces tool path
+  ✓ Recency: 'today' forces tool path
+  ✓ Recency: 'now' inside 'know' does not false-positive
+  ✓ Recency: static fact question has no recency signal
+  ✓ Route matrix: 'open Safari' → DETERMINISTIC (0 model calls)
+  ✓ Route matrix: 'what time is it' → DETERMINISTIC (0 model calls)
+  ✓ Route matrix: 'echo hello world' → DETERMINISTIC fast path
+  ✓ Route matrix: polite brightness request → DETERMINISTIC (0 model calls)
+  ✓ Route matrix: indirect brightness request → DETERMINISTIC (0 model calls)
+  ✓ Route matrix: malformed brightness value does not become deterministic
+  ✓ Route matrix: compound brightness request remains planner-bound
+  ✓ Route matrix: CASE 1 → DIRECT-ANSWER route
+  ✓ Route matrix: CASE 2 → PLANNER route
+  ✓ Route matrix: CASE 3 → PLANNER (web) route
+  ✓ Extraction parser: tool + arguments + literal anchor extracted
+  ✓ Extraction parser: user literal anchor preserved byte-for-byte
+  ✓ Extraction parser: non-JSON output fails with noJSONFound
+  ✓ Extraction parser: missing tool field fails with missingToolField
+  ✓ Extraction parser: split command/args array shape fails with malformedCommandShape
+  ✓ Deterministic extraction preserves the complete explicit multi-word shell payload
+  ✓ Deterministic extraction preserves punctuation as literal text
+  ✓ Deterministic extraction treats surrounding quotes as delimiters, not payload
+  ✓ Deterministic shell extraction rejects unsupported quote boundaries
+  ✓ Deterministic literal extraction compiles a safely quoted echo command
+  ✓ Deterministic extraction still rejects dangerous shell content at PlanValidator
+  ✓ Structural repair: split shape re-joins model's OWN content byte-for-byte
+  ✓ Structural repair: NEVER substitutes prompt-example values
+  ✓ Structural repair: array-wrapped scalar unwrapped
+  ✓ Adoption gate: user literal span accepted
+  ✓ Adoption gate: multi-word literal span accepted
+  ✓ Adoption gate: fabricated 'hello' rejected
+  ✓ Adoption gate: fabricated 'example' rejected
+  ✓ Deterministic compiler: single-step plan compiled
+  ✓ Deterministic compiler: user literal preserved into compiled arguments
+  ✓ Deterministic compiler output passes PlanValidator (authority unchanged)
+  ✓ Decomposed compiler: unsafe shell command rejected by canonical PlanValidator
+  ✓ Compiler gate: fabricated literal (not a goal span) fails closed
+  ✓ Compiler gate: substituted literal (anchor absent from args) fails closed
+  ✓ Compiler gate: unknown tool rejected
+  ✓ Compiler gate: undeclared argument rejected
+  ✓ Preservation recorder: byte-exact chain reports preserved=true
+  ✓ Preservation recorder: substitution reports preserved=false (explicit, not buried)
+  ✓ Recency compiler: composition-only plan replaced with web_search for recency goal
+  ✓ Recency compiler: genuine tool plans pass through unchanged
+  ✓ Recency compiler: non-recency composition plans untouched
+  ✓ Decomposition prompt: explicit copy rule present
+  ✓ Decomposition prompt: anti-fabrication example present
+  ✓ Decomposition prompt: goal-echo example demonstrates shape-only transformation
+  ✓ Offline E2E: extraction → compile → PlanValidator green on real types
+  ✓ open_app det extraction 20.19: 'please open Safari' → app_name=Safari
+  ✓ open_app det extraction 20.20: 'can you open Notes' → app_name=Notes
+  ✓ open_app det extraction 20.21: 'open the app Calculator' → app_name=Calculator
+  ✓ open_app det extraction 20.22: 'open the app called Slack' → app_name=Slack
+  ✓ open_app det extraction 20.23: 'please launch Xcode' → app_name=Xcode (case preserved)
+  ✓ open_app det extraction 20.24: "don't open Safari" → nil (negation guard)
+  ✓ open_app det extraction 20.25: compound 'open Safari and then…' → nil (compound guard)
+  ✓ open_app det extraction 20.26: 'what apps are open?' → nil (question guard)
+  ✓ open_app det extraction 20.27: 'please open ' (empty name after prefix) → nil (empty guard)
+  ✓ open_app det extraction 20.27b: relative clause 'I was using' rejected
+  ✓ open_app det extraction 20.27c: temporal reference 'from earlier' rejected
+  ✓ open_app det extraction 20.28: compile gate passes, app_name preserved in compiled plan
+  ✓ set_volume det extraction 20.29: 'please set the volume to 50' → level=50
+  ✓ set_volume det extraction 20.30: 'can you set volume to 25%' → level=25
+  ✓ set_volume det extraction 20.31: 'set the volume to 75' → level=75
+  ✓ set_volume det extraction 20.32: 'turn the volume to 10' → level=10
+  ✓ set_volume det extraction 20.33: 'change the volume to 0' → level=0
+  ✓ set_volume det extraction 20.34: 'adjust the volume to 100%' → level=100
+  ✓ set_volume det extraction 20.35: "don't set the volume to 50" → nil (negation guard)
+  ✓ set_volume det extraction 20.36: compound 'set the volume to 50 and then…' → nil (compound guard)
+  ✓ set_volume det extraction 20.37: 'what is the volume?' → nil (question guard)
+  ✓ set_volume det extraction 20.38: out-of-range (150) and non-numeric ('high') → nil
+  ✓ set_volume det extraction 20.39: compile gate passes, level preserved in compiled plan
+  ✓ write_file det extraction 20.40: basic single quotes → path and content extracted
+  ✓ write_file det extraction 20.41: double quotes with multiple spaces preserved
+  ✓ write_file det extraction 20.42: smart quotes parsed properly
+  ✓ write_file det extraction 20.43: exact mixed casing preserved
+  ✓ write_file det extraction 20.44: complex punctuation preserved
+  ✓ write_file det extraction 20.45: numbers preserved
+  ✓ write_file det extraction 20.46: internal consecutive spaces preserved
+  ✓ write_file det extraction 20.47: unusual token literal preserved
+  ✓ write_file det extraction 20.48: relative workspace path accepted
+  ✓ write_file det extraction 20.49: ~/Downloads path accepted
+  ✓ write_file det extraction 20.50: ~/Documents path accepted
+  ✓ write_file det extraction 20.51: quoted content containing 'to' does not split connector
+  ✓ write_file det extraction 20.52: Unicode characters preserved
+  ✓ write_file det extraction 20.53: negation guard rejects 'don't write'
+  ✓ write_file det extraction 20.54: question guard rejects 'what should I write'
+  ✓ write_file det extraction 20.55: compound guard rejects 'and then'
+  ✓ write_file det extraction 20.56: multiple write commands in one goal rejected
+  ✓ write_file det extraction 20.57: missing path rejected
+  ✓ write_file det extraction 20.58: missing content rejected
+  ✓ write_file det extraction 20.59: unquoted content rejected (requires delimiters)
+  ✓ write_file det extraction 20.60: mismatched delimiters (' vs ") rejected
+  ✓ write_file det extraction 20.61: directory traversal '..' rejected
+  ✓ write_file det extraction 20.62: protected system path /System rejected
+  ✓ write_file det extraction 20.63: sensitive subpath ~/.ssh rejected
+  ✓ write_file det extraction 20.64: trailing slash directory target rejected
+  ✓ write_file det extraction 20.65: compile gate passes, path & content preserved
+  ✓ write_file physical E2E 20.66: extraction → compile → validate → execute → verify matches disk byte-for-byte
+  ✓ url-open det extraction 20.67: 'go to example.com' → https://example.com
+  ✓ url-open det extraction 20.68: full https URL copied byte-for-byte
+  ✓ url-open det extraction 20.69: 'visit the website <url>' accepted
+  ✓ url-open det extraction 20.70: polite prefix accepted
+  ✓ url-open det extraction 20.71: 'can you open the website' accepted
+  ✓ url-open det extraction 20.72: 'browse <domain>' accepted
+  ✓ url-open det extraction 20.73: quoted URL delimiters stripped
+  ✓ url-open det extraction 20.74: trailing punctuation stripped
+  ✓ url-open det extraction 20.75: URL with path preserved byte-for-byte
+  ✓ url-open det extraction 20.76: explicit http URL accepted as given
+  ✓ url-open det extraction 20.77: negation guard rejects 'don't open <url>'
+  ✓ url-open det extraction 20.78: question guard rejects 'what is <url>'
+  ✓ url-open det extraction 20.79: compound guard rejects 'and then'
+  ✓ url-open det extraction 20.80: multi-domain goal rejected
+  ✓ url-open det extraction 20.81: URL with embedded credentials rejected
+  ✓ url-open det extraction 20.82: unknown TLD rejected (falls to planner)
+  ✓ url-open det extraction 20.83: bare domain without open verb rejected
+  ✓ url-open det extraction 20.84: URL + trailing prose rejected (not a pure URL goal)
+  ✓ url-open det extraction 20.85: app name is not a URL → nil (L0/app paths unaffected)
+  ✓ url-open det extraction 20.86: compile gate passes, URL preserved in compiled plan
+  ✓ url-open det extraction 20.87: open_app extractor refuses URL target (routes to open_browser path)
+  ✓ fetch_url det extraction 20.67: 'fetch the url https://example.com' extracted
+  ✓ fetch_url det extraction 20.68: 'fetch url https://api.github.com/status' extracted
+  ✓ fetch_url det extraction 20.69: 'fetch https://swift.org/download' extracted
+  ✓ fetch_url det extraction 20.70: 'read the url ...' extracted
+  ✓ fetch_url det extraction 20.71: 'download url http://...' extracted
+  ✓ fetch_url det extraction 20.72: complex query & fragment preserved byte-for-byte
+  ✓ fetch_url det extraction 20.73: polite 'can you fetch ...' extracted
+  ✓ fetch_url det extraction 20.74: single-quoted URL stripped and extracted
+  ✓ fetch_url det extraction 20.75: double-quoted URL stripped and extracted
+  ✓ fetch_url det extraction 20.76: angle-bracketed URL stripped and extracted
+  ✓ fetch_url det extraction 20.77: negation rejected
+  ✓ fetch_url det extraction 20.78: question rejected
+  ✓ fetch_url det extraction 20.79: compound command rejected
+  ✓ fetch_url det extraction 20.80: missing url rejected
+  ✓ fetch_url det extraction 20.81: non-http scheme file:// rejected
+  ✓ fetch_url det extraction 20.82: javascript: scheme rejected
+  ✓ fetch_url det extraction 20.83: metadata SSRF IP rejected
+  ✓ fetch_url det extraction 20.84: compile gate passes, url preserved in plan
+  ✓ fetch_url det extraction 20.85: localhost rejected
+  ✓ fetch_url det extraction 20.86: loopback 127.0.0.1 rejected
+  ✓ fetch_url det extraction 20.87: private range 192.168.0.0/16 rejected
+  ✓ fetch_url det extraction 20.88: private range 10.0.0.0/8 rejected
+  ✓ fetch_url det extraction 20.89: private range 172.16.0.0/12 rejected
+  ✓ fetch_url det extraction 20.90: embedded user credentials rejected
+  ✓ fetch_url det extraction 20.91: data: scheme rejected
+  ✓ fetch_url det extraction 20.92: ftp: scheme rejected
+  ✓ fetch_url det extraction 20.93: multiple URLs rejected
+  ✓ fetch_url det extraction 20.94: URL with trailing prose rejected
+  ✓ fetch_url det extraction 20.95: mismatched delimiters rejected
+  ✓ fetch_url det extraction 20.96: port, encoded query, and fragment preserved byte-for-byte
+  ✓ web_search det extraction 20.97: 'search the web for Swift programming' extracted byte-for-byte
+  ✓ web_search det extraction 20.98: 'search web for: 'quantum computing'' single quotes stripped
+  ✓ web_search det extraction 20.99: 'web search machine learning tutorials' extracted
+  ✓ web_search det extraction 20.100: 'google Apple Silicon M4' extracted
+  ✓ web_search det extraction 20.101: 'search for the history of Rome' extracted
+  ✓ web_search det extraction 20.102: polite prefix 'please' handled
+  ✓ web_search det extraction 20.103: polite prefix 'can you' handled
+  ✓ web_search det extraction 20.104: double quotes stripped and exact content preserved
+  ✓ web_search det extraction 20.105: inner punctuation preserved
+  ✓ web_search det extraction 20.106: symbols, slashes, colons, numbers preserved
+  ✓ web_search det extraction 20.107: colon separator handled
+  ✓ web_search det extraction 20.108: negation rejected
+  ✓ web_search det extraction 20.109: question rejected
+  ✓ web_search det extraction 20.110: compound command rejected
+  ✓ web_search det extraction 20.111: empty query rejected
+  ✓ web_search det extraction 20.112: empty quoted query rejected
+  ✓ web_search det extraction 20.113: mismatched delimiters rejected
+  ✓ web_search det extraction 20.114: local files search guard
+  ✓ web_search det extraction 20.115: local folder search guard
+  ✓ web_search det extraction 20.116: local mac search guard
+  ✓ web_search det extraction 20.117: unmatched quote in unquoted query rejected
+  ✓ web_search det extraction 20.118: how-to question rejected
+  ✓ web_search det extraction 20.119: semicolon compound rejected
+  ✓ web_search det extraction 20.120: compile gate passes, query preserved in plan
+  ✓ web_search det extraction 20.121: unknown argument fails closed (unknownArgument(tool: "web_search", argument: "invalid_param"))
+  ✓ run_shell det extraction 20.122: double-quoted command extracted byte-for-byte
+  ✓ run_shell det extraction 20.123: single-quoted command extracted byte-for-byte
+  ✓ run_shell det extraction 20.124: backtick command extracted byte-for-byte
+  ✓ run_shell det extraction 20.125: mismatched delimiter rejected
+  ✓ run_shell det extraction 20.126: unquoted ambiguous command rejected
+  ✓ run_shell det extraction 20.127: compound command rejected
+  ✓ run_shell det extraction 20.128: negation rejected
+  ✓ run_shell det extraction 20.129a: dangerous command blocked by sandbox at compile gate
+  ✓ run_shell det extraction 20.129b: safe command compiles and preserves argument
+  ✓ read_file det extraction 20.130: 'read the file notes.txt' extracted byte-for-byte
+  ✓ read_file det extraction 20.131: single-quoted path stripped and preserved
+  ✓ read_file det extraction 20.132: double-quoted path stripped and preserved
+  ✓ read_file det extraction 20.133: polite prefix 'please read file' handled
+  ✓ read_file det extraction 20.134: polite prefix 'can you read the file' handled
+  ✓ read_file det extraction 20.135: direct 'read <file.ext>' accepted
+  ✓ read_file det extraction 20.136: negation rejected
+  ✓ read_file det extraction 20.137: question rejected
+  ✓ read_file det extraction 20.138: compound command rejected
+  ✓ read_file det extraction 20.139: directory target rejected
+  ✓ read_file det extraction 20.140: directory traversal '..' rejected
+  ✓ read_file det extraction 20.141: protected system path rejected
+  ✓ read_file det extraction 20.142: sensitive subpath rejected
+  ✓ read_file det extraction 20.143: relative clause reference rejected
+  ✓ read_file det extraction 20.144: temporal reference rejected
+  ✓ read_file det extraction 20.145: compile gate passes, path preserved
+  ✓ read_file physical E2E 20.146: extraction → compile → validate → execute → verify matches disk byte-for-byte
+  ✓ verified reference E2E 20.147: verified state → ReferenceResolver resolution → execution → verification passed
+  ✓ unresolved reference E2E 20.148: unresolved reference → clarification, never fabricates or executes
+  ✓ verified file reference E2E 20.149: written file → ReferenceResolver resolution → read_file execution → verified content
+  ✓ unresolved file reference E2E 20.150: unresolved file reference → clarification, never fabricates or executes
+  ✓ plan parser 20.151: unescaped quotes in echoed goal repaired and parsed cleanly
+  ✓ plan parser 20.152: redundant step keys inside arguments ignored during validation
+  ✓ plan parser 20.153: explicit null in arguments treated as omitted optional argument
+  ✓ plan parser 20.154: missing step braces in multi-step plan repaired and parsed into 2 steps
+  ✓ plan validator 20.155: composition step preceding tool step rejected
+  ✓ plan validator 20.156: composition step with action purpose rejected
+  ✓ plan validator 20.157: single-step plan for compound action goal rejected
+  ✓ plan validator 20.158: consecutive duplicate steps rejected as hallucinated loop
+  ✓ plan validator 20.159: plan with zero executable tools for action goal rejected
+  ✓ plan validator 20.160: multi-step fetch_url -> write_file with reference validates against compound goal
+  ✓ reference resolver 20.161: ReferenceResolver blocks referencing step with .failed verification
+  ✓ reference resolver 20.162: ReferenceResolver blocks referencing unrecorded step with missingStepOutput
+  ✓ agent loop 20.163: intermediate step failure preserves Step 1 completed state, marks Step 2 failed, and reports truthful partial state
+  ✓ activity history E2E: follow-up reports the actual failed AgentLoop task without planner generation
+  ✓ agent loop 20.164: partialCompletionReport states completed count + actual failed step, never success
+  ✓ agent loop 20.165: recovery-failure exit closes task FAILED with truthful partial report (completed count + actual failed step)
+  ✓ agent loop 20.166: replan preservation is identity-based — reordering keeps each completion with its action, a changed tool never inherits one
+  ✓ agent loop 21.1: completed production run records user+assistant turns in ConversationManager for the next turn
+  ✓ interaction E2E: production deterministic AgentLoop run emits understanding, executing, and success phases
+  ✓ telemetry E2E: production AgentLoop deterministic execution emits one ordered task/step lifecycle
+  ✓ agent loop 21.2: planner-route completed run records user+assistant turns with the exact final response
+  ✓ telemetry E2E: planner telemetry matches the actual verifier outcome stored in TaskState
+  ✓ direct composer 21.3: composition prompt embeds bounded recent conversation history before the new request
+  ✓ direct answer router 21.4: bare follow-ups + processing instructions take directAnswer; action-shaped goals still route to planner
+  ✓ conversation persistence 21.5: completed turns persist exactly once in order; failed interaction records only the request (no fabricated success)
+  ✓ conversation persistence 21.6: loadPersistedHistory restores exact conversation after lifecycle reset; reload is idempotent
+  ✓ conversation persistence 21.7: bounded restore keeps newest 6 turns oldest-first; lifetime transcript is clipped
+  ✓ conversation persistence 21.8: restored memory never authorizes — PermissionGate denial unchanged with memory present
+  ✓ history service 21.9: bounded newest-first transcript window pages backward chronologically through the UI boundary — no store internals exposed
+  ✓ history retention 21.10: bounded oldest-first deletion with newest-N floor — protected messages survive, fresh messages untouched, floor never violated
+  ✓ history retention 21.11: storage retention is orthogonal to the model context window — enforcement and restore leave planner-visible memory unchanged
+  ✓ production database invariance 21.12: Application Support conversations.sqlite is byte-identical before and after the full suite
+
+─── Zia Product Subsystems ───
+  ✓ memory trust: model inference and external content cannot be written to permanent memory
+  ✓ memory trust: an explicit user fact is retained as permanent semantic memory
+  ✓ memory trust: untrusted content is admitted only to ephemeral memory
+  ✓ memory trust: an untrusted record cannot be promoted to permanent memory
+  ✓ memory trust: trusted-only retrieval never returns untrusted records
+  ✓ memory kinds: semantic/episodic/procedural are permanent
+  ✓ memory kinds: working/temporary are ephemeral
+  ✓ memory trust: user fact, tool observation, and task result are trusted
+  ✓ memory trust: inference, external content, and unverified claims are untrusted
+  ✓ memory retention: a record with a future expiry is retained
+  ✓ memory retention: an expired record is dropped by decay
+  ✓ memory retention: endSession clears ephemeral memory and preserves permanent memory
+  ✓ autonomy: levels are ordered
+  ✓ autonomy: background execution is gated at level 4
+  ✓ autonomy: self-improvement proposals are gated at level 5
+  ✓ autonomy: destructive execution requires autonomous multi-step authority
+  ✓ autonomy: Config clamps the autonomy level to the supported 0-5 range
+  ✓ autonomy: level 5 maps onto full per-action authority without weakening any check
+  ✓ intent: a plain question does not require deep planning
+  ✓ intent: a coding task requires planning and escalates to the strong tier
+  ✓ intent: a recurring request is long-running work
+  ✓ intent: a multi-step compound request requires planning
+  ✓ intent: a monitoring request is long-running work
+  ✓ project inspector: a Package.swift directory is detected as a Swift package with a build command
+  ✓ project inspector: a directory with no markers is not reported as a project
+  ✓ artifacts: a new artifact starts unverified
+  ✓ artifacts: verification state is recorded
+  ✓ scheduler: interval next-run is exactly base + interval
+  ✓ scheduler: daily next-run lands at the requested local time in the future
+  ✓ scheduler: once next-run is the absolute date
+  ✓ scheduler: a job is stored enabled
+  ✓ scheduler: reaching maxRuns disables the job
+  ✓ scheduler: a non-positive interval is rejected
+  ✓ background autonomy: a low autonomy level forbids background execution
+  ✓ background autonomy: a due job is launched at level 4 through the normal goal path
+  ✓ context engine: the package always carries the goal
+  ✓ context engine: rendered context respects the character budget
+  ✓ health service: produces structured component health including intelligence
+  ✓ health service: severity ordering places unavailable above degraded
+  ✓ context sanitizer: API keys and password assignments are redacted
+  ✓ context sanitizer: ordinary prose is unchanged
+  ✓ context sanitizer: minimization bounds outbound text
+  ✓ recovery policy: authorization, cancellation, and malformed output are not recoverable
+  ✓ recovery policy: execution, timeout, verification, and unavailable failures are recoverable
+  ✓ tool registry: tool names are unique
+  ✓ tool registry: all capability tools are registered and discoverable (missing: )
+  ✓ error taxonomy: permission denial classifies as permissionError
+  ✓ error taxonomy: cancellation classifies as cancellation
+  ✓ error taxonomy: timeouts are configured to retry
+  ✓ error taxonomy: execution failures are configured to replan
+  ✓ patch engine: SHA-256 hashing is stable and change-sensitive
+  ✓ patch engine: default scope is a single exact occurrence, not a blind global replace
+  ✓ crash recovery: a not-yet-started task is safe to resume
+  ✓ crash recovery: an uncertain destructive step requires confirmation, never blind replay
+  ✓ crash recovery: a recently-active task needs verification before resuming
+  ✓ crash recovery: a previously failed task requires a user decision
+  ✓ crash recovery: terminal tasks are not offered for recovery
+  ✓ crash recovery: only the provably-safe task is auto-resumable
+  ✓ external agents: a matching, fresh response is correlated
+  ✓ external agents: a response past the request deadline is rejected (stale/replay)
+  ✓ notifications: importance is ordered from low to critical
+  ✓ code intelligence: scans known source extensions only
+  ✓ preferences: safe defaults with no explicit keys set
+
+══════════════════════════════════════════
+  Results: 1067 passed, 0 failed, 0 skipped
+══════════════════════════════════════════
+
+✅ ALL TESTS PASSED
+RC=0

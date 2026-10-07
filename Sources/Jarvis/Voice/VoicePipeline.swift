@@ -186,9 +186,10 @@ final class VoicePipeline {
             Task { @MainActor [weak self] in
                 self?.currentTurn?.latestPartial = text
                 VoiceActivityDetector.shared.updatePartialTranscript(event.text)
-                // Speculative preparation: overlap model readiness with remaining user speech
-                if text.split(separator: " ").count >= 2 {
-                    _ = await ProviderManager.shared.isProviderAvailable(ProviderManager.shared.chatgptDesktop)
+                // Speculative preparation and instant emergency interrupt from partial speech
+                let stopped = StreamingTurnPreparer.shared.processPartialTranscript(event.text)
+                if stopped {
+                    self?.currentTurn = nil
                 }
             }
         }
@@ -498,6 +499,7 @@ final class VoicePipeline {
 
         // 4. Asynchronous task execution decoupled from voice loop (Requirement F & H)
         let taskID = UUID().uuidString
+        let prepared = StreamingTurnPreparer.shared.takePreparedContext(for: cleaned)
         let bgTask = Task { @MainActor [weak self] in
             defer {
                 self?.activeBackgroundTasks.removeValue(forKey: taskID)
@@ -508,6 +510,7 @@ final class VoicePipeline {
                     let response = try await DirectComposer().composeAnswer(
                         goal: cleaned,
                         observations: [],
+                        prepared: prepared,
                         onChunk: { chunk in
                             Task { @MainActor in
                                 TTSEngine.shared.appendStreamingChunk(chunk)

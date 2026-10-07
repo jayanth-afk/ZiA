@@ -58,6 +58,53 @@ final class FloatingPanel: NSPanel {
         contentView = visualEffect
 
         centerOnScreen()
+
+        // Natural Siri-like auto-dismissal: automatically fade when interaction succeeds or completes
+        EventBus.shared.subscribe(InteractionPhaseChangedEvent.self) { [weak self] event in
+            guard let self else { return }
+            switch event.phase {
+            case .success:
+                self.scheduleAutoDismiss(after: 4.5)
+            case .listening, .understanding, .thinking, .speaking, .executing:
+                self.cancelAutoDismiss()
+            case .idle, .stopped, .error:
+                break
+            }
+        }
+    }
+
+    private var autoDismissTask: Task<Void, Never>?
+
+    /// Schedule natural auto-dismissal when assistant is idle after completing a turn.
+    func scheduleAutoDismiss(after delay: TimeInterval = 4.5) {
+        cancelAutoDismiss()
+        autoDismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self, self.isVisible else { return }
+            let vm = OverlayViewModel.shared
+            // Never dismiss while active, speaking, streaming, or listening
+            if !vm.isStreaming && !vm.isSpeaking && vm.interactionPhase != .listening && vm.interactionPhase != .thinking {
+                self.hideWithAnimation()
+            }
+        }
+    }
+
+    /// Cancel pending auto-dismissal (e.g. on user hover or interaction).
+    func cancelAutoDismiss() {
+        autoDismissTask?.cancel()
+        autoDismissTask = nil
+    }
+
+    /// Hide the panel with a smooth macOS fade animation.
+    func hideWithAnimation() {
+        guard isVisible else { return }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = ZiaMotion.standard
+            animator().alphaValue = 0
+        } completionHandler: { [weak self] in
+            self?.hide()
+            self?.alphaValue = 1
+        }
     }
 
     // MARK: - Display Control

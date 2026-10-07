@@ -6,6 +6,7 @@ actor DirectComposer {
     func composeAnswer(
         goal: String,
         observations: [String],
+        prepared: StreamingTurnPreparer.PreparedContext? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil
     ) async throws -> String {
         try Task.checkCancellation()
@@ -26,7 +27,17 @@ actor DirectComposer {
         // Fast string buffer with pre-allocated capacity
         var prompt = ""
         prompt.reserveCapacity(2048)
-        prompt.append("Answer the user's request directly in one short sentence.\n")
+        prompt.append("Answer the user's request directly, accurately, and naturally. Be concise (1 to 3 spoken sentences) without markdown headers, bullet lists, or robotic filler.\n")
+
+        // Relevant environment context
+        let env = prepared?.environment ?? TaskEnvironmentContext.captureLive()
+        if let app = env.currentApp, !app.isEmpty, app != "Jarvis", app != "ZiA", app != "ChatGPT" {
+            prompt.append("Current application: \(app)\n")
+        }
+        let artifact = ActivityHistory.latestVerifiedArtifactSummary()
+        if !artifact.isEmpty, artifact != "No verified artifacts recorded." {
+            prompt.append("Recent verified activity: \(artifact)\n")
+        }
 
         if !history.isEmpty {
             prompt.append("Conversation so far:\n")
@@ -63,14 +74,16 @@ actor DirectComposer {
         prompt.append("Answer: ")
 
         let dispatchMessage = [Message(role: .user, content: prompt)]
-        // Hybrid policy context: a direct answer is always user-present, so the
-        // ChatGPT brain is a candidate only when the request needs real
-        // reasoning/writing and the data class allows it — never an extraction
-        // prompt, never scheduled/background work.
-        let sensitivity = await MainActor.run { DataClassifier.shared.classify(goal) }
+        let sensitivity: DataClassifier.SensitivityLevel
+        if let prep = prepared {
+            sensitivity = prep.sensitivity
+        } else {
+            sensitivity = await MainActor.run { DataClassifier.shared.classify(goal) }
+        }
+        let isDeep = prepared?.isDeepCandidate ?? ChatGPTBrainPolicy.looksLikeDeepRequest(goal)
         let context = ChatGPTRequestContext(
             isUserPresent: true,
-            needsDeepReasoning: ChatGPTBrainPolicy.looksLikeDeepRequest(goal),
+            needsDeepReasoning: isDeep,
             isExtractionPrompt: false,
             isScheduledOrBackground: false,
             sensitivity: sensitivity

@@ -71,20 +71,17 @@ final class EmergencyInterrupt {
 
     // MARK: - Public API
 
-    /// Check if transcript or text contains an emergency phrase.
-    /// If detected, immediately fires emergency stop sequence.
-    @discardableResult
-    func checkForEmergency(in text: String) -> Bool {
+    /// Check if transcript or text contains an emergency phrase without triggering side effects.
+    func isEmergencyPhrase(_ text: String) -> String? {
         let cleaned = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let words = cleaned.split(whereSeparator: { $0.isWhitespace || $0.isPunctuation }).map(String.init)
-        guard !words.isEmpty else { return false }
+        guard !words.isEmpty else { return nil }
         let normalized = words.joined(separator: " ")
 
         // 1. Direct match with full emergency phrase
         for phrase in emergencyPhrases {
             if cleaned == phrase || normalized == phrase {
-                triggerEmergencyStop(phrase: phrase)
-                return true
+                return phrase
             }
         }
 
@@ -99,12 +96,22 @@ final class EmergencyInterrupt {
                             continue
                         }
                     }
-                    triggerEmergencyStop(phrase: phrase)
-                    return true
+                    return phrase
                 }
             }
         }
 
+        return nil
+    }
+
+    /// Check if transcript or text contains an emergency phrase.
+    /// If detected, immediately fires emergency stop sequence.
+    @discardableResult
+    func checkForEmergency(in text: String) -> Bool {
+        if let phrase = isEmergencyPhrase(text) {
+            triggerEmergencyStop(phrase: phrase)
+            return true
+        }
         return false
     }
 

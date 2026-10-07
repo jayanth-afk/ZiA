@@ -251,8 +251,16 @@ struct OverlayView: View {
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: ZiaRadius.hud, style: .continuous))
-        .onHover { hovering.value = $0 }
+        .onHover { isHovered in
+            hovering.value = isHovered
+            if isHovered {
+                FloatingPanel.shared.cancelAutoDismiss()
+            } else if viewModel.interactionPhase == .success {
+                FloatingPanel.shared.scheduleAutoDismiss(after: 4.0)
+            }
+        }
         .onTapGesture {
+            FloatingPanel.shared.cancelAutoDismiss()
             if !isListening && !isBusy { composerRevealed.value = true }
         }
         .animation(ZiaMotion.respectingReduceMotion(ZiaMotion.stateChange), value: composerVisible)

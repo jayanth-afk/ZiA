@@ -346,16 +346,33 @@ final class ZiaMemoryStore: @unchecked Sendable {
             createdAt: now,
             lastAccessedAt: now,
             expiresAt: draft.expiresAt,
-            accessCount: 0)
+            accessCount: 0,
+            retentionLevel: draft.retentionLevel,
+            supersedesID: draft.supersedesID,
+            supersededByID: nil)
 
         lock.lock()
         records[record.id] = record
+        if let oldID = draft.supersedesID, var oldRecord = records[oldID] {
+            oldRecord.supersededByID = record.id
+            records[oldID] = oldRecord
+        }
         pruneLocked(now: now)
         lock.unlock()
 
         persist()
         JarvisLogger.memory.info("Structured memory [\(record.kind.rawValue)/\(record.trust.rawValue)] stored from '\(record.source)'")
         return record
+    }
+
+    /// Supersede an existing memory with an updated decision or fact.
+    /// The old memory is marked as superseded so it does not conflict with current truth,
+    /// and the new memory links back to it for provenance audit.
+    @discardableResult
+    func supersede(oldID: UUID, with draft: MemoryDraft, now: Date = .now) throws -> MemoryRecord {
+        var updatedDraft = draft
+        updatedDraft.supersedesID = oldID
+        return try write(updatedDraft, now: now)
     }
 
     /// Promote an existing ephemeral record to a permanent kind. Promotion
@@ -405,13 +422,21 @@ final class ZiaMemoryStore: @unchecked Sendable {
 
     /// Retrieve the highest-value records for a query. Scoring blends lexical
     /// overlap with the query, stored relevance, confidence, and recency.
+    /// Superseded records are excluded by default so old decisions never contradict truth.
     /// Accessing a record updates its lastAccessedAt/accessCount (memory is
     /// evidence of use, not an authority decision).
-    func retrieve(query: String, kinds: Set<MemoryKind>? = nil, limit: Int = 5, now: Date = .now) -> [MemoryRecord] {
+    func retrieve(
+        query: String,
+        kinds: Set<MemoryKind>? = nil,
+        limit: Int = 5,
+        now: Date = .now,
+        includeSuperseded: Bool = false
+    ) -> [MemoryRecord] {
         let queryTokens = Self.tokens(query)
         lock.lock()
         var scored: [(record: MemoryRecord, score: Double)] = []
         for record in records.values {
+            if !includeSuperseded && record.supersededByID != nil { continue }
             if let kinds, !kinds.contains(record.kind) { continue }
             if let expiresAt = record.expiresAt, expiresAt <= now { continue }
             let lexical = Self.lexicalOverlap(queryTokens, Self.tokens(record.content))
@@ -438,8 +463,17 @@ final class ZiaMemoryStore: @unchecked Sendable {
     }
 
     /// Trusted records only — used when memory will influence durable behavior.
-    func retrieveTrusted(query: String, limit: Int = 5, now: Date = .now) -> [MemoryRecord] {
-        retrieve(query: query, limit: limit * 3, now: now).filter { $0.trust.isTrusted }.prefix(limit).map { $0 }
+    /// Excludes superseded records by default.
+    func retrieveTrusted(
+        query: String,
+        limit: Int = 5,
+        now: Date = .now,
+        includeSuperseded: Bool = false
+    ) -> [MemoryRecord] {
+        retrieve(query: query, limit: limit * 3, now: now, includeSuperseded: includeSuperseded)
+            .filter { $0.trust.isTrusted }
+            .prefix(limit)
+            .map { $0 }
     }
 
     // MARK: Deletion / retention
@@ -524,7 +558,15 @@ final class ZiaMemoryStore: @unchecked Sendable {
     private func value(of record: MemoryRecord, now: Date) -> Double {
         let permanence = record.kind.isPermanent ? 1.0 : 0.0
         let recency = Self.recencyFactor(record.lastAccessedAt, now: now)
-        return 0.5 * permanence + 0.3 * record.relevance + 0.2 * recency
+        let retentionMultiplier: Double
+        switch record.retentionLevel {
+        case .critical: retentionMultiplier = 2.0
+        case .important: retentionMultiplier = 1.5
+        case .relevant: retentionMultiplier = 1.0
+        case .transient: retentionMultiplier = 0.5
+        }
+        let supersededPenalty = (record.supersededByID != nil) ? 0.2 : 1.0
+        return (0.5 * permanence + 0.3 * record.relevance + 0.2 * recency) * retentionMultiplier * supersededPenalty
     }
 
     private func persist() {

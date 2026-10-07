@@ -290,7 +290,12 @@ final class ProviderManager {
                 isVerified: availability.isAvailable,
                 failureCount: failureCounts[provider.id] ?? 0,
                 lastError: lastErrors[provider.id],
-                capabilities: provider.capabilities))
+                capabilities: provider.capabilities,
+                successCount: successCounts[provider.id] ?? 0,
+                lastSuccessAt: lastSuccessTimes[provider.id],
+                lastFailureAt: lastFailureTimes[provider.id],
+                lastLatencyMs: lastLatencies[provider.id],
+                rateLimitedUntil: rateLimitCooldowns[provider.id]))
         }
         let availableCount = statuses.filter(\.isAvailable).count
         let verifiedCount = statuses.filter(\.isVerified).count
@@ -298,7 +303,8 @@ final class ProviderManager {
         return ProviderHealthSummary(statuses: statuses, availableCount: availableCount,
                                      verifiedCount: verifiedCount,
                                      totalCount: statuses.count, hasLocalFallback: hasLocalFallback,
-                                     quarantined: quarantinedProviderIDs())
+                                     quarantined: quarantinedProviderIDs(),
+                                     rateLimited: rateLimitedProviderIDs())
     }
 
     /// Deterministic routing decision for an intent category. Considers both

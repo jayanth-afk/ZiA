@@ -33,6 +33,7 @@ Baseline at ledger creation (`77a5799`):
 | 2.1b | Groq provider fixes (executor R2) | DONE | `571c6a6` | build OK · 277/0 · self-test 1067/0/0 · no `@State` | `Sources/Jarvis/Brain/Providers/GroqProvider.swift` (real SSE, bounded `/models` verify, injectable session/key), `HealthService.report(verifyExternalModels:)`, `ZiaProviderModel.groqModelNote`, `Tests/JarvisTests/GroqProviderTests.swift` |
 | 2.1c | Keychain bounds (executor R3) | DONE | `5cb04a1` | build OK · 282/0 · self-test 1067/0/0 · no `@State` | `Sources/Jarvis/Core/KeychainManager.swift` (bounded fail-closed reads, injectable backend), `Tests/JarvisTests/KeychainBoundsTests.swift` |
 | 2.1d | Loose ends (executor R4) | DONE | `0826c67` | build OK · 282/0 · self-test 1067/0/0 · no `@State` | `docs/OWNER_CHECKLIST.md` (new); tool count reconciled; hazard/screenshot/host notes recorded below |
+| C0 | ChatGPT-brain recon (read-only) | DONE | this commit | build OK · 282/0 · bridge `npm test` 336/328p/8s/0f | `docs/CHATGPT_BRAIN.md` §1–2. Verified: endpoint is **unauthenticated by default** (`isAuthorized` returns true when no key; `REQUIRE_API_KEY` default false), wildcard CORS + no Origin/Host check; engine adapter spawns codex with **no cwd / no sandbox / `env: process.env`** and kills only the direct child; provider is first in every chain with no opt-in. `codex-cli 0.160.0`, logged in via ChatGPT. |
 
 ## APPROVAL QUEUE (owner-only destructive/licence-sensitive actions)
 

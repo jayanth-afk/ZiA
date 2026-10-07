@@ -125,7 +125,8 @@ actor CerebrasProvider: LLMProvider {
                     return
                 }
 
-                let model = (options["model"] as? String) ?? await self.resolvedModel
+                let resolvedModel = await self.resolvedModel
+                let model = (options["model"] as? String) ?? resolvedModel
                 var request = URLRequest(url: self.endpoint)
                 request.httpMethod = "POST"
                 request.timeoutInterval = self.chatTimeout

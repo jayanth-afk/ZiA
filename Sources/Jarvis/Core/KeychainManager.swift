@@ -60,6 +60,7 @@ final class KeychainManager: @unchecked Sendable {
         case elevenlabs = "jarvis.elevenlabs.api_key"
         case tavily = "jarvis.tavily.api_key"
         case openrouter = "jarvis.openrouter.api_key"
+        case cerebras = "jarvis.cerebras.api_key"
         /// Control-plane key for the local Agent Bridge. The bridge's ChatGPT
         /// brain endpoints (`/api/chatgpt/*`) require it; absent ⇒ the brain is
         /// unavailable rather than open to any local caller.

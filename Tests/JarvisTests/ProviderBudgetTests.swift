@@ -110,24 +110,20 @@ actor FakeProvider: LLMProvider {
 @MainActor
 @Suite(.serialized) struct ProviderFallbackTests {
 
-    private func text(of stream: [StreamChunk]) -> String {
-        stream.compactMap { if case .text(let t) = $0 { return t } else { return nil } }.joined()
-    }
-
     @Test func fallsBackWhenProviderFailsBeforeEmittingAnything() async throws {
         let pm = ProviderManager.shared
         let a = FakeProvider(id: "fake-pre-a", chunks: [.error("boom")])
         let b = FakeProvider(id: "fake-pre-b", chunks: [.text("world"), .done(usage: .zero)])
 
-        var collected = ""
+        let collected = LockedValue<String>("")
         let result = try await pm.executeFallbackChain(
             [a, b],
             messages: [Message(role: .user, content: "hi")],
-            onChunk: { text in collected += text })
+            onChunk: { text in collected.mutate { $0 += text } })
 
         #expect(result.response == "world")
         #expect(result.providerID == "fake-pre-b")
-        #expect(collected == "world")
+        #expect(collected.value == "world")
     }
 
     @Test func doesNotMixTwoWorkersWhenFirstFailsAfterPartialOutput() async {

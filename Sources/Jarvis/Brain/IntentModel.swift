@@ -132,7 +132,8 @@ enum IntentEngine {
         } else if normalized.hasSuffix("?") || startsWithAny(["what ", "why ", "how ", "when ",
                                                               "where ", "who ", "which ", "is ", "are ",
                                                               "do ", "does ", "can ", "could ", "should ",
-                                                              "will ", "would "]) {
+                                                              "will ", "would ", "explain ", "summarize ",
+                                                              "describe ", "define ", "compare ", "tell me "]) {
             kind = .question; confidence = 0.75
         } else if startsWithAny(["hello", "hi ", "hey ", "thanks", "thank you", "good morning",
                                  "good evening", "how are you"]) {

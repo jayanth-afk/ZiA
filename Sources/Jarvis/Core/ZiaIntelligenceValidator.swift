@@ -193,7 +193,7 @@ enum ZiaIntelligenceValidator {
         let query = "Analyze the current ZiA architecture and identify the most important architectural risks that remain."
         let t0 = CFAbsoluteTimeGetCurrent()
         do {
-            let decision = await BrainRouter.shared.decide(for: query)
+            _ = await BrainRouter.shared.decide(for: query)
             let resp = try await BrainRouter.shared.routeUnified(query)
             let elapsed = (CFAbsoluteTimeGetCurrent() - t0) * 1000.0
             let passed = (resp.tier == .deep || resp.tier == .strong) && !resp.content.isEmpty

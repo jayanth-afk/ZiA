@@ -7,13 +7,13 @@ import Foundation
 /// Models receive a model-specific, budget-bounded compiled context.
 /// Semantic meaning is preserved; only the representation and token budget change.
 @MainActor
-public final class ContextCompiler {
-    public static let shared = ContextCompiler()
+final class ContextCompiler {
+    static let shared = ContextCompiler()
 
     private init() {}
 
     /// Compile a complete message payload for model dispatch.
-    public func compile(
+    func compile(
         goal: String,
         tier: BrainTier,
         destination: OutputDestination = .visual,

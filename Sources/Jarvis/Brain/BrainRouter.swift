@@ -317,11 +317,14 @@ final class BrainRouter {
         // ZiA response" invariant. In that case we surface the failure truthfully
         // instead of emitting a mixed response.
         let emittedVisibleText = LockedValue<Bool>(false)
-        let trackedChunk: (@Sendable (String) -> Void)? = onChunk.map { downstream in
-            { text in
+        let trackedChunk: (@Sendable (String) -> Void)?
+        if let onChunk {
+            trackedChunk = { @Sendable text in
                 if !text.isEmpty { emittedVisibleText.value = true }
-                downstream(text)
+                onChunk(text)
             }
+        } else {
+            trackedChunk = nil
         }
 
         do {

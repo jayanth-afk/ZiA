@@ -432,6 +432,98 @@ final class ProviderManager {
         )
     }
 
+    /// Select the best available provider for a specific BrainTier and execute with streaming fallback.
+    /// Returns the verified response and the provider ID that actually succeeded.
+    func executeWithStreamingFallback(
+        messages: [Message],
+        tier: BrainTier,
+        context: ChatGPTRequestContext? = nil,
+        onChunk: (@Sendable (String) -> Void)? = nil
+    ) async throws -> (response: String, providerID: String) {
+        let chain = getFallbackChain(for: tier)
+
+        for provider in chain {
+            if isQuarantined(provider.id) {
+                JarvisLogger.brain.warning("Skipping \(provider.id): \(self.quarantineReason(provider.id) ?? "quarantined")")
+                continue
+            }
+            if let context, HybridRoutingPolicy.isEnabled, provider.id == "chatgpt-desktop" {
+                let availability = await reportedAvailability(for: provider)
+                let policy = ChatGPTBrainPolicy.evaluate(
+                    context, availability: availability,
+                    isQuarantined: false,
+                    dailyCapReached: ChatGPTBrain.isDailyCapReached())
+                if !policy.isEligible {
+                    JarvisLogger.brain.info("Skipping ChatGPT brain: \(policy.reason ?? "ineligible")")
+                    continue
+                }
+            }
+            let available = await isProviderAvailable(provider)
+            guard available else { continue }
+
+            EventBus.shared.publish(ProviderSelectedEvent(
+                provider: provider.id,
+                reason: "Direct routing execution for tier \(tier.rawValue)"
+            ))
+
+            let callStart = ContinuousClock.now
+            do {
+                var responseText = ""
+                let dispatchMessages = ContextSanitizer.sanitizedForDispatch(
+                    messages, isLocal: provider.id.hasPrefix("mlx"))
+                let stream = await provider.complete(messages: dispatchMessages, tools: nil, stream: onChunk != nil)
+
+                for try await chunk in stream {
+                    switch chunk {
+                    case .text(let text):
+                        responseText += text
+                        onChunk?(text)
+                    case .error(let errorMsg):
+                        throw JarvisError.providerError(provider: provider.id, message: errorMsg)
+                    default:
+                        break
+                    }
+                }
+
+                let trimmed = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    let elapsed = callStart.duration(to: .now)
+                    let ms = Double(elapsed.components.seconds) * 1000.0 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000.0
+                    JarvisLogger.brain.info("Provider \(provider.id) completed tier [\(tier.rawValue)] in \(Int(ms))ms")
+                    recordSuccess(providerID: provider.id)
+                    if provider.id == "chatgpt-desktop" {
+                        let transport = await self.chatgptDesktop.lastTransport()
+                        ChatGPTBrainProvenance.shared.recordChatGPT(transport: transport)
+                    } else {
+                        ChatGPTBrainProvenance.shared.clear()
+                    }
+                    return (responseText, provider.id)
+                }
+
+                let emptyResponse = "provider returned an empty response"
+                recordFailure(providerID: provider.id, error: emptyResponse)
+                EventBus.shared.publish(ProviderFailedEvent(
+                    provider: provider.id,
+                    error: emptyResponse,
+                    fallbackProvider: "next-in-chain"
+                ))
+            } catch {
+                JarvisLogger.brain.warning("Provider \(provider.id) failed: \(error.localizedDescription)")
+                recordFailure(providerID: provider.id, error: error.localizedDescription)
+                EventBus.shared.publish(ProviderFailedEvent(
+                    provider: provider.id,
+                    error: error.localizedDescription,
+                    fallbackProvider: "next-in-chain"
+                ))
+            }
+        }
+
+        throw JarvisError.providerError(
+            provider: "fallback-exhausted",
+            message: "All providers failed to respond for tier \(tier.rawValue)."
+        )
+    }
+
     /// Determines the fallback cascade for a given intent category.
     func getFallbackChain(for category: IntentClassifier.IntentCategory) -> [any LLMProvider] {
         let defaultChain: [any LLMProvider]

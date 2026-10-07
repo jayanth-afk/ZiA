@@ -67,14 +67,11 @@ enum ChatGPTBrain {
     private static let countKey = "jarvis.chatgpt.requestsToday"
     private static let dayKey = "jarvis.chatgpt.requestsDay"
 
-    /// "Allow ChatGPT as a brain" — enabled by default on app launch, opt-out via Settings.
+    /// "Allow ChatGPT as a brain" — opt-in via Settings, enabled on first launch in AppDelegate.
     static var isEnabled: Bool {
         get {
             if let env = ProcessInfo.processInfo.environment["ZIA_ENABLE_CHATGPT_BRAIN"] {
                 return env == "1" || env.lowercased() == "true"
-            }
-            if UserDefaults.standard.object(forKey: allowKey) == nil {
-                return true
             }
             return UserDefaults.standard.bool(forKey: allowKey)
         }

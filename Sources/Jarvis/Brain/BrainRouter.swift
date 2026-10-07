@@ -1,21 +1,21 @@
 import Foundation
 
 /// Structured response from the unified ZiA intelligence pipeline.
-public struct UnifiedZiAResponse: Sendable {
+struct UnifiedZiAResponse: Sendable {
     /// Full, formatted response text for visual display.
-    public let content: String
+    let content: String
     /// Natural, clean spoken response text for speech synthesis (TTS).
-    public let spokenContent: String
+    let spokenContent: String
     /// The brain tier that executed the reasoning.
-    public let tier: BrainTier
+    let tier: BrainTier
     /// The provider ID that served the turn.
-    public let providerID: String
+    let providerID: String
     /// End-to-end execution latency in milliseconds.
-    public let executionTimeMs: Double
+    let executionTimeMs: Double
     /// The explainable routing decision.
-    public let decision: BrainRoutingDecision
+    let decision: BrainRoutingDecision
 
-    public init(
+    init(
         content: String,
         spokenContent: String? = nil,
         tier: BrainTier,
@@ -33,15 +33,15 @@ public struct UnifiedZiAResponse: Sendable {
 }
 
 /// Explainable routing decision describing which brain was chosen and WHY.
-public struct BrainRoutingDecision: Sendable, Equatable {
-    public let tier: BrainTier
-    public let suggestedProviderID: String
-    public let reason: String
-    public let isDeterministic: Bool
-    public let requiresPlanning: Bool
-    public let escalated: Bool
+struct BrainRoutingDecision: Sendable, Equatable {
+    let tier: BrainTier
+    let suggestedProviderID: String
+    let reason: String
+    let isDeterministic: Bool
+    let requiresPlanning: Bool
+    let escalated: Bool
 
-    public init(
+    init(
         tier: BrainTier,
         suggestedProviderID: String,
         reason: String,
@@ -74,15 +74,15 @@ public struct BrainRoutingDecision: Sendable, Equatable {
 /// - Complexity & reasoning depth (coding, debugging, architecture)
 /// - Provider health and availability
 @MainActor
-public final class BrainRouter {
-    public static let shared = BrainRouter()
+final class BrainRouter {
+    static let shared = BrainRouter()
 
     private init() {}
 
     // MARK: - Public API
 
     /// Analyze a user request and determine the optimal BrainTier.
-    public func decide(
+    func decide(
         for transcript: String,
         environment: TaskEnvironmentContext? = nil
     ) async -> BrainRoutingDecision {

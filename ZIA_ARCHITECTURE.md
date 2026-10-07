@@ -6,6 +6,16 @@ This document describes the **live** architecture of Zia (the Swift package
 execution. Where the two overlap, `EXECUTION_AUTHORITY.md` wins for execution
 authority.
 
+> **State (2026-10-07, HEAD `77a5799`).** Contract: Frozen Architecture &
+> Implementation Contract **v1.0** (9 principles + Principle 10
+> "Self-Modification Never Equals Self-Validation"). Verified green:
+> `swift build`; `swift test` → **254 tests / 38 suites, 0 failures**;
+> `swift run Jarvis --self-test` → **1067 passed / 0 failed / 0 skipped**.
+> The UI is documented in `docs/ZIA_UI_SYSTEM.md`. The voice pipeline is
+> **implemented but hardware-unverified** (microphone permission not granted to
+> the invoking process — see `docs/OWNER_CHECKLIST.md`). Reproduce with the
+> gate commands in the "How to verify" block of `PROJECT_CONTEXT.md`.
+
 ## 1. Principles
 
 1. **Intelligence ≠ authority.** Models propose; trusted code authorizes; tools
@@ -177,7 +187,9 @@ an authority check.
 
 - **Providers** (`Brain/Providers/*`) conform to `LLMProvider` (availability,
   capabilities, streaming, optional per-request options) for MLX (local),
-  Claude, Gemini, OpenAI, Groq, OpenRouter.
+  Claude, Gemini, OpenAI, Groq, OpenRouter, and **ChatGPT Desktop**
+  (`ChatGPTDesktopProvider`, a local Agent-Bridge-backed brain that uses the
+  user's already-authenticated ChatGPT Desktop; off unless the bridge runs).
 - **ProviderManager** (`Brain/ProviderManager.swift`) — fallback chains per
   intent category, plus **observational health accounting and circuit breakers**
   (consecutive failure thresholds, quarantine periods, automatic cooldown and

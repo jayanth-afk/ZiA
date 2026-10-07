@@ -23,7 +23,8 @@ Baseline at ledger creation (`77a5799`):
 | ID | Task | Status | Commit | Gates | Evidence |
 |---|---|---|---|---|---|
 | 0.1 | Orient & baseline | DONE | — | build OK · 254/0 · 1067/0/0 · no `@State` | baseline tail captured this session (see summary) |
-| 0.2 | Capability audit of ToolRegistry | DONE | _(this commit)_ | build OK · 254/0 · 1067/0/0 | `docs/CAPABILITY_AUDIT.md` |
+| 0.2 | Capability audit of ToolRegistry | DONE | `12c4298` | build OK · 254/0 · 1067/0/0 | `docs/CAPABILITY_AUDIT.md` |
+| 1.1 | Docs truth refresh | DONE | _(this commit)_ | build OK · 254/0 · 1067/0/0 · no `@State` | `PROJECT_CONTEXT.md`, `ZIA_ARCHITECTURE.md` |
 
 ## APPROVAL QUEUE (owner-only destructive/licence-sensitive actions)
 

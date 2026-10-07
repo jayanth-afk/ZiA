@@ -2,7 +2,7 @@
 
 > **Document Status:** CANONICAL REPOSITORY HANDOFF DOCUMENT  
 > **Repository Path:** `/Users/jayanthpranaykonada/Zia`  
-> **Generation Date:** 2026-09-29  
+> **Generation Date:** 2026-09-29 (refreshed 2026-10-07)  
 > **Target Audience:** Incoming Autonomous Coding Agents (Claude Opus, Gemini, Codex, Antigravity)  
 > **Operational Rule:** **EVIDENCE > MEMORY > ASSUMPTION.** Every claim in this document is labeled with an explicit evidentiary verification status.
 
@@ -10,15 +10,26 @@
 
 # CURRENT VERIFIED STATE
 
-- **Date:** 2026-10-05 `[VERIFIED FROM CURRENT SESSION]`
-- **Current HEAD Commit:** `a9f58ef` (`fix: harden process cancellation and provider routing`) `[VERIFIED: git rev-parse HEAD]`
-- **Latest Commit Message:** `fix: harden process cancellation and provider routing` `[VERIFIED: git log -1]`
-- **Previous Engineering Commit:** `84b4d21` (`fix: stabilize core test suite, eliminate notification and concurrency deadlocks, fix scheduler and error taxonomy`) `[VERIFIED: git log]`
-- **Active Branch:** `master` (ahead of `origin/master` by the local hardening commit; push pending at this handoff point) `[VERIFIED: git status]`
+> **How to verify (run from the repository root).** Every claim below is
+> reproducible with these five gate commands:
+> ```bash
+> swift build 2>&1 | tail -5
+> swift test --skip ZiaVoicePipelineBenchmarkTests --skip VoiceTurnLifecycleRegressionTests 2>&1 | tail -5
+> swift run Jarvis --self-test 2>&1 | tail -8
+> grep -rn "@State\b" Sources/Jarvis/UI      # must print only documentation comments
+> git status --short
+> ```
+> `swift test` and `swift run Jarvis --self-test` are **both** valid, both
+> expected green, and neither substitutes for the other.
+
+- **Date:** 2026-10-07 `[VERIFIED FROM CURRENT SESSION]`
+- **Current HEAD Commit:** `77a5799` (`feat: introduce comprehensive design system and UI reference rendering harness`) `[VERIFIED: git rev-parse HEAD]`
+- **Active Branch:** `master`, clean, level with `origin/master` `[VERIFIED: git status]`
 - **Working Tree State:** Tracked tree is clean. Untracked diagnostic/evidence files preserved under `build/`. `[VERIFIED: git status --short]`
 
 ### CURRENT VERIFIED BASELINE
-- **Native Swift test suite:** **235 tests / 37 suites, 0 failures** on the current Apple Silicon toolchain. `[VERIFIED BY TEST: swift test]`
+- **Native Swift test suite:** **254 tests / 38 suites, 0 failures** on the current Apple Silicon toolchain. `[VERIFIED BY TEST: swift test]`
+- **In-process SelfTest suite:** **1067 passed / 0 failed / 0 skipped**. `[VERIFIED BY RUN: swift run Jarvis --self-test]`
 - **Offline Replay Benchmark:** **15/15 passed** (structural repair of malformed shapes + deterministic compilation gates). `[VERIFIED FROM BENCHMARK: Sources/Jarvis/Core/PlannerRoutingBenchmark.swift:102-120]`
 - **Live Routing Benchmark Matrix (30 runs across 10 cases + 5 rerun):**
   - Structural conformance: **30/30** (and **35/35** including rerun)
@@ -62,6 +73,9 @@
 - Acoustic DSP wake-word engine remains deferred; wake detection relies on streaming `SFSpeechRecognizer` transcript matching. `[VERIFIED FROM CURRENT CODE]`
 - `swift test` is currently executable on the installed Swift 6.4 toolchain and is the primary automated suite; `SelfTest` remains the broader in-process integration/physical capability runner. `[VERIFIED BY CURRENT SESSION]`
 - Four to five shell benchmark cases in the routing matrix were handled by deterministic `explicitShellEchoExtraction` rather than model generation. `[VERIFIED FROM CURRENT CODE: Sources/Jarvis/Agent/PlannerExtraction.swift:151-176]`
+- **Voice subsystem is implemented but hardware-unverified.** Mic → STT → agent → TTS code paths and their pure logic are covered by tests; the microphone currently reports exact-zero samples because macOS has not granted Microphone permission to the invoking process. Hardware verification is OWNER-ONLY (`docs/OWNER_CHECKLIST.md`). `[REPORTED, NOT VERIFIED ON HARDWARE]`
+- **UI system** (presence HUD, main window, menu bar, 11 settings panes, onboarding, render harness) is documented in `docs/ZIA_UI_SYSTEM.md` and asserted by `ZiaDesignSystemTests`; live on-screen appearance is OWNER-ONLY. `[VERIFIED FROM TESTS + DOCS]`
+- **ChatGPT Desktop provider** (`ChatGPTDesktopProvider`) is implemented as a local Agent-Bridge-backed brain using the user's already-authenticated ChatGPT Desktop; it is off unless the bridge is running. `[VERIFIED FROM CURRENT CODE]`
 
 ### CURRENT OPEN ENGINEERING QUESTION & PROPOSED NEXT WORK
 - **Core Open Architectural Question:** *How should Zia combine deterministic routing, bounded extraction, local models (0.5B/3B/7B), and Groq efficiently while preserving safety, strictly adhering to the 9 Frozen Principles, and minimizing unnecessary model/API usage?*
@@ -404,6 +418,7 @@ Graceful Local Fallback (return to local intelligence, never fail open)
 | Low-Latency Speed Acceleration | `speed` | `llama-3.3-70b-versatile` | `GroqProvider` (`api.groq.com`) | Implemented provider, optional accelerator |
 | Deep Reasoning / Tier-B Escalation | `deep` / `openrouter` | `nvidia/nemotron-3-ultra-550b-a55b:free` or Anthropic Claude | `OpenRouterProvider` / `ClaudeProvider` | Implemented in `EscalationPipeline.swift` |
 | Vision / Multimodal Understanding | `vision` | Configurable | `GeminiProvider` / `ClaudeProvider` | Implemented provider slot |
+| Desktop-assisted generation (no API key) | `chatgptDesktop` | via ChatGPT Desktop app | `ChatGPTDesktopProvider` (local Agent Bridge, `127.0.0.1:8765`) | Implemented provider; off unless the bridge runs |
 
 ### Groq Architectural Positioning
 - **What Groq Is:** An external, high-throughput cloud provider (`GroqProvider.swift`) accessing LPUs at ~300 tokens/sec.
@@ -692,8 +707,8 @@ Deterministic Post-Action Verification
 
 `[VERIFIED BY TEST: SelfTest.swift]`
 
-- **Execution Command:** `./.build/debug/Jarvis --self-test` (or `swift run Jarvis --self-test`)
-- **Canonical Current Result:** **624 passed, 0 failed**
+- **Execution Command:** `swift run Jarvis --self-test` (or `./.build/debug/Jarvis --self-test`)
+- **Canonical Current Result:** **1067 passed, 0 failed, 0 skipped** alongside **254 tests / 38 suites** via `swift test`. `[VERIFIED THIS SESSION]`
 
 ### Complete Phase Breakdown
 - **Phase 1: Deterministic Router** (11 native controls, regex matching, compound guards)
@@ -773,7 +788,7 @@ To prevent scope creep and maintain architectural stability, the following items
 
 | Artifact Path | Description | What It Proves | What It Does NOT Prove |
 |---|---|---|---|
-| `build/selftest-final3.txt` | Complete terminal capture of canonical SelfTest run | **624 passed, 0 failed** across all 20 phases | Does not run cloud API calls live |
+| `build/selftest-final3.txt` | Historical terminal capture of a SelfTest run | **624 passed, 0 failed** (historical; the current suite reports **1067 passed / 0 failed**) | Does not run cloud API calls live |
 | `build/routing-benchmark-final.txt` | 30-run repeated routing benchmark matrix + 5-run rerun | Semantic 30/30, argument preservation 5/5 on rerun | Shell cases were deterministic extraction (0 model calls) |
 | `build/e2e-physical.txt` | Physical E2E `write_file` execution trace | Genuinely exercised model extraction path; 1 attempt; literal preserved | Does not prove arbitrary complex multi-step plans |
 | `build/jarvis-e2e-jarvis_e2e_k9w4t21790655668.txt` | Physical file written by model-routed E2E test | Verified deterministic disk write and byte comparison | N/A |
@@ -812,7 +827,7 @@ If you are an incoming AI coding agent (Claude Opus, Gemini, Codex, Antigravity)
 3. **Never Weaken `PlanValidator` or `CommandSandbox`.**
    - Do not bypass schema validation or sandbox checks to make tests or benchmarks appear green.
 4. **Canonical Test Runner Rule:**
-   - Always run `./.build/debug/Jarvis --self-test` (or `swift run Jarvis --self-test`). Standard `swift test` is unavailable under Command Line Tools.
+   - Both runners are valid and both must be green: `swift test` (Swift Testing suites in `Tests/JarvisTests`) **and** `swift run Jarvis --self-test` (in-process integration / physical-capability suite). The former claim that `swift test` is "unavailable under Command Line Tools" is false and has been removed.
 5. **Do Not Reopen Rejected Experiments:**
    - Experiment A (sequential planning) and Experiment B (Normalizer B) are permanently documented and rejected. Do not re-enable them in production.
 6. **Preserve Untracked Evidence:**

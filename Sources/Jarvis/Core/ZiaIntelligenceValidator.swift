@@ -288,34 +288,50 @@ enum ZiaIntelligenceValidator {
 
     private static func validateMemorySupersession() async -> ValidationResult {
         let t0 = CFAbsoluteTimeGetCurrent()
-        let oldRecord = ZiaMemoryRecord(
-            content: "We decided to use Groq 20B as the fast reasoning brain.",
-            kind: .semanticFact,
-            retention: .important
-        )
-        ZiaMemory.shared.store(oldRecord)
+        let store = MemoryManager.shared.structured
+        do {
+            let oldDraft = MemoryDraft(
+                kind: .semantic,
+                trust: .userFact,
+                content: "We decided to use Groq 20B as the fast reasoning brain.",
+                source: "user",
+                retentionLevel: .important
+            )
+            let oldRecord = try store.write(oldDraft)
 
-        let newRecord = ZiaMemoryRecord(
-            content: "We updated the decision: Groq 20B and 120B operate as dual active brains.",
-            kind: .semanticFact,
-            retention: .important
-        )
-        ZiaMemory.shared.supersede(oldID: oldRecord.id, newRecord: newRecord)
+            let newDraft = MemoryDraft(
+                kind: .semantic,
+                trust: .userFact,
+                content: "We updated the decision: Groq 20B and 120B operate as dual active brains.",
+                source: "user",
+                retentionLevel: .important
+            )
+            let newRecord = try store.supersede(oldID: oldRecord.id, with: newDraft)
 
-        let retrieved = ZiaMemory.shared.retrieve(query: "fast reasoning brain", limit: 5)
-        let containsOld = retrieved.contains { $0.id == oldRecord.id }
-        let containsNew = retrieved.contains { $0.id == newRecord.id }
-        let elapsed = (CFAbsoluteTimeGetCurrent() - t0) * 1000.0
+            let retrieved = store.retrieve(query: "fast reasoning brain", limit: 5)
+            let containsOld = retrieved.contains { $0.id == oldRecord.id }
+            let containsNew = retrieved.contains { $0.id == newRecord.id }
+            let elapsed = (CFAbsoluteTimeGetCurrent() - t0) * 1000.0
 
-        let passed = !containsOld && containsNew
-        return ValidationResult(
-            name: "Memory: Atomic Supersession",
-            passed: passed,
-            tier: "memory",
-            provider: "sqlite",
-            latencyMs: elapsed,
-            details: "Old superseded record excluded; new authoritative record returned"
-        )
+            let passed = !containsOld && containsNew
+            return ValidationResult(
+                name: "Memory: Atomic Supersession",
+                passed: passed,
+                tier: "memory",
+                provider: "structured",
+                latencyMs: elapsed,
+                details: "Old superseded record excluded; new authoritative record returned"
+            )
+        } catch {
+            return ValidationResult(
+                name: "Memory: Atomic Supersession",
+                passed: false,
+                tier: "memory",
+                provider: "structured",
+                latencyMs: 0,
+                details: "Failed: \(error.localizedDescription)"
+            )
+        }
     }
 
     // MARK: - 8. Stream Cancellation

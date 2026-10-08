@@ -472,8 +472,10 @@ final class ProviderManager {
         messages: [Message],
         context: ChatGPTRequestContext? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil,
-        label: String = "chain"
+        label: String = "chain",
+        priority: Int = TaskPriority.interactive
     ) async throws -> (response: String, providerID: String) {
+        let estimatedTokens = Self.estimatedTokens(for: messages)
         for provider in chain {
             if isQuarantined(provider.id) {
                 JarvisLogger.brain.warning("Skipping \(provider.id): \(self.quarantineReason(provider.id) ?? "quarantined")")
@@ -501,96 +503,41 @@ final class ProviderManager {
             }
             guard await isProviderAvailable(provider) else { continue }
 
-            EventBus.shared.publish(ProviderSelectedEvent(
-                provider: provider.id,
-                reason: "Executing \(label) with \(provider.id)"))
-
-            let callStart = ContinuousClock.now
-            // Streaming commitment: once any of this worker's text has reached
-            // the caller, switching workers would concatenate two answers.
-            var emittedVisibleText = false
+            // Resource arbitration (§1/§2): the scheduler must never dispatch
+            // cloud work blind. Acquire a bounded, priority-aware reservation
+            // BEFORE any request leaves the process. A denied admission
+            // (budget/window/queue-full) reroutes to the next eligible worker
+            // instead of silently exceeding a limit.
+            let request = ProviderResourceRequest(
+                providerID: provider.id,
+                priority: priority,
+                estimatedTokens: estimatedTokens,
+                estimatedCostUSD: 0,
+                spentTodayUSD: UsageManager.shared.dailySpentUSD,
+                dailyLimitUSD: Config.shared.dailyBudgetUSD)
+            let reservation: ProviderReservation
             do {
-                var responseText = ""
-                var usage: TokenUsage?
-                // Data minimization: credentials are redacted and size is
-                // bounded before text leaves the device for an external
-                // provider. Local providers receive the context unmodified.
-                let dispatchMessages = ContextSanitizer.sanitizedForDispatch(
-                    messages, isLocal: provider.id.hasPrefix("mlx"))
-                let stream = await provider.complete(messages: dispatchMessages, tools: nil, stream: onChunk != nil)
-
-                for try await chunk in stream {
-                    switch chunk {
-                    case .text(let text):
-                        responseText += text
-                        if !text.isEmpty { emittedVisibleText = true }
-                        onChunk?(text)
-                    case .done(let u):
-                        usage = u
-                    case .rateLimited(let retryAfter):
-                        throw JarvisError.providerRateLimited(provider: provider.id, retryAfter: retryAfter)
-                    case .error(let errorMsg):
-                        throw JarvisError.providerError(provider: provider.id, message: errorMsg)
-                    case .toolCall:
-                        break
-                    }
-                }
-
-                let trimmed = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    let elapsed = callStart.duration(to: .now)
-                    let ms = Double(elapsed.components.seconds) * 1000.0 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000.0
-                    JarvisLogger.brain.info("Provider \(provider.id) completed \(label) in \(Int(ms))ms")
-                    if let usage { UsageManager.shared.recordUsage(provider: provider.id, usage: usage) }
-                    recordSuccess(providerID: provider.id, latencyMs: Int(ms))
-                    // User-visible provenance: which brain actually answered.
-                    if provider.id == "chatgpt-desktop" {
-                        let transport = await self.chatgptDesktop.lastTransport()
-                        ChatGPTBrainProvenance.shared.recordChatGPT(transport: transport)
-                    } else {
-                        ChatGPTBrainProvenance.shared.clear()
-                    }
-                    return (responseText, provider.id)
-                }
-
-                // A silent successful transport is not a successful provider turn.
-                // Count it so health, circuit-breaking, and audit state remain truthful.
-                let emptyResponse = "provider returned an empty response"
-                recordFailure(providerID: provider.id, error: emptyResponse)
-                EventBus.shared.publish(ProviderFailedEvent(
-                    provider: provider.id,
-                    error: emptyResponse,
-                    fallbackProvider: "next-in-chain"
-                ))
+                reservation = try await ProviderResourceBroker.shared.acquire(request)
             } catch {
-                // Rate limiting is a temporary condition, not a proven failure:
-                // cool the worker down for the server-requested duration instead
-                // of counting it toward the hard-failure circuit breaker.
-                if let je = error as? JarvisError, case .providerRateLimited(_, let retryAfter) = je {
-                    let cooldown = recordRateLimit(providerID: provider.id, retryAfter: retryAfter)
-                    JarvisLogger.brain.warning("Provider \(provider.id) rate-limited; cooling down \(Int(cooldown))s")
-                    EventBus.shared.publish(ProviderFailedEvent(
-                        provider: provider.id,
-                        error: error.localizedDescription,
-                        fallbackProvider: "next-in-chain"
-                    ))
-                } else {
-                    JarvisLogger.brain.warning("Provider \(provider.id) failed: \(error.localizedDescription)")
-                    recordFailure(providerID: provider.id, error: error.localizedDescription)
-                    EventBus.shared.publish(ProviderFailedEvent(
-                        provider: provider.id,
-                        error: error.localizedDescription,
-                        fallbackProvider: "next-in-chain"
-                    ))
-                }
-                // Streaming commitment: if the caller already saw part of THIS
-                // worker's answer, a silent switch would produce a mixed
-                // response ("one ZiA answer" violated). End the turn truthfully.
-                if emittedVisibleText {
-                    throw JarvisError.providerError(
-                        provider: provider.id,
-                        message: "\(provider.id) failed mid-stream after partial output; not falling back to avoid a mixed answer")
-                }
+                JarvisLogger.brain.info("Resource broker deferred \(provider.id): \(error.localizedDescription)")
+                continue
+            }
+            // State can change while waiting for a slot: never hold capacity
+            // for a worker that has since been quarantined or throttled.
+            if isQuarantined(provider.id) || isRateLimited(provider.id) {
+                await ProviderResourceBroker.shared.release(reservation)
+                continue
+            }
+
+            do {
+                let outcome = try await attemptProvider(
+                    provider, messages: messages, context: context, onChunk: onChunk, label: label)
+                await ProviderResourceBroker.shared.release(reservation)
+                if let outcome { return outcome }
+                // nil → the worker produced nothing usable; try the next one.
+            } catch {
+                await ProviderResourceBroker.shared.release(reservation)
+                throw error
             }
         }
 
@@ -598,6 +545,121 @@ final class ProviderManager {
             provider: "fallback-exhausted",
             message: "All providers failed to respond for \(label)."
         )
+    }
+
+    /// Run one provider attempt under an already-granted reservation.
+    ///
+    /// Returns the committed answer, or nil when the worker produced nothing
+    /// usable (the caller should try the next worker). Throws only when the turn
+    /// must end — notably a mid-stream failure AFTER visible output, where
+    /// switching workers would concatenate two answers (partial-stream safety).
+    private func attemptProvider(
+        _ provider: any LLMProvider,
+        messages: [Message],
+        context: ChatGPTRequestContext?,
+        onChunk: (@Sendable (String) -> Void)?,
+        label: String
+    ) async throws -> (response: String, providerID: String)? {
+        EventBus.shared.publish(ProviderSelectedEvent(
+            provider: provider.id,
+            reason: "Executing \(label) with \(provider.id)"))
+
+        let callStart = ContinuousClock.now
+        // Streaming commitment: once any of this worker's text has reached the
+        // caller, switching workers would concatenate two answers.
+        var emittedVisibleText = false
+        do {
+            var responseText = ""
+            var usage: TokenUsage?
+            // Data minimization: credentials are redacted and size is bounded
+            // before text leaves the device for an external provider. Local
+            // providers receive the context unmodified.
+            let dispatchMessages = ContextSanitizer.sanitizedForDispatch(
+                messages, isLocal: provider.id.hasPrefix("mlx"))
+            let stream = await provider.complete(messages: dispatchMessages, tools: nil, stream: onChunk != nil)
+
+            for try await chunk in stream {
+                switch chunk {
+                case .text(let text):
+                    responseText += text
+                    if !text.isEmpty { emittedVisibleText = true }
+                    onChunk?(text)
+                case .done(let u):
+                    usage = u
+                case .rateLimited(let retryAfter):
+                    throw JarvisError.providerRateLimited(provider: provider.id, retryAfter: retryAfter)
+                case .error(let errorMsg):
+                    throw JarvisError.providerError(provider: provider.id, message: errorMsg)
+                case .toolCall:
+                    break
+                }
+            }
+
+            let trimmed = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                let elapsed = callStart.duration(to: .now)
+                let ms = Double(elapsed.components.seconds) * 1000.0 + Double(elapsed.components.attoseconds) / 1_000_000_000_000_000.0
+                JarvisLogger.brain.info("Provider \(provider.id) completed \(label) in \(Int(ms))ms")
+                if let usage { UsageManager.shared.recordUsage(provider: provider.id, usage: usage) }
+                recordSuccess(providerID: provider.id, latencyMs: Int(ms))
+                // User-visible provenance: which brain actually answered.
+                if provider.id == "chatgpt-desktop" {
+                    let transport = await self.chatgptDesktop.lastTransport()
+                    ChatGPTBrainProvenance.shared.recordChatGPT(transport: transport)
+                } else {
+                    ChatGPTBrainProvenance.shared.clear()
+                }
+                return (responseText, provider.id)
+            }
+
+            // A silent successful transport is not a successful provider turn.
+            // Count it so health, circuit-breaking, and audit state remain truthful.
+            let emptyResponse = "provider returned an empty response"
+            recordFailure(providerID: provider.id, error: emptyResponse)
+            EventBus.shared.publish(ProviderFailedEvent(
+                provider: provider.id,
+                error: emptyResponse,
+                fallbackProvider: "next-in-chain"
+            ))
+            return nil
+        } catch {
+            // Rate limiting is a temporary condition, not a proven failure:
+            // cool the worker down for the server-requested duration instead
+            // of counting it toward the hard-failure circuit breaker.
+            if let je = error as? JarvisError, case .providerRateLimited(_, let retryAfter) = je {
+                let cooldown = recordRateLimit(providerID: provider.id, retryAfter: retryAfter)
+                JarvisLogger.brain.warning("Provider \(provider.id) rate-limited; cooling down \(Int(cooldown))s")
+                EventBus.shared.publish(ProviderFailedEvent(
+                    provider: provider.id,
+                    error: error.localizedDescription,
+                    fallbackProvider: "next-in-chain"
+                ))
+            } else {
+                JarvisLogger.brain.warning("Provider \(provider.id) failed: \(error.localizedDescription)")
+                recordFailure(providerID: provider.id, error: error.localizedDescription)
+                EventBus.shared.publish(ProviderFailedEvent(
+                    provider: provider.id,
+                    error: error.localizedDescription,
+                    fallbackProvider: "next-in-chain"
+                ))
+            }
+            // Streaming commitment: if the caller already saw part of THIS
+            // worker's answer, a silent switch would produce a mixed
+            // response ("one ZiA answer" violated). End the turn truthfully.
+            if emittedVisibleText {
+                throw JarvisError.providerError(
+                    provider: provider.id,
+                    message: "\(provider.id) failed mid-stream after partial output; not falling back to avoid a mixed answer")
+            }
+            return nil
+        }
+    }
+
+    /// Rough input-size estimate (~4 chars/token), used ONLY for a configured or
+    /// observed tokens-per-minute window. It is an estimate, never presented or
+    /// recorded as a real token count.
+    static func estimatedTokens(for messages: [Message]) -> Int {
+        messages.reduce(0) { $0 + max(1, $1.content.count / 4) }
     }
 
     /// Determines the fallback cascade for a given intent category.

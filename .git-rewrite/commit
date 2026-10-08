@@ -1,11 +1,6 @@
-tree 05f7695b56808060fa39b83b72d040a02814c4b3
-parent 65de046b93061640a8bbfe1abfdf1fc92146e620
-author jayanth-afk <jaykonada007@gmail.com> 1790977954 +0530
-committer jayanth-afk <jaykonada007@gmail.com> 1790977954 +0530
+tree b09082f7d5f3db85fd5ce4200f3de57d68874bfa
+parent a940d5b39b7f7e23f8eb8eb4fe3277a83ab4e434
+author Gemini Agent <noreply@antigravity.dev> 1791403541 +0530
+committer jayanth-afk <jaykonada007@gmail.com> 1791403541 +0530
 
-fix: reject interpreter code execution and shell command generation in the sandbox
-
-CommandSandbox treated python3/node/perl/ruby/swift and similar code-evaluation interpreters as ordinary programs, and normalization erased command-substitution structure, so python3 -c, node -e, awk system(), echo hi$(rm file) and backtick/parameter/ANSI-C/process substitution all reached /bin/zsh -c while the sandbox reported the command safe. Reject code-evaluation interpreters as the same class as the already-blocked sh/bash/eval/osascript, and reject command-generation constructs outright (fail-closed). Harden the audit bypass suite with the new vectors and switch the large-output pipe tests to an ordinary allowed program (seq), since interpreters are no longer permitted as run_shell commands.
-
-🤖 Generated with Codebuff
-Co-Authored-By: Codebuff <noreply@codebuff.com>
+chore: update 1 file(s)

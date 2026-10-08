@@ -1,6 +1,1 @@
-fix: reject interpreter code execution and shell command generation in the sandbox
-
-CommandSandbox treated python3/node/perl/ruby/swift and similar code-evaluation interpreters as ordinary programs, and normalization erased command-substitution structure, so python3 -c, node -e, awk system(), echo hi$(rm file) and backtick/parameter/ANSI-C/process substitution all reached /bin/zsh -c while the sandbox reported the command safe. Reject code-evaluation interpreters as the same class as the already-blocked sh/bash/eval/osascript, and reject command-generation constructs outright (fail-closed). Harden the audit bypass suite with the new vectors and switch the large-output pipe tests to an ordinary allowed program (seq), since interpreters are no longer permitted as run_shell commands.
-
-🤖 Generated with Codebuff
-Co-Authored-By: Codebuff <noreply@codebuff.com>
+chore: update 1 file(s)

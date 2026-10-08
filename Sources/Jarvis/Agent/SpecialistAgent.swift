@@ -173,7 +173,7 @@ final class SpecialistOrchestrator {
             try TaskStateMachine.shared.transition(taskId: childTask.id, to: .verifying)
             try TaskStateMachine.shared.transition(taskId: childTask.id, to: .completed)
 
-            Task { @MichaelActor in
+            Task { @MainActor in
                 await TaskOrchestration.shared.broadcastOutcome(taskID: childTask.id, state: .completed)
             }
 
@@ -190,7 +190,7 @@ final class SpecialistOrchestrator {
             )
         } catch {
             try? TaskStateMachine.shared.transition(taskId: childTask.id, to: .failed, error: error.localizedDescription)
-            Task { @MichaelActor in
+            Task { @MainActor in
                 await TaskOrchestration.shared.broadcastOutcome(taskID: childTask.id, state: .failed)
             }
             let duration = CFAbsoluteTimeGetCurrent() - start

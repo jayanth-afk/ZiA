@@ -73,7 +73,7 @@ actor TaskOrchestration: @unchecked Sendable {
 
         // If we already have the task and it is not eligible yet, register it as waiting
         // and transition it into the BLOCKED state deterministically.
-        if !prerequisitesSatisfied(taskID: taskID, prerequisiteIDs) {
+        if !(await prerequisitesSatisfied(taskID: taskID, prerequisiteIDs)) {
             await graph.registerWaiting(taskID: taskID, prerequisiteIDs: prerequisiteIDs)
             blockedByMissingPrerequisite.insert(taskID)
             do {
@@ -126,9 +126,12 @@ actor TaskOrchestration: @unchecked Sendable {
         blockedByDependencyCycle.remove(outcome.taskID)
         blockedByMissingPrerequisite.remove(outcome.taskID)
         blockedByResourceWait.remove(outcome.taskID)
-        let madeReady = await graph.recordOutcome(outcome, eligibility: { [weak self] id in
-            guard let self else { return false }
-            let prerequisiteIDs = self.stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? []
+        let madeReady = await graph.recordOutcome(outcome, eligibility: { id in
+            Task { [weak self] in
+                guard let self else { return false }
+                let prerequisiteIDs = self.stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? []
+                _ = await self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
+            }
             return await self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
         })
         // Reevaluate each newly-made-eligible dependent through the same admission path.

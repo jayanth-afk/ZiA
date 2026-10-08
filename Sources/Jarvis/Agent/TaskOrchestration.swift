@@ -131,7 +131,7 @@ actor TaskOrchestration: @unchecked Sendable {
                 let prerequisiteIDs = stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? []
                 _ = self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
             }
-            return self.prerequisitesSatisfied(taskID: id, stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? [])
+            return self.prerequisitesSatisfied(taskID: id, self.stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? [])
         })
         // Reevaluate each newly-made-eligible dependent through the same admission path.
         var newlyAdmitted: [UUID] = []

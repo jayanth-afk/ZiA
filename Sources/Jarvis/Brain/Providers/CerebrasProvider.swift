@@ -177,6 +177,7 @@ actor CerebrasProvider: LLMProvider {
         continuation: AsyncThrowingStream<StreamChunk, any Error>.Continuation
     ) async throws {
         let (data, response) = try await session.data(for: request)
+        await ProviderQuotaSignal.report(response, for: id)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let body = String(data: data, encoding: .utf8) ?? ""
@@ -204,6 +205,7 @@ actor CerebrasProvider: LLMProvider {
         continuation: AsyncThrowingStream<StreamChunk, any Error>.Continuation
     ) async throws {
         let (bytes, response) = try await session.bytes(for: request)
+        await ProviderQuotaSignal.report(response, for: id)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             var body = ""

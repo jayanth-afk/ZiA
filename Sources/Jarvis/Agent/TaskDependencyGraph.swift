@@ -44,31 +44,6 @@ actor TaskDependencyGraph: @unchecked Sendable {
         }
     }
 
-    /// Submission-time validation. Rejects cycles and self-dependencies before any
-    /// state mutation. `allKnownTaskIDs` must include the task being submitted plus
-    /// every task it transitively depends on, because the graph must be able to see
-    /// the whole subgraph at admission time.
-    ///
-    /// - Returns: a diagnostic message when the submission must be rejected, otherwise nil.
-    func validateSubmission(
-        taskID: UUID,
-        prerequisiteIDs: [UUID],
-        existingDependents: [UUID: [UUID]],
-        allKnownTaskIDs: Set<UUID>
-    ) -> String? {
-        guard !prerequisiteIDs.contains(taskID) else {
-            return "task dependency on itself"
-        }
-        guard prerequisiteIDs.allSatisfy({ allKnownTaskIDs.contains($0) }) else {
-            return "prerequisite dependency references a task not present in the dependency graph"
-        }
-        let subgraph = buildSubgraph(taskID: taskID, prerequisiteIDs: prerequisiteIDs, existingDependents: existingDependents)
-        if let cycle = smallestCycle(around: taskID, in: subgraph) {
-            return "dependency cycle detected: \(cycle.map { $0.uuidString.prefix(8) }.joined(separator: " -> " ))"
-        }
-        return nil
-    }
-
     /// Register a task that is not yet eligible and must wait.
     func registerWaiting(taskID: UUID, prerequisiteIDs: [UUID]) {
         guard !prerequisiteIDs.isEmpty else { return }
@@ -98,11 +73,6 @@ actor TaskDependencyGraph: @unchecked Sendable {
         unregisterWaiting(taskID: outcome.taskID)
         switch outcome.outcome {
         case .missing, .failed, .cancelled:
-            // A failed/cancelled/missing prerequisite does not unblock dependents on success.
-            // Those dependents remain blocked with a failed-dependency reason handled by the
-            // caller, which is responsible for surfacing the correct deterministic meaning.
-            // We still clear the internal waiting registration so the cancelled prerequisite does
-            // not keep dependents stuck in our wait set forever.
             return []
         case .completed:
             return reevaluateDependents(of: outcome.taskID, eligibility: eligibility)
@@ -121,24 +91,19 @@ actor TaskDependencyGraph: @unchecked Sendable {
         return eligible
     }
 
-    // MARK: - cycle detection
-
-    /// Build the dependency subgraph used for cycle detection: a set of edges from each
-    /// node to the nodes it depends on. For submission of `taskID`, we add the edge
-    /// taskID -> each declared prerequisite, plus any prerequisite->prerequisite edges already
-    /// present in the graph (so indirect cycles are detected too).
-    private func buildSubgraph(taskID: UUID, prerequisiteIDs: [UUID], existingDependents: [UUID: [UUID]]) -> [UUID: [UUID]] {
-        var g: [UUID: [UUID]] = [:]
-        // The submitted task depends on each prerequisite.
-        g[taskID] = prerequisiteIDs
-        // Existing edges: if any prerequisite already declares its own prerequisites, include them.
-        for pid in prerequisiteIDs {
-            if let deps = existingDependents[pid] {
-                g[pid] = deps
+    /// Read-only dependency-edges snapshot used by the orchestration layer for submission-time
+    /// cycle detection and diagnostics. Dependent -> prerequisite direction.
+    func dependencyEdges() -> [UUID: [UUID]] {
+        var copy: [UUID: [UUID]] = [:]
+        for (prereq, dependentsList) in dependents {
+            for dependent in dependentsList {
+                copy[dependent, default: []].append(prereq)
             }
         }
-        return g
+        return copy
     }
+
+    // MARK: - submission-time validation
 
     /// Validate submission-time dependency graph for `taskID`. Returns a description of the
     /// first problem found, or nil when the submission is acyclic and self-consistent.
@@ -159,6 +124,23 @@ actor TaskDependencyGraph: @unchecked Sendable {
             return "dependency cycle detected: \(cycle.map { $0.uuidString.prefix(8) }.joined(separator: " -> " ))"
         }
         return nil
+    }
+
+    // MARK: - cycle detection
+
+    /// Build the dependency subgraph used for cycle detection: a set of edges from each
+    /// node to the nodes it depends on. For submission of `taskID`, we add the edge
+    /// taskID -> each declared prerequisite, plus any prerequisite->prerequisite edges already
+    /// present in the graph (so indirect cycles are detected too).
+    private func buildSubgraph(taskID: UUID, prerequisiteIDs: [UUID], existingDependents: [UUID: [UUID]]) -> [UUID: [UUID]] {
+        var g: [UUID: [UUID]] = [:]
+        g[taskID] = prerequisiteIDs
+        for pid in prerequisiteIDs {
+            if let deps = existingDependents[pid] {
+                g[pid] = deps
+            }
+        }
+        return g
     }
 
     /// Returns the smallest cycle reachable from `start`, or nil when acyclic.
@@ -183,7 +165,6 @@ actor TaskDependencyGraph: @unchecked Sendable {
         }
 
         guard !remaining.isEmpty else { return nil }
-        // Pick a deterministic cycle starting from the smallest remaining node.
         let first = remaining.sorted { $0.uuidString < $1.uuidString }.first!
         return cycleContaining(first, in: edges)
     }
@@ -195,7 +176,6 @@ actor TaskDependencyGraph: @unchecked Sendable {
         while let current = stack.popLast() {
             for next in (edges[current] ?? []).sorted(by: { $0.uuidString < $1.uuidString }) {
                 if next == start {
-                    // Reconstruct cycle
                     var cycle: [UUID] = [start]
                     var cursor = current
                     while cursor != start {

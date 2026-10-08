@@ -64,8 +64,10 @@ enum StreamChunk: Sendable {
 /// Parses HTTP rate-limit signals into a bounded cooldown.
 ///
 /// Kept provider-agnostic so every OpenAI-compatible backend emits the same
-/// typed signal. `Retry-After` is interpreted in its delta-seconds form; the
-/// HTTP-date form (rare for these APIs) is ignored, falling back to the default.
+/// typed signal. `Retry-After` is interpreted in both forms the RFC allows:
+/// **delta-seconds** (the common case for these APIs) and the **HTTP-date**
+/// form. Anything unparseable falls back to the default cooldown — a malformed
+/// header must never crash, and must never produce an absurd cooldown.
 enum ProviderRateLimit {
     /// Cooldown applied when the server does not say how long to wait.
     static let defaultCooldown: TimeInterval = 30
@@ -73,13 +75,41 @@ enum ProviderRateLimit {
     /// worker indefinitely.
     static let maxCooldown: TimeInterval = 900
 
-    /// `Retry-After` (delta-seconds) from a response, clamped to a sane range.
-    /// Returns nil when absent or unparseable, so callers fall back to the default.
+    /// `Retry-After` from a response, clamped to a sane range. Returns nil when
+    /// absent or unparseable, so callers fall back to the default.
     static func retryAfter(from response: HTTPURLResponse?) -> TimeInterval? {
-        guard let raw = response?.value(forHTTPHeaderField: "Retry-After")?
-            .trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        retryAfter(fromRawValue: response?.value(forHTTPHeaderField: "Retry-After"))
+    }
+
+    /// Parse a raw `Retry-After` value in either legal form:
+    ///   • delta-seconds, e.g. `"120"`
+    ///   • HTTP-date (IMF-fixdate / RFC 1123), e.g. `"Wed, 21 Oct 2015 07:28:00 GMT"`
+    ///
+    /// Returns the delay clamped to `1...maxCooldown`. A date already in the
+    /// past collapses to the 1s floor rather than a default or negative value.
+    /// Unparseable input returns nil (→ default cooldown) — never throws.
+    static func retryAfter(fromRawValue raw: String?) -> TimeInterval? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
         if let seconds = TimeInterval(raw) { return clamp(seconds) }
+        if let date = httpDate(from: raw) {
+            return clamp(date.timeIntervalSinceNow)
+        }
         return nil
+    }
+
+    /// Parse an RFC 1123 / IMF-fixdate instant. Locale is pinned to POSIX and
+    /// the timezone to GMT so the result does not depend on the host locale.
+    private static func httpDate(from raw: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "GMT")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        if let date = formatter.date(from: raw) { return date }
+        // Obsolete RFC 850 form, still occasionally seen.
+        formatter.dateFormat = "EEEE, dd-MMM-yy HH:mm:ss zzz"
+        return formatter.date(from: raw)
     }
 
     /// Resolve a server hint (or nil) to the cooldown actually applied.

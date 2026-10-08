@@ -1,15 +1,6 @@
-tree 9ac6b77a3879979d46a65a108eb23314c8224f50
-parent abafbaacd569b5d7465ac78507e374ec0b507677
-author jayanth-afk <jaykonada007@gmail.com> 1791368682 +0530
-committer jayanth-afk <jaykonada007@gmail.com> 1791368682 +0530
+tree 57e717e2a7bc409b8e4c70eae24aeb3c9d598a86
+parent f9cc40907dfabff146777b3f5fa65bfb1d673b6d
+author Gemini Agent <noreply@antigravity.dev> 1791408478 +0530
+committer jayanth-afk <jaykonada007@gmail.com> 1791408478 +0530
 
-feat: require the Agent Bridge key for the ChatGPT brain
-
-The bridge now rejects unauthenticated ChatGPT-brain requests, so Zia stores
-the control-plane key in the Keychain (new Agent Bridge service) and sends it
-as x-api-key on every health probe and completion. When the key is absent the
-brain fails closed locally with the exact reason instead of sending an
-unauthenticated request.
-
-Generated with Codebuff
-Co-Authored-By: Codebuff <noreply@codebuff.com>
+chore: update 1 file(s)

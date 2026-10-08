@@ -1,10 +1,1 @@
-feat: report verified provider availability instead of trusting key presence
-
-A configured API key is not proof a provider is usable, and health reported
-key-existence as availability. Add a tri-state availability (available /
-unverified / unavailable with reason), cache probe results for ~10 minutes so
-probes never run on a hot path, and bound every probe to 5s. Key-only providers
-now report "unverified"; the UI shows an Unverified state rather than Ready.
-
-🤖 Generated with Codebuff
-Co-Authored-By: Codebuff <noreply@codebuff.com>
+chore: update 1 file(s)

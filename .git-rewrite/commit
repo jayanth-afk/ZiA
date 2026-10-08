@@ -1,6 +1,6 @@
-tree dcb82ef64d9b2a2f9f8446a2dd2fe2adec9f7a81
-parent 056c072d70fb3b9ee1f30a694824d117bf02dd6c
-author jayanth-afk <jaykonada007@gmail.com> 1790743564 +0530
-committer jayanth-afk <jaykonada007@gmail.com> 1790743564 +0530
+tree 67b06aed02841fdf53226523bcf7cea05d42d699
+parent 4c14c33ab08e1bd973348a43226181d7f5c243d1
+author jayanth-afk <jaykonada007@gmail.com> 1791401376 +0530
+committer jayanth-afk <jaykonada007@gmail.com> 1791401376 +0530
 
-chore: add build output and selftest execution artifacts
+works on memory

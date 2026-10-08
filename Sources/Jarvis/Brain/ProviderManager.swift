@@ -473,7 +473,8 @@ final class ProviderManager {
         context: ChatGPTRequestContext? = nil,
         onChunk: (@Sendable (String) -> Void)? = nil,
         label: String = "chain",
-        priority: Int = TaskPriority.interactive
+        priority: Int = TaskPriority.interactive,
+        broker: ProviderResourceBroker = .shared
     ) async throws -> (response: String, providerID: String) {
         let estimatedTokens = Self.estimatedTokens(for: messages)
         for provider in chain {
@@ -517,7 +518,7 @@ final class ProviderManager {
                 dailyLimitUSD: Config.shared.dailyBudgetUSD)
             let reservation: ProviderReservation
             do {
-                reservation = try await ProviderResourceBroker.shared.acquire(request)
+                reservation = try await broker.acquire(request)
             } catch {
                 JarvisLogger.brain.info("Resource broker deferred \(provider.id): \(error.localizedDescription)")
                 continue
@@ -525,18 +526,18 @@ final class ProviderManager {
             // State can change while waiting for a slot: never hold capacity
             // for a worker that has since been quarantined or throttled.
             if isQuarantined(provider.id) || isRateLimited(provider.id) {
-                await ProviderResourceBroker.shared.release(reservation)
+                await broker.release(reservation)
                 continue
             }
 
             do {
                 let outcome = try await attemptProvider(
                     provider, messages: messages, context: context, onChunk: onChunk, label: label)
-                await ProviderResourceBroker.shared.release(reservation)
+                await broker.release(reservation)
                 if let outcome { return outcome }
                 // nil → the worker produced nothing usable; try the next one.
             } catch {
-                await ProviderResourceBroker.shared.release(reservation)
+                await broker.release(reservation)
                 throw error
             }
         }

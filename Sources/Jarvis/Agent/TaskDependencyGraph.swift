@@ -18,9 +18,9 @@ import Foundation
 actor TaskDependencyGraph: @unchecked Sendable {
 
     /// Dedicated waiting tasks by prerequisite id. Bounded: never unbounded growth.
-    private var dependents: [UUID: [UUID]] = [:]
+    private(set) var dependents: [UUID: [UUID]] = [:]
     /// Waiting task ids, bounded to keep diagnostics finite.
-    private var waiting: [UUID] = []
+    private(set) var waiting: [UUID] = []
 
     /// Maximum dependents tracked per prerequisite. Large fan-out is still supported
     /// functionally, but diagnostics stay bounded.

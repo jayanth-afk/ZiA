@@ -163,4 +163,12 @@ actor TaskResourceLock: @unchecked Sendable {
         }
         return summary
     }
+
+    /// Reset the lock to an empty state. Used only by tests that need a clean
+    /// lock without reconstructing the orchestrator.
+    func resetForTesting() {
+        owners.removeAll()
+        waiters.removeAll()
+        ownedByTask.removeAll()
+    }
 }

@@ -292,9 +292,11 @@ actor TaskOrchestration: @unchecked Sendable {
     func isBlocked(taskID: UUID) -> Bool { blockedByMissingPrerequisite.contains(taskID) || blockedByResourceWait.contains(taskID) || blockedByDependencyCycle.contains(taskID) }
 
     /// Test seam: return whether a task is fully eligible to run (prerequisites
-    /// satisfied AND all required resources available/owned). Does not mutate state.
+    /// satisfied AND all required resources available/owned AND the task is not
+    /// terminal). Does not mutate state.
     func isEligible(taskID: UUID) async -> Bool {
         guard let task = stateMachine.getTask(id: taskID) else { return false }
+        if task.state.isTerminal { return false }
         if !stateMachine.arePrerequisitesSatisfied(taskId: taskID) { return false }
         let resources = task.requiredResourceIDs
         if resources.isEmpty { return true }

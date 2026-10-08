@@ -314,6 +314,7 @@ actor TaskExecutionCoordinator {
                 cancel(taskID: task.id, stateMachine: stateMachine, reason: "Emergency Stop")
                 telemetry(taskID: task.id, step: nil, kind: .stopped, status: "cancelled",
                           failureCategory: .cancellation)
+                Task { await TaskOrchestration.shared.broadcastOutcome(taskID: task.id, state: .cancelled) }
                 throw CancellationError()
             } catch {
                 let outcome = (error as? ToolVerificationFailure)?.outcome ?? .unavailable
@@ -351,6 +352,7 @@ actor TaskExecutionCoordinator {
                     _ = try? stateMachine.transition(taskId: task.id, to: .failed,
                                                      error: error.localizedDescription)
                     recordConversationTurn(goal: originalRequest, response: nil)
+                    Task { await TaskOrchestration.shared.broadcastOutcome(taskID: task.id, state: .failed) }
                     throw error
                 }
 
@@ -369,6 +371,7 @@ actor TaskExecutionCoordinator {
                               failureCategory: failureCategory)
                     _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: reason)
                     recordConversationTurn(goal: originalRequest, response: nil)
+                    Task { await TaskOrchestration.shared.broadcastOutcome(taskID: task.id, state: .failed) }
                     throw JarvisError.actionFailed(
                         action: lastFailure?.tool ?? "AgentLoop.run", reason: reason)
                 }

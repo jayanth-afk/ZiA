@@ -69,19 +69,19 @@ actor TaskDependencyGraph: @unchecked Sendable {
 
     /// Record that a task reached a terminal outcome and reevaluate dependents.
     /// The caller supplies the current TaskState so we can classify success/failure/cancellation.
-    func recordOutcome(_ outcome: DependencyOutcome, eligibility: @escaping (UUID) -> Bool) -> [UUID] {
+    func recordOutcome(_ outcome: DependencyOutcome, eligibility: @escaping (UUID) async -> Bool) async -> [UUID] {
         unregisterWaiting(taskID: outcome.taskID)
         switch outcome.outcome {
         case .missing, .failed, .cancelled:
             return []
         case .completed:
-            return reevaluateDependents(of: outcome.taskID, eligibility: eligibility)
+            return await reevaluateDependents(of: outcome.taskID, eligibility: eligibility)
         }
     }
 
     /// Recompute dependents of a newly-completed task. Only tasks whose *entire* dependency
     /// set is now satisfied become eligible; others remain waiting.
-    private func reevaluateDependents(of completedID: UUID, eligibility: (UUID) -> Bool) -> [UUID] {
+    private func reevaluateDependents(of completedID: UUID, eligibility: (UUID) async -> Bool) async -> [UUID] {
         guard let newlyUnblocked = dependents.removeValue(forKey: completedID) else { return [] }
         var eligible: [UUID] = []
         for dependentID in newlyUnblocked {

@@ -113,17 +113,25 @@ actor TaskDependencyGraph: @unchecked Sendable {
 
     // MARK: - cycle detection
 
-    /// Build the dependency subgraph used for cycle detection: a set of edges from each
-    /// node to the nodes it depends on. For submission of `taskID`, we add the edge
-    /// taskID -> each declared prerequisite, plus any prerequisite->prerequisite edges already
-    /// present in the graph (so indirect cycles are detected too).
+    /// Build the dependency subgraph used for cycle detection: a "depends-on" graph where each
+    /// node maps to the nodes it depends on. We start from `taskID` -> its declared prerequisites,
+    /// then transitively include prerequisite-of-prerequisite edges that are already present in the
+    /// graph (via `existingDependents`, which is the authoritative "who depends on whom" snapshot
+    /// for already-registered waiting tasks). This catches indirect cycles such as a -> b -> c -> a.
+    /// The walk is bounded to avoid pathological input.
     private func buildSubgraph(taskID: UUID, prerequisiteIDs: [UUID], existingDependents: [UUID: [UUID]]) -> [UUID: [UUID]] {
         var g: [UUID: [UUID]] = [:]
-        g[taskID] = prerequisiteIDs
-        for pid in prerequisiteIDs {
-            if let deps = existingDependents[pid] {
-                g[pid] = deps
+        var visited = Set<UUID>()
+        var stack: [UUID] = [taskID]
+        while let node = stack.popLast() {
+            guard !visited.contains(node) else { continue }
+            visited.insert(node)
+            let deps = node == taskID ? prerequisiteIDs : (existingDependents[node] ?? [])
+            g[node] = deps
+            for d in deps where !visited.contains(d) {
+                stack.append(d)
             }
+            if visited.count > 256 { break }
         }
         return g
     }

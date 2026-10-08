@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - Task orchestration eligibility + dependency unblock
+// MARK: - Task orchestration eligibility + dependency unblock + resource gating
 
 /// Orchestration helpers that extend the existing task/worker-pool path without
 /// introducing a second scheduler.
@@ -9,6 +9,10 @@ import Foundation
 /// - submission-time dependency validation (cycle/self/dependency-missing),
 /// - deterministic BLOCKED/WAITING state when prerequisites are incomplete,
 /// - event-driven unblock from `TaskDependencyGraph` into `TaskWorkerPool`,
+/// - task-level resource gating via `TaskResourceLock` so that tasks declaring a
+///   required resource serialize on that resource while independent resources stay
+///   concurrent, and so that cancellation/failure/termination always releases held
+///   resources and re-evaluates waiters.
 /// - cooperation with the existing `ProviderResourceBroker` so provider admission
 ///   only happens once a task is actually eligible to run.
 actor TaskOrchestration: @unchecked Sendable {
@@ -16,6 +20,7 @@ actor TaskOrchestration: @unchecked Sendable {
     private let graph: TaskDependencyGraph
     private let stateMachine: TaskStateMachine
     private let pool: TaskWorkerPool
+    private let lock: TaskResourceLock
 
     /// Waiting task ids keyed by the reason they are not yet runnable. Used only for
     /// diagnostics and bounded cleanup; scheduling decisions never poll this.
@@ -26,13 +31,15 @@ actor TaskOrchestration: @unchecked Sendable {
     static let shared = TaskOrchestration(
         graph: TaskDependencyGraph(),
         stateMachine: TaskStateMachine.shared,
-        pool: TaskWorkerPool.shared
+        pool: TaskWorkerPool.shared,
+        lock: TaskResourceLock()
     )
 
-    private init(graph: TaskDependencyGraph, stateMachine: TaskStateMachine, pool: TaskWorkerPool) {
+    private init(graph: TaskDependencyGraph, stateMachine: TaskStateMachine, pool: TaskWorkerPool, lock: TaskResourceLock) {
         self.graph = graph
         self.stateMachine = stateMachine
         self.pool = pool
+        self.lock = lock
     }
 
     // MARK: - submission
@@ -48,6 +55,9 @@ actor TaskOrchestration: @unchecked Sendable {
     ///
     /// This is the integration seam requested by the mission: dependency validation
     /// and cycle validation happen here, before any provider admission or worker dispatch.
+    /// If the task declares required resources and any of them is held, the task is
+    /// registered as resource-blocked (not admitted) and will be re-evaluated when the
+    /// resource is released.
     func submit(task: JarvisTask, priority: Int, prerequisiteIDs: [UUID]) async -> SubmissionOutcome {
         let taskID = task.id
         guard stateMachine.getTask(id: taskID) != nil else {
@@ -64,8 +74,7 @@ actor TaskOrchestration: @unchecked Sendable {
             return SubmissionOutcome(accepted: false, rejectedReason: rejection, blockedReason: nil, dependentIDsMadeReady: [])
         }
 
-        // If we already have the task and it is not eligible yet, register it as waiting
-        // and transition it into the BLOCKED state deterministically.
+        // If prerequisites are not satisfied yet, register as waiting and stay blocked.
         if !(await prerequisitesSatisfied(taskID: taskID, prerequisiteIDs)) {
             await graph.registerWaiting(taskID: taskID, prerequisiteIDs: prerequisiteIDs)
             blockedByMissingPrerequisite.insert(taskID)
@@ -77,8 +86,50 @@ actor TaskOrchestration: @unchecked Sendable {
             return SubmissionOutcome(accepted: false, rejectedReason: nil, blockedReason: dependencyBlockedReason(prerequisiteIDs: prerequisiteIDs), dependentIDsMadeReady: [])
         }
 
-        // Eligible: admit to the existing worker pool.
+        // Prerequisites satisfied: try to admit, including resource gating.
+        return await tryAdmit(taskID: taskID, priority: priority)
+    }
+
+    /// Try to admit a task whose prerequisites are already satisfied. If the task
+    /// declares required resources and they are not all available, the task is
+    /// registered as resource-blocked and NOT admitted; it will be re-evaluated when
+    /// a resource is released.
+    private func tryAdmit(taskID: UUID, priority: Int) async -> SubmissionOutcome {
+        guard let task = stateMachine.getTask(id: taskID) else {
+            return SubmissionOutcome(accepted: false, rejectedReason: "task not found", blockedReason: nil, dependentIDsMadeReady: [])
+        }
+
+        let resources = task.requiredResourceIDs
+        if resources.isEmpty {
+            // No resource gating: admit directly.
+            return await admit(taskID: taskID, priority: priority)
+        }
+
+        // Try to acquire all required resources in deterministic (resource-id) order.
+        let granted = await lock.acquireAll(resources: resources, task: taskID)
+        if granted.count == resources.count {
+            // All resources acquired: admit.
+            return await admit(taskID: taskID, priority: priority)
+        }
+
+        // Could not acquire all resources: block on resources.
         blockedByResourceWait.insert(taskID)
+        // Best-effort state update: record that the task is waiting on resources.
+        do {
+            _ = try stateMachine.transition(taskId: taskID, to: .created, error: resourceBlockedReason(taskID: taskID))
+        } catch {
+            // State transition is best-effort; the orchestration is the authority.
+        }
+        return SubmissionOutcome(accepted: false, rejectedReason: nil, blockedReason: resourceBlockedReason(taskID: taskID), dependentIDsMadeReady: [])
+    }
+
+    /// Admit a task that is fully eligible (prerequisites satisfied AND all required
+    /// resources already acquired) to the existing worker pool.
+    private func admit(taskID: UUID, priority: Int) async -> SubmissionOutcome {
+        guard let task = stateMachine.getTask(id: taskID) else {
+            return SubmissionOutcome(accepted: false, rejectedReason: "task not found", blockedReason: nil, dependentIDsMadeReady: [])
+        }
+        blockedByResourceWait.remove(taskID)
         Task { [pool, task] in
             await pool.submit(task: task, priority: priority)
             await self.clearBlockedByResourceWait(taskID)
@@ -87,7 +138,8 @@ actor TaskOrchestration: @unchecked Sendable {
     }
 
     /// Recompute eligibility for a task that may have become ready after a prerequisite
-    /// completed. Returns the set of tasks that are now ready for worker-pool admission.
+    /// completed (or a resource was released). Returns the set of tasks that are now
+    /// ready for worker-pool admission.
     func reevaluate(taskID: UUID) async -> [UUID] {
         guard let task = stateMachine.getTask(id: taskID) else { return [] }
         let prerequisiteIDs = task.prerequisiteTaskIDs
@@ -99,30 +151,33 @@ actor TaskOrchestration: @unchecked Sendable {
         if !(await prerequisitesSatisfied(taskID: taskID, prerequisiteIDs)) {
             await graph.registerWaiting(taskID: taskID, prerequisiteIDs: prerequisiteIDs)
             blockedByMissingPrerequisite.insert(taskID)
+            blockedByResourceWait.remove(taskID)
             return []
         }
 
-        // Now eligible: clear waiting state and admit.
+        // Prerequisites satisfied: clear dependency-waiting state and try to admit
+        // (which will also handle resource gating).
         await graph.unregisterWaiting(taskID: taskID)
         blockedByMissingPrerequisite.remove(taskID)
         let priority = task.priority
-        Task { [pool, task] in
-            await pool.submit(task: task, priority: priority)
-            await self.clearBlockedByResourceWait(taskID)
+        let outcome = await tryAdmit(taskID: taskID, priority: priority)
+        if outcome.accepted {
+            return [taskID]
         }
-        return [taskID]
+        // Not admitted due to resources: leave it in blockedByResourceWait (already set by tryAdmit).
+        return []
     }
 
-    /// Called when a task reaches a terminal outcome. Broadcasts to the dependency graph
-    /// and unblocks eligible dependents.
+    /// Called when a task reaches a terminal outcome. Broadcasts to the dependency graph,
+    /// releases any resources the task held, and re-evaluates resource-blocked waiters so
+    /// that eligible dependents can be admitted.
     func recordOutcome(_ outcome: TaskDependencyGraph.DependencyOutcome) async -> [UUID] {
         blockedByDependencyCycle.remove(outcome.taskID)
         blockedByMissingPrerequisite.remove(outcome.taskID)
         blockedByResourceWait.remove(outcome.taskID)
-        // The dependent graph reevaluates eligibility internally using the closure we supply.
-        // To avoid sending a non-Sendable closure across actor isolation boundaries, we first
-        // ask the graph which dependents it would potentially unblock, then filter them here
-        // using the authoritative state machine within this actor.
+
+        // Dependency unblock: ask the graph which dependents it would potentially unblock,
+        // then filter by authoritative state and re-evaluate each.
         let potentiallyUnblocked = await graph.potentialDependents(of: outcome.taskID)
         var madeReady: [UUID] = []
         for id in potentiallyUnblocked {
@@ -130,13 +185,44 @@ actor TaskOrchestration: @unchecked Sendable {
                 madeReady.append(id)
             }
         }
-        // Reevaluate each newly-made-eligible dependent through the same admission path.
         var newlyAdmitted: [UUID] = []
         for id in madeReady {
             let ready = await reevaluate(taskID: id)
             newlyAdmitted.append(contentsOf: ready)
         }
+
+        // Release any resources the terminal task held, then re-evaluate resource-blocked
+        // waiters so that tasks waiting on the released resources can make progress.
+        await releaseAndReevaluateResourceWaiters(taskID: outcome.taskID)
+
         return newlyAdmitted
+    }
+
+    /// Release every resource owned by a task and then re-evaluate the resource-blocked
+    /// wait set so that tasks whose resources just became available can be admitted.
+    private func releaseAndReevaluateResourceWaiters(taskID: UUID) async {
+        // For cancelled tasks, also remove the task from any wait queues (cleanup).
+        if let task = stateMachine.getTask(id: taskID), task.state == .cancelled {
+            await lock.cancel(task: taskID)
+        } else {
+            await lock.releaseAll(task: taskID)
+        }
+
+        // Re-evaluate every resource-blocked task. A release may have freed a resource
+        // that one of these tasks needs, so each gets a fresh acquire attempt (which
+        // grants whatever is now free and enqueues for the first still-held resource).
+        let waiters = blockedByResourceWait
+        for id in waiters {
+            // Only re-evaluate tasks that are still present in the state machine and not
+            // terminal (a concurrent cancellation may have terminated it).
+            guard let task = stateMachine.getTask(id: id) else { continue }
+            if task.state.isTerminal { continue }
+            let priority = task.priority
+            let outcome = await tryAdmit(taskID: id, priority: priority)
+            if outcome.accepted {
+                blockedByResourceWait.remove(id)
+            }
+        }
     }
 
     // MARK: - eligibility
@@ -148,6 +234,12 @@ actor TaskOrchestration: @unchecked Sendable {
     func dependencyBlockedReason(prerequisiteIDs: [UUID]) -> String {
         let ids = prerequisiteIDs.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         return "blocked: waiting for prerequisite task(s) [\(ids)]"
+    }
+
+    func resourceBlockedReason(taskID: UUID) -> String {
+        guard let task = stateMachine.getTask(id: taskID) else { return "blocked: waiting for resource" }
+        let ids = task.requiredResourceIDs.map { $0.prefix(8) }.joined(separator: ", ")
+        return "blocked: waiting for resource(s) [\(ids)]"
     }
 
     func clearBlockedByResourceWait(_ taskID: UUID) {
@@ -176,4 +268,29 @@ actor TaskOrchestration: @unchecked Sendable {
         let outcome = outcomeForState(state, taskID: taskID)
         _ = await recordOutcome(outcome)
     }
+
+    // MARK: - test seams
+
+    /// Reset the orchestrator's mutable waiting/blocked state and its internal
+    /// dependency graph and resource lock. Used only by integration tests that
+    /// drive the production orchestration paths against the shared singletons.
+    func resetForTesting() async {
+        blockedByMissingPrerequisite.removeAll()
+        blockedByDependencyCycle.removeAll()
+        blockedByResourceWait.removeAll()
+        await graph.clearForTesting()
+        await lock.resetForTesting()
+    }
+
+    /// Test seam: return the set of task ids currently blocked on resources.
+    func resourceBlockedTaskIDs() -> Set<UUID> { blockedByResourceWait }
+
+    /// Test seam: return whether a task currently owns a given resource.
+    func lockOwns(resource: String, task: UUID) async -> Bool { await lock.owns(resource: resource, task: task) }
+
+    /// Test seam: return whether a task is waiting for a given resource.
+    func lockIsWaiting(task: UUID, resource: String) async -> Bool { await lock.isWaiting(task: task, resource: resource) }
+
+    /// Test seam: return the current owner of a resource, if any.
+    func lockOwner(of resource: String) async -> UUID? { await lock.owner(of: resource) }
 }

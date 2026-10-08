@@ -89,6 +89,9 @@ final class TaskDependencyIntegrationTests {
         let fresh = fresh()
         let prereq = UUID()
         let dependent = UUID()
+        // The prerequisite must exist in the state machine before the dependent can
+        // register a dependency on it (validateSubmission requires it to be known).
+        createTask(fresh, makeTask(id: prereq, title: "prereq"))
         createTask(fresh, makeTask(id: dependent, title: "dep", prereqs: [prereq]))
         let _ = await fresh.orch.submit(task: fresh.sm.getTask(id: dependent)!, priority: 0, prerequisiteIDs: [prereq])
         #expect((await fresh.orch.isBlocked(taskID: dependent)) == true)
@@ -198,7 +201,10 @@ final class TaskDependencyIntegrationTests {
         let b = UUID()
         let c = UUID()
         let a = UUID()
-        createTask(fresh, makeTask(id: d, title: "d", state: .completed, steps: []))
+        // d must be .completed in the authoritative state machine so b and c see it as
+        // a satisfied prerequisite at submission time (createTask hardcodes .created).
+        createTask(fresh, makeTask(id: d, title: "d"))
+        fresh.sm.setStateForTesting(taskId: d, state: .completed)
         createTask(fresh, makeTask(id: b, title: "b", prereqs: [d]))
         createTask(fresh, makeTask(id: c, title: "c", prereqs: [d]))
         createTask(fresh, makeTask(id: a, title: "a", prereqs: [b, c]))
@@ -533,8 +539,12 @@ final class TaskDependencyIntegrationTests {
         let c1 = UUID()
         let c2 = UUID()
         let a = UUID()
-        createTask(fresh, makeTask(id: p1, title: "p1", state: .completed, steps: []))
-        createTask(fresh, makeTask(id: p2, title: "p2", state: .completed, steps: []))
+        // p1/p2 must be .completed in the authoritative state machine so c1/c2 see them
+        // as satisfied prerequisites at submission time (createTask hardcodes .created).
+        createTask(fresh, makeTask(id: p1, title: "p1"))
+        createTask(fresh, makeTask(id: p2, title: "p2"))
+        fresh.sm.setStateForTesting(taskId: p1, state: .completed)
+        fresh.sm.setStateForTesting(taskId: p2, state: .completed)
         createTask(fresh, makeTask(id: c1, title: "c1", prereqs: [p1]))
         createTask(fresh, makeTask(id: c2, title: "c2", prereqs: [p2]))
         createTask(fresh, makeTask(id: a, title: "a", prereqs: [c1, c2], resources: [r]))

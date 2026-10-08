@@ -15,9 +15,7 @@ let package = Package(
         .package(url: "https://github.com/soffes/HotKey", from: "0.2.1"),
         // Keychain access for API key storage
         .package(url: "https://github.com/kishikawakatsumi/KeychainAccess", from: "4.2.2"),
-        // Local XCTest-compatible shim so swift test can compile without Xcode/XCTest.framework.
-        .package(path: "/tmp/jarvis-xctest"),
-    ],
+            ],
     targets: [
         .executableTarget(
             name: "Jarvis",
@@ -46,7 +44,7 @@ let package = Package(
         ),
         .testTarget(
             name: "JarvisTests",
-            dependencies: ["Jarvis", .product(name: "JarvisXCTestLocal", package: "jarvis-xctest")],
+            dependencies: ["Jarvis"],
             path: "Tests/JarvisTests"
         )
     ]

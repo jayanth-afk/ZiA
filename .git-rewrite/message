@@ -1,0 +1,32 @@
+feat(memory): persist conversation across launches via ConversationStore
+
+Completed the memory foundation: ConversationStore (SQLite) is now the
+single persisted source of truth behind the in-memory conversation
+window, so cross-turn memory survives app relaunch.
+
+- ConversationManager: restore-on-start (loadPersistedHistory, bounded
+  newest window, idempotent, duplicate-write guard), recordInteraction
+  writes user+assistant pairs through to the store exactly once; a
+  refusal records only the user request - a failed action can never
+  become a fabricated successful turn in memory.
+- ConversationStore.loadMessages now returns the NEWEST N messages in
+  chronological order (rowid ordering; a naive ASC LIMIT returned the
+  oldest turns); added messageCount for bounded-window diagnostics.
+- AgentLoop records every route through the same recordInteraction path
+  (one source of truth, no second copy); DirectComposer falls back to
+  the persisted window when the in-memory one is empty (fresh
+  lifecycle).
+- AppDelegate and the --goals CLI mode restore the persisted window at
+  lifecycle start; CLI paths allow the detached persist write to land
+  before exit.
+- Focused regressions: exact-once persistence + ordering, restore after
+  lifecycle reset + idempotence, bounded newest-window clipping,
+  no-fabricated-success on failure, and memory-never-authorizes
+  (PermissionGate denial unchanged with memory present).
+
+Authority untouched: memory is context only - PermissionGate,
+PlanValidator, CommandSandbox, ReferenceResolver, and TaskStateMachine
+are unchanged, and emergency stop remains independent of memory.
+
+🤖 Generated with Codebuff
+Co-Authored-By: Codebuff <noreply@codebuff.com>

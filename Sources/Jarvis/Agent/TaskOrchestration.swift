@@ -139,8 +139,7 @@ actor TaskOrchestration: @unchecked Sendable {
 
     // MARK: - private
 
-    private func prerequisitesSatisfied(taskID: UUID, prerequisiteIDs: [UUID]) -> Bool {
-        guard let task = stateMachine.getTask(id: taskID) else { return false }
+    private func prerequisitesSatisfied(taskID: UUID, _ prerequisiteIDs: [UUID]) -> Bool {
         return stateMachine.arePrerequisitesSatisfied(taskId: taskID)
     }
 

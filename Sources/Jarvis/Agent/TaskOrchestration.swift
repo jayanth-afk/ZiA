@@ -64,7 +64,7 @@ actor TaskOrchestration: @unchecked Sendable {
         if let rejection = await graph.validateSubmission(
             taskID: taskID,
             prerequisiteIDs: prerequisiteIDs,
-            existingDependents: await dependencyGraphSnapshot(),
+            existingDependents: await graph.dependencyEdges(),
             allKnownTaskIDs: knownIDs
         ) {
             blockedByDependencyCycle.insert(taskID)

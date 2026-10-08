@@ -82,9 +82,9 @@ actor TaskOrchestration: @unchecked Sendable {
 
         // Eligible: admit to the existing worker pool.
         blockedByResourceWait.insert(taskID)
-        Task {
+        Task { [pool, task] in
             await pool.submit(task: task, priority: priority)
-            blockedByResourceWait.remove(taskID)
+            await self.blockedByResourceWait.remove(taskID)
         }
         return SubmissionOutcome(accepted: true, rejectedReason: nil, blockedReason: nil, dependentIDsMadeReady: [])
     }

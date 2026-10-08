@@ -520,6 +520,8 @@ final class ProviderManager {
             do {
                 reservation = try await broker.acquire(request)
             } catch {
+                // Cancellation is terminal — never a reason to try another worker.
+                if Task.isCancelled { throw CancellationError() }
                 JarvisLogger.brain.info("Resource broker deferred \(provider.id): \(error.localizedDescription)")
                 continue
             }
@@ -624,6 +626,13 @@ final class ProviderManager {
             ))
             return nil
         } catch {
+            // Cancellation (§9/§24): terminal, never a provider failure, never a
+            // fallback. Recording it would wrongly trip the circuit breaker and
+            // a fallback would answer a request the user already cancelled.
+            if error is CancellationError || Task.isCancelled {
+                JarvisLogger.brain.info("Provider \(provider.id) attempt cancelled; no fallback")
+                throw CancellationError()
+            }
             // Rate limiting is a temporary condition, not a proven failure:
             // cool the worker down for the server-requested duration instead
             // of counting it toward the hard-failure circuit breaker.

@@ -399,6 +399,56 @@ import Testing
         }
     }
 
+    /// A provider that never emits; it only ends when its stream is cancelled.
+    actor HangingProvider: LLMProvider {
+        nonisolated let id: String
+        nonisolated let capabilities: Set<Capability> = [.textGeneration]
+        nonisolated let currentLatencyMs = 1
+        init(id: String) { self.id = id }
+
+        var isAvailable: Bool { get async { true } }
+        func verifiedAvailability(probe: Bool) async -> ProviderAvailability { .available }
+
+        func complete(messages: [Message], tools: [ToolDefinition]?, stream: Bool)
+            -> AsyncThrowingStream<StreamChunk, any Error> {
+            AsyncThrowingStream { continuation in
+                let task = Task {
+                    while !Task.isCancelled { try? await Task.sleep(nanoseconds: 10_000_000) }
+                    continuation.finish(throwing: CancellationError())
+                }
+                continuation.onTermination = { _ in task.cancel() }
+            }
+        }
+    }
+
+    @Test func cancellationDuringDispatchDoesNotFallBackOrLeak() async throws {
+        try await withIsolatedBroker { broker in
+            let hanging = HangingProvider(id: "hang-1")
+            let fallbackProbe = ConcurrencyProbe()
+            let fallback = GatedProvider(id: "fb-1", probe: fallbackProbe)
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "hang-1")
+
+            let task = Task {
+                try await ProviderManager.shared.executeFallbackChain(
+                    [hanging, fallback],
+                    messages: [Message(role: .user, content: "x")], broker: broker)
+            }
+            await waitUntil { await broker.inFlightCount(for: "hang-1") == 1 }
+
+            task.cancel()
+            let result = await task.result
+            if case .failure(let error) = result {
+                #expect(error is CancellationError, "a cancelled turn must surface cancellation")
+            } else {
+                Issue.record("a cancelled dispatch must fail, not return a fallback answer")
+            }
+            // The fallback worker must never have been reached, and no slot leaked.
+            #expect(await fallbackProbe.maxActive == 0)
+            #expect(await broker.activeReservationCount() == 0)
+            #expect(await broker.inFlightCount(for: "hang-1") == 0)
+        }
+    }
+
     @Test func concurrentExecutionsRespectTheBrokerSlotLimit() async throws {
         try await withIsolatedBroker { broker in
             let probe = ConcurrencyProbe()

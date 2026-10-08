@@ -1,0 +1,6 @@
+tree d276387c2ee499b4be3e9dead03189272b5fc659
+parent 8072f519d1a7f207335f186f120189f73d729ba5
+author jayanth-afk <jaykonada007@gmail.com> 1790680107 +0530
+committer jayanth-afk <jaykonada007@gmail.com> 1790680107 +0530
+
+feat(planner): implement bounded run_shell command extraction and focused sandbox guards

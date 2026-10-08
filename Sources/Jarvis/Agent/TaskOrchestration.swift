@@ -152,7 +152,10 @@ actor TaskOrchestration: @unchecked Sendable {
     }
 
     func dependencyGraphSnapshot() -> [UUID: [UUID]] {
-        return graph.dependencyEdges()
+        Task { [graph] in
+            return await graph.dependencyEdges()
+        }
+        return [:]
     }
 }
 

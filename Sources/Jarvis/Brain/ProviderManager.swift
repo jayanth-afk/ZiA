@@ -714,11 +714,14 @@ final class ProviderManager {
             ))
             return nil
         } catch {
+            // Classify the failure so retry/fallback/cooldown follow the class,
+            // not a raw string (§13).
+            let failure = ProviderFailureClassifier.classify(error, isCancelled: Task.isCancelled)
             // Cancellation (§9/§24): terminal, never a provider failure, never a
             // fallback. Recording it would wrongly trip the circuit breaker and
             // a fallback would answer a request the user already cancelled.
-            if error is CancellationError || Task.isCancelled {
-                JarvisLogger.brain.info("Provider \(provider.id) attempt cancelled; no fallback")
+            if failure == .cancellation {
+                JarvisLogger.brain.info("Provider \(provider.id) attempt cancelled [\(failure.rawValue)]; no fallback")
                 throw CancellationError()
             }
             // Rate limiting is a temporary condition, not a proven failure:
@@ -733,11 +736,15 @@ final class ProviderManager {
                     fallbackProvider: "next-in-chain"
                 ))
             } else {
-                JarvisLogger.brain.warning("Provider \(provider.id) failed: \(error.localizedDescription)")
-                recordFailure(providerID: provider.id, error: error.localizedDescription)
+                JarvisLogger.brain.warning("Provider \(provider.id) failed [\(failure.rawValue)]: \(error.localizedDescription)")
+                // A failure that is our fault (e.g. a malformed request) must not
+                // degrade the provider's health.
+                if failure.countsAsProviderFailure {
+                    recordFailure(providerID: provider.id, error: error.localizedDescription)
+                }
                 EventBus.shared.publish(ProviderFailedEvent(
                     provider: provider.id,
-                    error: error.localizedDescription,
+                    error: "[\(failure.rawValue)] \(error.localizedDescription)",
                     fallbackProvider: "next-in-chain"
                 ))
             }

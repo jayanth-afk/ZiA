@@ -226,6 +226,7 @@ final class TaskStateMachine: @unchecked Sendable {
         var priority: Int?
         var result: String?
         var prerequisiteTaskIDs: [UUID]?
+        var requiredResourceIDs: [String]?
 
         init(
             id: UUID,
@@ -245,7 +246,8 @@ final class TaskStateMachine: @unchecked Sendable {
             parentTaskID: UUID? = nil,
             priority: Int? = 0,
             result: String? = nil,
-            prerequisiteTaskIDs: [UUID]? = nil
+            prerequisiteTaskIDs: [UUID]? = nil,
+            requiredResourceIDs: [String]? = nil
         ) {
             self.id = id
             self.title = title
@@ -265,6 +267,7 @@ final class TaskStateMachine: @unchecked Sendable {
             self.priority = priority
             self.result = result
             self.prerequisiteTaskIDs = prerequisiteTaskIDs
+            self.requiredResourceIDs = requiredResourceIDs
         }
 
         init(_ task: JarvisTask) {
@@ -286,6 +289,7 @@ final class TaskStateMachine: @unchecked Sendable {
             priority = task.priority
             result = task.result
             prerequisiteTaskIDs = task.prerequisiteTaskIDs
+            requiredResourceIDs = task.requiredResourceIDs
         }
 
         var task: JarvisTask {
@@ -295,7 +299,8 @@ final class TaskStateMachine: @unchecked Sendable {
                        completedAt: completedAt, error: error, resolutionRecords: resolutionRecords,
                        environmentContext: environmentContext, parentTaskID: parentTaskID,
                        priority: priority ?? 0, result: result,
-                       prerequisiteTaskIDs: prerequisiteTaskIDs ?? [])
+                       prerequisiteTaskIDs: prerequisiteTaskIDs ?? [],
+                       requiredResourceIDs: requiredResourceIDs ?? [])
         }
     }
 

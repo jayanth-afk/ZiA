@@ -151,6 +151,7 @@ actor TaskWorkerPool {
         }
 
         _ = try? TaskStateMachine.shared.transition(taskId: id, to: .cancelled, error: "Cancelled by user or system")
+        Task { await TaskOrchestration.shared.broadcastOutcome(taskID: id, state: .cancelled) }
         JarvisLogger.actions.info("Cancelled task [\(id.uuidString.prefix(8))]")
     }
 
@@ -173,6 +174,7 @@ actor TaskWorkerPool {
         let active = TaskStateMachine.shared.activeTasks
         for task in active {
             _ = try? TaskStateMachine.shared.transition(taskId: task.id, to: .cancelled, error: "Emergency Stop triggered")
+            Task { await TaskOrchestration.shared.broadcastOutcome(taskID: task.id, state: .cancelled) }
         }
     }
 }

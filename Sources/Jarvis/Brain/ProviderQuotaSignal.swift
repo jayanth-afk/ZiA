@@ -28,6 +28,15 @@ enum ProviderQuotaSignal {
         return parse(headers: headers, now: now)
     }
 
+    /// Report a response's quota headers to the resource broker. A no-op when
+    /// the provider exposed nothing usable — unknown never becomes a value.
+    static func report(_ response: URLResponse?, for providerID: String) async {
+        guard let http = response as? HTTPURLResponse else { return }
+        let quota = parse(response: http)
+        guard quota.hasKnownValue else { return }
+        await ProviderResourceBroker.shared.observeQuota(quota, for: providerID)
+    }
+
     /// Parse an already-collected header map. Keys are matched case-insensitively.
     static func parse(headers: [String: String], now: Date = .now) -> ProviderQuota {
         var lowered: [String: String] = [:]

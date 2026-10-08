@@ -614,6 +614,22 @@ final class TaskStateMachine: @unchecked Sendable {
         }
     }
 
+    /// Set a task's state directly for testing purposes. This bypasses the normal
+    /// transition table and persistence, so it is used only by tests that need to
+    /// place a task into a specific state (e.g. a completed prerequisite) without
+    /// running it through the full execution/worker path.
+    func setStateForTesting(taskId: UUID, state: TaskState) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard var task = tasks[taskId] else { return }
+        task.state = state
+        if state == .completed || state == .cancelled {
+            task.completedAt = Date()
+        }
+        if state == .completed { task.error = nil }
+        tasks[taskId] = task
+    }
+
     /// Isolate the shared owner during SelfTest without reading or writing production task state.
     func beginIsolatedTesting() -> () -> Void {
         lock.lock()

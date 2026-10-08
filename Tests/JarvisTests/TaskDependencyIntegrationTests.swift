@@ -329,7 +329,7 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.broadcastOutcome(taskID: waiter, state: .cancelled)
         #expect((await fresh.orch.lockIsWaiting(task: waiter, resource: r)) == false)
         #expect((await fresh.orch.lockOwner(of: r)) == holder)
-        dispose(fresh, holder)
+        dispose(fresh, taskID: holder)
     }
 
     // MARK: 14. cancellation after lock acquisition cleans up

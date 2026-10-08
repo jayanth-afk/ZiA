@@ -23,10 +23,6 @@ actor TaskOrchestration: @unchecked Sendable {
     private var blockedByDependencyCycle: Set<UUID> = []
     private var blockedByResourceWait: Set<UUID> = []
 
-    private func clearBlockedByResourceWait(_ taskID: UUID) {
-        blockedByResourceWait.remove(taskID)
-    }
-
     static let shared = TaskOrchestration(
         graph: TaskDependencyGraph(),
         stateMachine: TaskStateMachine.shared,
@@ -52,12 +48,9 @@ actor TaskOrchestration: @unchecked Sendable {
     ///
     /// This is the integration seam requested by the mission: dependency validation
     /// and cycle validation happen here, before any provider admission or worker dispatch.
-    func submit(
-        taskID: UUID,
-        priority: Int,
-        prerequisiteIDs: [UUID]
-    ) async -> SubmissionOutcome {
-        guard let task = stateMachine.getTask(id: taskID) else {
+    func submit(task: JarvisTask, priority: Int, prerequisiteIDs: [UUID]) async -> SubmissionOutcome {
+        let taskID = task.id
+        guard stateMachine.getTask(id: taskID) != nil else {
             return SubmissionOutcome(accepted: false, rejectedReason: "task not found", blockedReason: nil, dependentIDsMadeReady: [])
         }
         let knownIDs = Set(stateMachine.allTasks.map { $0.id })
@@ -115,7 +108,7 @@ actor TaskOrchestration: @unchecked Sendable {
         let priority = task.priority
         Task { [pool, task] in
             await pool.submit(task: task, priority: priority)
-            await self.blockedByResourceWait.remove(taskID)
+            await self.clearBlockedByResourceWait(taskID)
         }
         return [taskID]
     }
@@ -126,18 +119,17 @@ actor TaskOrchestration: @unchecked Sendable {
         blockedByDependencyCycle.remove(outcome.taskID)
         blockedByMissingPrerequisite.remove(outcome.taskID)
         blockedByResourceWait.remove(outcome.taskID)
+        // The dependent graph reevaluates eligibility internally using the closure we supply.
+        // To avoid sending a non-Sendable closure across actor isolation boundaries, we first
+        // ask the graph which dependents it would potentially unblock, then filter them here
+        // using the authoritative state machine within this actor.
+        let potentiallyUnblocked = await graph.potentialDependents(of: outcome.taskID)
         var madeReady: [UUID] = []
-        {
-            let ids = await graph.recordOutcome(outcome, eligibility: nil)
-            madeReady = ids
+        for id in potentiallyUnblocked {
+            if prerequisitesSatisfied(taskID: id, stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? []) {
+                madeReady.append(id)
+            }
         }
-        // Reevaluate each newly-made-eligible dependent through the same admission path.
-        var newlyAdmitted: [UUID] = []
-        for id in madeReady {
-            let ready = await reevaluate(taskID: id)
-            newlyAdmitted.append(contentsOf: ready)
-        }
-        return newlyAdmitted
         // Reevaluate each newly-made-eligible dependent through the same admission path.
         var newlyAdmitted: [UUID] = []
         for id in madeReady {
@@ -157,18 +149,8 @@ actor TaskOrchestration: @unchecked Sendable {
         let ids = prerequisiteIDs.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         return "blocked: waiting for prerequisite task(s) [\(ids)]"
     }
-}
 
-private extension TaskDependencyGraph {
-    func dependencyEdges() async -> [UUID: [UUID]] {
-        var copy: [UUID: [UUID]] = [:]
-        // Recompute from the live waiting registrations: a task waiting on prerequisites
-        // implies an edge dependent -> prerequisite.
-        for (prereq, dependentsList) in dependents {
-            for dependent in dependentsList {
-                copy[dependent, default: []].append(prereq)
-            }
-        }
-        return copy
+    func clearBlockedByResourceWait(_ taskID: UUID) {
+        blockedByResourceWait.remove(taskID)
     }
 }

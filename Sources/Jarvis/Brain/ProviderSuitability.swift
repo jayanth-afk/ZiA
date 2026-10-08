@@ -78,11 +78,15 @@ struct ProviderDescriptor: Sendable, Equatable {
     /// Reserve-only workers (e.g. finite trial credit) are preferred only when
     /// free options are unsuitable.
     let reserveOnly: Bool
+    /// Premium reasoning tier (the intentional lead worker for complex/deep
+    /// work). Encodes the existing architecture's intent explicitly rather than
+    /// hiding it in chain order.
+    let isPremium: Bool
 
     init(id: String, modelID: String, capabilities: Set<Capability>,
          costClass: ProviderCostClass, contextWindowTokens: Int,
          typicalLatencyMs: Int, reasoningStrength: Int, codingStrength: Int,
-         isLocal: Bool = false, reserveOnly: Bool = false) {
+         isLocal: Bool = false, reserveOnly: Bool = false, isPremium: Bool = false) {
         self.id = id
         self.modelID = modelID
         self.capabilities = capabilities
@@ -93,6 +97,7 @@ struct ProviderDescriptor: Sendable, Equatable {
         self.codingStrength = min(max(codingStrength, 0), 3)
         self.isLocal = isLocal
         self.reserveOnly = reserveOnly
+        self.isPremium = isPremium
     }
 
     /// Registry default for a provider id. Unknown ids are treated as a modest
@@ -123,7 +128,7 @@ struct ProviderDescriptor: Sendable, Equatable {
             return ProviderDescriptor(id: id, modelID: "chatgpt-desktop",
                 capabilities: [.textGeneration, .longContext, .structuredOutput], costClass: .free,
                 contextWindowTokens: 128_000, typicalLatencyMs: 2_000,
-                reasoningStrength: 3, codingStrength: 3)
+                reasoningStrength: 3, codingStrength: 3, isPremium: true)
         case "anthropic", "claude":
             return ProviderDescriptor(id: id, modelID: "claude",
                 capabilities: [.textGeneration, .toolCalling, .longContext], costClass: .paid,
@@ -215,6 +220,16 @@ enum ProviderSuitabilityScorer {
     static let contextFitWeight = 10
     static let structuredWeight = 15
 
+    /// Latency sensitivity in tenths (deep work cares less about latency).
+    private static func latencyFactor(for complexity: TaskComplexity) -> Int {
+        switch complexity {
+        case .trivial: return 15
+        case .standard: return 10
+        case .complex: return 7
+        case .deep: return 4
+        }
+    }
+
     static func score(provider: ProviderDescriptor,
                       requirements: TaskRequirements,
                       context: ProviderScoreContext) -> ProviderSuitability {
@@ -283,17 +298,27 @@ enum ProviderSuitabilityScorer {
             score -= 10
         }
 
-        // ── Latency ───────────────────────────────────────────────────────
-        let latencyScore = max(0, 20 - provider.typicalLatencyMs / 100)
+        // ── Premium tier ──────────────────────────────────────────────────
+        if provider.isPremium, requirements.complexity >= .complex {
+            score += 12
+            reasons.append("premium reasoning tier (+12)")
+        }
+
+        // ── Latency (weighted by complexity: deep work tolerates latency) ──
+        let latencyBase = max(0, 20 - provider.typicalLatencyMs / 100)
+        let latencyScore = latencyBase * latencyFactor(for: requirements.complexity) / 10
         score += latencyScore
-        if latencyScore > 0 { reasons.append("latency \(provider.typicalLatencyMs)ms (+\(latencyScore))") }
+        if latencyScore > 0 { reasons.append("latency \(provider.typicalLatencyMs)ms (+\\(latencyScore))") }
 
         // ── Cost / reserve placement ──────────────────────────────────────
+        // Mirrors the established cost order: free → reserve(trial) → paid →
+        // local. Local is the resilience layer, so it trails even paid workers;
+        // it leads only when privacy forces it (a hard constraint above).
         switch provider.costClass {
         case .free: break
-        case .local: score -= 5; reasons.append("local, reserved for policy/fallback (-5)")
         case .trial: score -= 25; reasons.append("finite trial credit is a reserve (-25)")
         case .paid: score -= 60; reasons.append("paid (policy-gated) (-60)")
+        case .local: score -= 70; reasons.append("local, resilience fallback (-70)")
         }
 
         // ── Current capacity ──────────────────────────────────────────────

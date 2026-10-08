@@ -563,6 +563,7 @@ final class ProviderManager {
         onChunk: (@Sendable (String) -> Void)?,
         label: String
     ) async throws -> (response: String, providerID: String)? {
+        try Task.checkCancellation()
         EventBus.shared.publish(ProviderSelectedEvent(
             provider: provider.id,
             reason: "Executing \(label) with \(provider.id)"))
@@ -597,6 +598,10 @@ final class ProviderManager {
                     break
                 }
             }
+
+            // A cancelled turn is terminal: never reinterpret the resulting
+            // silence as an empty provider response and fall back.
+            try Task.checkCancellation()
 
             let trimmed = responseText.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {

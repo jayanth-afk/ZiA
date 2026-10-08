@@ -29,17 +29,10 @@ import Testing
                                 estimatedCostUSD: cost, spentTodayUSD: spent, dailyLimitUSD: limit)
     }
 
-    /// Run a body with a fresh isolated broker, always restoring on exit.
+    /// Run a body with a fresh, private broker. It never touches the production
+    /// singleton, so parallel suites cannot interfere with these assertions.
     private func withIsolatedBroker(_ body: (ProviderResourceBroker) async throws -> Void) async rethrows {
-        let previous = ProviderResourceBroker.beginIsolatedTesting()
-        let broker = ProviderResourceBroker.shared
-        do {
-            try await body(broker)
-        } catch {
-            ProviderResourceBroker.endIsolatedTesting(restoring: previous)
-            throw error
-        }
-        ProviderResourceBroker.endIsolatedTesting(restoring: previous)
+        try await body(ProviderResourceBroker.makeIsolated())
     }
 
     // MARK: - 1. Concurrency admission
@@ -413,11 +406,11 @@ import Testing
             await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "gated-1")
 
             async let first = ProviderManager.shared.executeFallbackChain(
-                [provider], messages: [Message(role: .user, content: "a")])
+                [provider], messages: [Message(role: .user, content: "a")], broker: broker)
             async let second = ProviderManager.shared.executeFallbackChain(
-                [provider], messages: [Message(role: .user, content: "b")])
+                [provider], messages: [Message(role: .user, content: "b")], broker: broker)
             async let third = ProviderManager.shared.executeFallbackChain(
-                [provider], messages: [Message(role: .user, content: "c")])
+                [provider], messages: [Message(role: .user, content: "c")], broker: broker)
 
             _ = try await (first, second, third)
 

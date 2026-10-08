@@ -44,7 +44,7 @@ final class TaskDependencyIntegrationTests {
         await TaskOrchestration.shared.resetForTesting()
         // Also clear any residual tasks from prior tests so suites stay isolated.
         let ids = TaskStateMachine.shared.allTasks.map { $0.id }
-        for id in ids { TaskStateMachine.shared.transition(taskId: id, to: .cancelled, error: "test cleanup") }
+        for id in ids { try? TaskStateMachine.shared.transition(taskId: id, to: .cancelled, error: "test cleanup") }
     }
 
     private func dispose(taskID: UUID) {
@@ -311,7 +311,7 @@ final class TaskDependencyIntegrationTests {
         let r = "protected"
         let holder = UUID()
         let waiter = UUID()
-        createTask(makeTask(id: holder, title: "holder", resources: [r], state: .completed, steps: []))
+        createTask(makeTask(id: holder, title: "holder", state: .completed, resources: [r], steps: []))
         createTask(makeTask(id: waiter, title: "waiter", resources: [r]))
         // Holder already completed (no lock held). Submit holder to the pool is moot;
         // instead, acquire the resource on behalf of the holder via the orchestrator seam

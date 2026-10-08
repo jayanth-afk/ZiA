@@ -24,7 +24,6 @@ let package = Package(
             dependencies: [
                 "HotKey",
                 "KeychainAccess",
-                .product(name: "JarvisXCTestLocal", package: "jarvis-xctest-local"),
             ],
             path: "Sources/Jarvis",
             resources: [
@@ -48,6 +47,7 @@ let package = Package(
         .testTarget(
             name: "JarvisTests",
             dependencies: ["Jarvis"],
+            products: [.product(name: "JarvisXCTestLocal", package: "jarvis-xctest-local")],
             path: "Tests/JarvisTests"
         )
     ]

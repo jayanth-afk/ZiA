@@ -304,6 +304,15 @@ actor TaskOrchestration: @unchecked Sendable {
         return true
     }
 
+    /// Test seam: acquire all of the given resources for a task (via the real
+    /// `TaskResourceLock.acquireAll`) WITHOUT submitting the task to the worker pool.
+    /// This lets integration tests place a task into a resource-owning state
+    /// deterministically, without triggering real worker execution that would race
+    /// with the test's assertions.
+    func acquireAllResources(resources: [String], task: UUID) async -> [String] {
+        await lock.acquireAll(resources: resources, task: task)
+    }
+
     /// Test seam: return whether a task currently owns a given resource.
     func lockOwns(resource: String, task: UUID) async -> Bool { await lock.owns(resource: resource, task: task) }
 

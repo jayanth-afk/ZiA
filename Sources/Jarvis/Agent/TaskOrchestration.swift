@@ -23,6 +23,10 @@ actor TaskOrchestration: @unchecked Sendable {
     private var blockedByDependencyCycle: Set<UUID> = []
     private var blockedByResourceWait: Set<UUID> = []
 
+    private func clearBlockedByResourceWait(_ taskID: UUID) {
+        blockedByResourceWait.remove(taskID)
+    }
+
     static let shared = TaskOrchestration(
         graph: TaskDependencyGraph(),
         stateMachine: TaskStateMachine.shared,
@@ -84,7 +88,7 @@ actor TaskOrchestration: @unchecked Sendable {
         blockedByResourceWait.insert(taskID)
         Task { [pool, task] in
             await pool.submit(task: task, priority: priority)
-            await self.blockedByResourceWait.remove(taskID)
+            await self.clearBlockedByResourceWait(taskID)
         }
         return SubmissionOutcome(accepted: true, rejectedReason: nil, blockedReason: nil, dependentIDsMadeReady: [])
     }

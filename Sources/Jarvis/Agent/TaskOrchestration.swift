@@ -109,9 +109,9 @@ actor TaskOrchestration: @unchecked Sendable {
         await graph.unregisterWaiting(taskID: taskID)
         blockedByMissingPrerequisite.remove(taskID)
         let priority = task.priority
-        Task {
+        Task { [pool, task] in
             await pool.submit(task: task, priority: priority)
-            blockedByResourceWait.remove(taskID)
+            await self.blockedByResourceWait.remove(taskID)
         }
         return [taskID]
     }

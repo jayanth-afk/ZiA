@@ -374,7 +374,9 @@ final class TaskDependencyIntegrationTests {
         #expect(out1.accepted == true)
         #expect(out2.accepted == false)
         // The second task was never admitted, so it never consumed a provider slot.
-        #expect(TaskWorkerPool.shared.queuedTaskCount == 1 || TaskWorkerPool.shared.busyWorkerCount == 1)
+        let q = await TaskWorkerPool.shared.queuedTaskCount
+        let b = await TaskWorkerPool.shared.busyWorkerCount
+        #expect(q == 1 || b == 1)
         dispose(taskID: first)
     }
 
@@ -407,8 +409,8 @@ final class TaskDependencyIntegrationTests {
         await reset()
         let bg = UUID()
         let other = UUID()
-        createTask(makeTask(id: bg, title: "bg", resources: ["bg-res"], state: .completed, steps: []))
-        createTask(makeTask(id: other, title: "other", resources: ["other-res"], state: .completed, steps: []))
+        createTask(makeTask(id: bg, title: "bg", state: .completed, resources: ["bg-res"], steps: []))
+        createTask(makeTask(id: other, title: "other", state: .completed, resources: ["other-res"], steps: []))
         // Admit 'other' (no resource contention) and 'bg' (holds bg-res).
         let outOther = await TaskOrchestration.shared.submit(task: TaskStateMachine.shared.getTask(id: other)!, priority: 0, prerequisiteIDs: [])
         #expect(outOther.accepted == true)
@@ -587,7 +589,7 @@ final class TaskDependencyIntegrationTests {
         // Diamond: (none here; keep it a clean mixed workload)
         createTask(makeTask(id: p1, title: "p1", state: .completed, steps: []))
         createTask(makeTask(id: p2, title: "p2", state: .completed, steps: []))
-        createTask(makeTask(id: d, title: "d", resources: [r], state: .completed, steps: []))
+        createTask(makeTask(id: d, title: "d", state: .completed, resources: [r], steps: []))
         createTask(makeTask(id: c1, title: "c1", prereqs: [p1]))
         createTask(makeTask(id: c2, title: "c2", prereqs: [p2]))
         createTask(makeTask(id: a, title: "a", prereqs: [c1, c2], resources: [r]))

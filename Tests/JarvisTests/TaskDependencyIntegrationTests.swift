@@ -363,8 +363,10 @@ final class TaskDependencyIntegrationTests {
         let out2 = await fresh.orch.submit(task: fresh.sm.getTask(id: second)!, priority: 0, prerequisiteIDs: [])
         #expect(out2.accepted == false)
         // The second task was never admitted to the worker pool.
-        #expect(fresh.pool.queuedTaskCount == 0)
-        #expect(fresh.pool.busyWorkerCount == 0)
+        let q = await fresh.pool.queuedTaskCount
+        let b = await fresh.pool.busyWorkerCount
+        #expect(q == 0)
+        #expect(b == 0)
 
         dispose(fresh, taskID: first)
     }

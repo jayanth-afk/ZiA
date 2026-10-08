@@ -285,6 +285,25 @@ actor TaskOrchestration: @unchecked Sendable {
     /// Test seam: return the set of task ids currently blocked on resources.
     func resourceBlockedTaskIDs() -> Set<UUID> { blockedByResourceWait }
 
+    /// Test seam: return the set of task ids currently blocked on missing prerequisites.
+    func prerequisiteBlockedTaskIDs() -> Set<UUID> { blockedByMissingPrerequisite }
+
+    /// Test seam: return whether a task is currently blocked for any reason.
+    func isBlocked(taskID: UUID) -> Bool { blockedByMissingPrerequisite.contains(taskID) || blockedByResourceWait.contains(taskID) || blockedByDependencyCycle.contains(taskID) }
+
+    /// Test seam: return whether a task is fully eligible to run (prerequisites
+    /// satisfied AND all required resources available/owned). Does not mutate state.
+    func isEligible(taskID: UUID) async -> Bool {
+        guard let task = stateMachine.getTask(id: taskID) else { return false }
+        if !stateMachine.arePrerequisitesSatisfied(taskId: taskID) { return false }
+        let resources = task.requiredResourceIDs
+        if resources.isEmpty { return true }
+        for r in resources {
+            if let owner = await lock.owner(of: r), owner != taskID { return false }
+        }
+        return true
+    }
+
     /// Test seam: return whether a task currently owns a given resource.
     func lockOwns(resource: String, task: UUID) async -> Bool { await lock.owns(resource: resource, task: task) }
 

@@ -150,10 +150,6 @@ actor TaskOrchestration: @unchecked Sendable {
         let ids = prerequisiteIDs.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         return "blocked: waiting for prerequisite task(s) [\(ids)]"
     }
-
-    func dependencyGraphSnapshot() async -> [UUID: [UUID]] {
-        return graph.dependencyEdges()
-    }
 }
 
 // MARK: - TaskDependencyGraph dependency-edge exposure (read-only diagnostics)
@@ -163,10 +159,6 @@ private extension TaskDependencyGraph {
         var copy: [UUID: [UUID]] = [:]
         // Recompute from the live waiting registrations: a task waiting on prerequisites
         // implies an edge dependent -> prerequisite.
-        for waitingID in waiting {
-            // We don't store the original prerequisite list per waiting task in this
-            // simplified model; instead we reconstruct from the dependents map.
-        }
         for (prereq, dependentsList) in dependents {
             for dependent in dependentsList {
                 copy[dependent, default: []].append(prereq)

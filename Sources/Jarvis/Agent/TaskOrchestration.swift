@@ -151,11 +151,8 @@ actor TaskOrchestration: @unchecked Sendable {
         return "blocked: waiting for prerequisite task(s) [\(ids)]"
     }
 
-    func dependencyGraphSnapshot() -> [UUID: [UUID]] {
-        Task { [graph] in
-            return await graph.dependencyEdges()
-        }
-        return [:]
+    func dependencyGraphSnapshot() async -> [UUID: [UUID]] {
+        return await graph.dependencyEdges()
     }
 }
 

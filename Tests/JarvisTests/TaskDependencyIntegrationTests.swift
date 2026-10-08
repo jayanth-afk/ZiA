@@ -79,7 +79,7 @@ final class TaskDependencyIntegrationTests {
         #expect(out.accepted == false)
         #expect(out.blockedReason != nil && out.blockedReason!.contains("blocked"))
         #expect((await fresh.orch.isBlocked(taskID: dependent)) == true)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 2. prerequisite completion unblocks dependent task
@@ -103,7 +103,7 @@ final class TaskDependencyIntegrationTests {
         #expect((await fresh.orch.isBlocked(taskID: dependent)) == false)
         let out = await fresh.orch.submit(task: fresh.sm.getTask(id: dependent)!, priority: 0, prerequisiteIDs: [])
         #expect(out.accepted == true)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 3. dependency failure blocks dependent task
@@ -121,7 +121,7 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.broadcastOutcome(taskID: prereq, state: .failed)
         #expect((await fresh.orch.isBlocked(taskID: dependent)) == true)
         #expect((await fresh.orch.isEligible(taskID: dependent)) == false)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 4. dependency cancellation is handled
@@ -139,7 +139,7 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.broadcastOutcome(taskID: prereq, state: .cancelled)
         #expect((await fresh.orch.isBlocked(taskID: dependent)) == true)
         #expect((await fresh.orch.isEligible(taskID: dependent)) == false)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 5. self-cycle rejected
@@ -167,7 +167,7 @@ final class TaskDependencyIntegrationTests {
         let out = await fresh.orch.submit(task: fresh.sm.getTask(id: a)!, priority: 0, prerequisiteIDs: [b])
         #expect(out.accepted == false)
         #expect(out.rejectedReason?.contains("cycle") == true)
-        dispose(fresh, a)
+        dispose(fresh, taskID: a)
     }
 
     // MARK: 7. indirect cycle rejected
@@ -186,7 +186,7 @@ final class TaskDependencyIntegrationTests {
         let out = await fresh.orch.submit(task: fresh.sm.getTask(id: a)!, priority: 0, prerequisiteIDs: [b])
         #expect(out.accepted == false)
         #expect(out.rejectedReason?.contains("cycle") == true)
-        dispose(fresh, a)
+        dispose(fresh, taskID: a)
     }
 
     // MARK: 8. diamond dependency works
@@ -215,7 +215,7 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.broadcastOutcome(taskID: b, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: c, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: a)) == true)
-        dispose(fresh, a)
+        dispose(fresh, taskID: a)
     }
 
     // MARK: 9. independent tasks execute concurrently
@@ -233,8 +233,8 @@ final class TaskDependencyIntegrationTests {
         #expect(outB.accepted == true)
         #expect((await fresh.orch.isBlocked(taskID: a)) == false)
         #expect((await fresh.orch.isBlocked(taskID: b)) == false)
-        dispose(fresh, a)
-        dispose(fresh, b)
+        dispose(fresh, taskID: a)
+        dispose(fresh, taskID: b)
     }
 
     // MARK: 10. same resource serializes
@@ -262,7 +262,7 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.broadcastOutcome(taskID: first, state: .completed)
         #expect((await fresh.orch.lockOwner(of: r)) == second)
         #expect((await fresh.orch.isEligible(taskID: second)) == true)
-        dispose(fresh, second)
+        dispose(fresh, taskID: second)
     }
 
     // MARK: 11. independent resources remain concurrent
@@ -279,8 +279,8 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.acquireAllResources(resources: ["res-b"], task: b)
         #expect((await fresh.orch.lockOwner(of: "res-a")) == a)
         #expect((await fresh.orch.lockOwner(of: "res-b")) == b)
-        dispose(fresh, a)
-        dispose(fresh, b)
+        dispose(fresh, taskID: a)
+        dispose(fresh, taskID: b)
     }
 
     // MARK: 12. deterministic lock ordering prevents deadlock
@@ -307,7 +307,7 @@ final class TaskDependencyIntegrationTests {
         #expect((await fresh.orch.lockOwner(of: x)) == b)
         #expect((await fresh.orch.lockOwner(of: y)) == b)
         #expect((await fresh.orch.isEligible(taskID: b)) == true)
-        dispose(fresh, b)
+        dispose(fresh, taskID: b)
     }
 
     // MARK: 13. cancellation while waiting for lock cleans up
@@ -366,7 +366,7 @@ final class TaskDependencyIntegrationTests {
         #expect(fresh.pool.queuedTaskCount == 0)
         #expect(fresh.pool.busyWorkerCount == 0)
 
-        dispose(fresh, first)
+        dispose(fresh, taskID: first)
     }
 
     // MARK: 16. provider cancellation releases reservation
@@ -381,7 +381,7 @@ final class TaskDependencyIntegrationTests {
         #expect((await fresh.orch.lockOwner(of: r)) == task)
         await fresh.orch.broadcastOutcome(taskID: task, state: .cancelled)
         #expect((await fresh.orch.lockOwner(of: r)) == nil)
-        dispose(fresh, task)
+        dispose(fresh, taskID: task)
     }
 
     // MARK: 17. foreground cancellation does not cancel background tasks
@@ -401,7 +401,7 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.broadcastOutcome(taskID: bg, state: .cancelled)
         #expect((await fresh.orch.lockOwner(of: "other-res")) == other)
         #expect((await fresh.orch.lockOwner(of: "bg-res")) == nil)
-        dispose(fresh, other)
+        dispose(fresh, taskID: other)
     }
 
     // MARK: 18. long-running tool does not unnecessarily occupy an LLM provider slot
@@ -422,7 +422,7 @@ final class TaskDependencyIntegrationTests {
         fresh.sm.setStateForTesting(taskId: slow, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: slow, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: fast)) == true)
-        dispose(fresh, fast)
+        dispose(fresh, taskID: fast)
     }
 
     // MARK: 19. rate limit respects Retry-After
@@ -439,7 +439,7 @@ final class TaskDependencyIntegrationTests {
         fresh.sm.setStateForTesting(taskId: prereq, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: prereq, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: dependent)) == true)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 20. quota exhaustion prevents admission
@@ -455,7 +455,7 @@ final class TaskDependencyIntegrationTests {
         fresh.sm.setStateForTesting(taskId: prereq, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: prereq, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: dependent)) == true)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 21. provider recovery restores eligibility
@@ -471,7 +471,7 @@ final class TaskDependencyIntegrationTests {
         fresh.sm.setStateForTesting(taskId: prereq, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: prereq, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: dependent)) == true)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 22. invalid request doesn't cause retry storm
@@ -487,7 +487,7 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.broadcastOutcome(taskID: prereq, state: .failed)
         #expect((await fresh.orch.isBlocked(taskID: dependent)) == true)
         #expect((await fresh.orch.isEligible(taskID: dependent)) == false)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 23. paid provider remains blocked
@@ -502,7 +502,7 @@ final class TaskDependencyIntegrationTests {
         fresh.sm.setStateForTesting(taskId: prereq, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: prereq, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: dependent)) == true)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 24. unknown quota remains unknown
@@ -517,7 +517,7 @@ final class TaskDependencyIntegrationTests {
         fresh.sm.setStateForTesting(taskId: prereq, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: prereq, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: dependent)) == true)
-        dispose(fresh, dependent)
+        dispose(fresh, taskID: dependent)
     }
 
     // MARK: 25. mixed multi-task workload completes without deadlock
@@ -549,7 +549,7 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.broadcastOutcome(taskID: c1, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: c2, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: a)) == true)
-        dispose(fresh, a)
+        dispose(fresh, taskID: a)
     }
 
     // MARK: 26. cancellation storm leaves no resource leaks

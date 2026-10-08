@@ -575,15 +575,14 @@ final class TaskDependencyIntegrationTests {
         #expect(oc1.accepted == true)
         #expect(oc2.accepted == true)
 
-        // Simulate the pool workers completing c1 and c2 so that a's prerequisites
-        // become satisfied (createTask hardcodes .created, so the state machine sees
-        // them as not-yet-completed until we set them here).
-        fresh.sm.setStateForTesting(taskId: c1, state: .completed)
-        fresh.sm.setStateForTesting(taskId: c2, state: .completed)
+        // Submit a while c1/c2 are still .created (prereqs not satisfied yet) so it is
+        // blocked, then simulate the workers completing c1/c2.
         let oa = await fresh.orch.submit(task: fresh.sm.getTask(id: a)!, priority: 0, prerequisiteIDs: [c1, c2])
         #expect(oa.accepted == false)
         #expect(oa.blockedReason != nil)
 
+        fresh.sm.setStateForTesting(taskId: c1, state: .completed)
+        fresh.sm.setStateForTesting(taskId: c2, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: c1, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: c2, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: a)) == true)

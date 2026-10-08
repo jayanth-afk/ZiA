@@ -16,7 +16,7 @@ actor TaskWorkerPool {
     private var isListeningToEmergencyStop: Bool = false
     private var busyCount: Int = 0
 
-    private init() {
+    init() {
         self.workers = (0..<4).map { _ in TaskWorker() }
     }
 

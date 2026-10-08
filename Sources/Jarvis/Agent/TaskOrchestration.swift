@@ -35,7 +35,7 @@ actor TaskOrchestration: @unchecked Sendable {
         lock: TaskResourceLock()
     )
 
-    private init(graph: TaskDependencyGraph, stateMachine: TaskStateMachine, pool: TaskWorkerPool, lock: TaskResourceLock) {
+    init(graph: TaskDependencyGraph, stateMachine: TaskStateMachine, pool: TaskWorkerPool, lock: TaskResourceLock) {
         self.graph = graph
         self.stateMachine = stateMachine
         self.pool = pool

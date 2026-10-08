@@ -46,13 +46,26 @@ enum QuotaValue: Sendable, Equatable {
 /// Observed quota state for one provider. Defaults to fully unknown. Populated
 /// only from provider-reported signals (headers/retry-after/billing API), never
 /// inferred from a single failure.
+///
+/// The distinction this type preserves (§5):
+///   • `configured limit`  — a static policy value ZiA was told to enforce.
+///   • `observed limit`    — a value parsed from a real provider response.
+///   • `server-reported limit` — the provider's own authoritative number.
+///   • `unknown`           — no trustworthy value exists. Stays `.unknown`.
 struct ProviderQuota: Sendable, Equatable {
     var requestsRemaining: QuotaValue = .unknown
+    var tokensRemaining: QuotaValue = .unknown
     var creditRemainingUSD: QuotaValue = .unknown
     var resetAt: Date?
     var lastUpdated: Date?
 
     static let unknown = ProviderQuota()
+
+    /// Whether any dimension is actually known. A quota where everything is
+    /// unknown is equivalent to `.unknown` and must never be treated as a limit.
+    var hasKnownValue: Bool {
+        requestsRemaining.isKnown || tokensRemaining.isKnown || creditRemainingUSD.isKnown || resetAt != nil
+    }
 }
 
 /// Static cost metadata for one provider. Prices are optional because most
@@ -162,7 +175,14 @@ final class BudgetPolicy {
     /// Cost classification for the built-in fleet. Unknown ids default to
     /// `.free` (no accidental spend attributed to a provider we don't know),
     /// while every paid provider in the fleet is declared explicitly.
-    static func defaultProfile(for id: String) -> ProviderCostProfile {
+    /// Pure cost classification, callable from any isolation domain (the
+    /// resource broker runs off the main actor and must not hop actors just to
+    /// learn a provider's cost class).
+    nonisolated static func costClass(for id: String) -> ProviderCostClass {
+        defaultProfile(for: id).costClass
+    }
+
+    nonisolated static func defaultProfile(for id: String) -> ProviderCostProfile {
         switch id {
         // NOTE: the Claude provider's runtime id is "anthropic" (its keychain
         // service); map both spellings so it can never be mistaken for free.

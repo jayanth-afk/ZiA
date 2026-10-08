@@ -74,14 +74,6 @@ actor TaskDependencyGraph: @unchecked Sendable {
         waiting.removeAll()
     }
 
-    /// Forget a task that is no longer waiting. Safe to call redundantly.
-    func unregisterWaiting(taskID: UUID) {
-        waiting.removeAll { $0 == taskID }
-        for key in dependents.keys {
-            dependents[key] = dependents[key]?.filter { $0 != taskID }
-        }
-    }
-
     /// Return the dependents that the graph would consider for reevaluation when `completedID`
     /// finishes. The caller is responsible for filtering those by its own Sendable eligibility
     /// predicate (e.g. the authoritative TaskStateMachine state) so that no non-Sendable closure

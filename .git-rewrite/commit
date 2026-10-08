@@ -1,37 +1,15 @@
-tree 38337b406e57d5371d5b2eb381b05d0a2e785d45
-parent 77de5c99134868ef2b84f240d208a489c6cc6b11
-author jayanth-afk <jaykonada007@gmail.com> 1790719667 +0530
-committer jayanth-afk <jaykonada007@gmail.com> 1790719667 +0530
+tree 9ac6b77a3879979d46a65a108eb23314c8224f50
+parent abafbaacd569b5d7465ac78507e374ec0b507677
+author jayanth-afk <jaykonada007@gmail.com> 1791368682 +0530
+committer jayanth-afk <jaykonada007@gmail.com> 1791368682 +0530
 
-feat(memory): persist conversation across launches via ConversationStore
+feat: require the Agent Bridge key for the ChatGPT brain
 
-Completed the memory foundation: ConversationStore (SQLite) is now the
-single persisted source of truth behind the in-memory conversation
-window, so cross-turn memory survives app relaunch.
+The bridge now rejects unauthenticated ChatGPT-brain requests, so Zia stores
+the control-plane key in the Keychain (new Agent Bridge service) and sends it
+as x-api-key on every health probe and completion. When the key is absent the
+brain fails closed locally with the exact reason instead of sending an
+unauthenticated request.
 
-- ConversationManager: restore-on-start (loadPersistedHistory, bounded
-  newest window, idempotent, duplicate-write guard), recordInteraction
-  writes user+assistant pairs through to the store exactly once; a
-  refusal records only the user request - a failed action can never
-  become a fabricated successful turn in memory.
-- ConversationStore.loadMessages now returns the NEWEST N messages in
-  chronological order (rowid ordering; a naive ASC LIMIT returned the
-  oldest turns); added messageCount for bounded-window diagnostics.
-- AgentLoop records every route through the same recordInteraction path
-  (one source of truth, no second copy); DirectComposer falls back to
-  the persisted window when the in-memory one is empty (fresh
-  lifecycle).
-- AppDelegate and the --goals CLI mode restore the persisted window at
-  lifecycle start; CLI paths allow the detached persist write to land
-  before exit.
-- Focused regressions: exact-once persistence + ordering, restore after
-  lifecycle reset + idempotence, bounded newest-window clipping,
-  no-fabricated-success on failure, and memory-never-authorizes
-  (PermissionGate denial unchanged with memory present).
-
-Authority untouched: memory is context only - PermissionGate,
-PlanValidator, CommandSandbox, ReferenceResolver, and TaskStateMachine
-are unchanged, and emergency stop remains independent of memory.
-
-🤖 Generated with Codebuff
+Generated with Codebuff
 Co-Authored-By: Codebuff <noreply@codebuff.com>

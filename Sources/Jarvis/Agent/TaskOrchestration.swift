@@ -146,6 +146,10 @@ actor TaskOrchestration: @unchecked Sendable {
         return stateMachine.arePrerequisitesSatisfied(taskId: taskID)
     }
 
+    func dependencyGraphSnapshot() async -> [UUID: [UUID]] {
+        return await graph.dependencyEdges()
+    }
+
     func dependencyBlockedReason(prerequisiteIDs: [UUID]) -> String {
         let ids = prerequisiteIDs.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         return "blocked: waiting for prerequisite task(s) [\(ids)]"

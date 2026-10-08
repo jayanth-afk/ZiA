@@ -129,9 +129,9 @@ actor TaskOrchestration: @unchecked Sendable {
         let madeReady = await graph.recordOutcome(outcome, eligibility: { id in
             Task { [self] in
                 let prerequisiteIDs = stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? []
-                _ = prerequisitesSatisfied(taskID: id, prerequisiteIDs)
+                _ = self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
             }
-            return prerequisitesSatisfied(taskID: id, stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? [])
+            return self.prerequisitesSatisfied(taskID: id, stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? [])
         })
         // Reevaluate each newly-made-eligible dependent through the same admission path.
         var newlyAdmitted: [UUID] = []

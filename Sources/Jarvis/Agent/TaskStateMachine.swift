@@ -874,7 +874,8 @@ final class TaskStateMachine: @unchecked Sendable {
         environmentContext: TaskEnvironmentContext? = nil,
         parentTaskID: UUID? = nil,
         priority: Int = 0,
-        prerequisiteTaskIDs: [UUID] = []
+        prerequisiteTaskIDs: [UUID] = [],
+        requiredResourceIDs: [String] = []
     ) -> JarvisTask {
         lock.lock()
         defer { lock.unlock() }
@@ -883,7 +884,8 @@ final class TaskStateMachine: @unchecked Sendable {
             id: id, title: title, goal: goal, steps: steps,
             environmentContext: environmentContext,
             parentTaskID: parentTaskID, priority: priority,
-            prerequisiteTaskIDs: prerequisiteTaskIDs
+            prerequisiteTaskIDs: prerequisiteTaskIDs,
+            requiredResourceIDs: requiredResourceIDs
         )
         tasks[task.id] = task
         stateHistory[task.id] = [(.created, Date())]

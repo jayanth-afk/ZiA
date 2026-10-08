@@ -5,18 +5,34 @@ import Testing
 /// Deterministic, network-free tests for the central provider resource broker.
 ///
 /// These pin the concurrency, budget, quota-window, priority/fairness, and
-/// cancellation guarantees the scheduler depends on. All state lives on the
-/// shared broker, so the whole suite is serialized and each test resets first.
+/// cancellation guarantees the scheduler depends on. Every test installs a
+/// private isolated broker (`beginIsolatedTesting`) so it never perturbs the
+/// production singleton or another suite, and restores it on exit.
 @MainActor
 @Suite(.serialized) struct ProviderResourceBrokerTests {
 
-    private var broker: ProviderResourceBroker { ProviderResourceBroker.shared }
-
-    private func freshBroker() async {
-        await broker.resetForTesting()
+    private func isolated() -> ProviderResourceBroker {
+        let previous = ProviderResourceBroker.beginIsolatedTesting()
+        isolatedRestores.append(previous)
+        return ProviderResourceBroker.shared
     }
 
-    /// Bounded poll instead of a fixed sleep: we proceed as soon as the actor
+    /// Previous overrides to restore, in LIFO order (a test calls `isolated()`
+    /// once, so this holds exactly one).
+    private static let restoreStack = LockedValue<[ProviderResourceBroker?]>([])
+    private var isolatedRestores: [ProviderResourceBroker?] { Self.restoreStack.value }
+
+    private func restore() {
+        guard let previous = Self.restoreStack.value.popLast() ?? nil else {
+            // popLast on empty returns nil; nothing to restore.
+            _ = ProviderResourceBroker.endIsolatedTesting(restoring: nil)
+            return
+        }
+        _ = previous
+        ProviderResourceBroker.endIsolatedTesting(restoring: previous)
+    }
+
+    /// Bounded poll instead of a fixed sleep: proceed as soon as the actor
     /// reaches the expected state, and fail (not hang) if it never does.
     private func waitUntil(_ condition: @Sendable () async -> Bool, timeout: TimeInterval = 3) async {
         let deadline = Date().addingTimeInterval(timeout)
@@ -34,348 +50,346 @@ import Testing
                                 estimatedCostUSD: cost, spentTodayUSD: spent, dailyLimitUSD: limit)
     }
 
+    /// Run a body with a fresh isolated broker, always restoring on exit.
+    private func withIsolatedBroker(_ body: (ProviderResourceBroker) async throws -> Void) async rethrows {
+        let previous = ProviderResourceBroker.beginIsolatedTesting()
+        let broker = ProviderResourceBroker.shared
+        do {
+            try await body(broker)
+        } catch {
+            ProviderResourceBroker.endIsolatedTesting(restoring: previous)
+            throw error
+        }
+        ProviderResourceBroker.endIsolatedTesting(restoring: previous)
+    }
+
     // MARK: - 1. Concurrency admission
 
     @Test func capacityOneAdmitsOneAndQueuesTheSecond() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "cap-1")
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "cap-1")
+            let first = try await broker.acquire(request("cap-1"))
 
-        let first = try await broker.acquire(request("cap-1"))
+            let second = LockedValue<ProviderReservation?>(nil)
+            let waiter = Task { second.value = try? await broker.acquire(self.request("cap-1")) }
+            await waitUntil { await broker.waitingCount(for: "cap-1") == 1 }
 
-        let second = LockedValue<ProviderReservation?>(nil)
-        let waiter = Task { second.value = try? await broker.acquire(self.request("cap-1")) }
-        await waitUntil { await self.broker.waitingCount(for: "cap-1") == 1 }
+            #expect(await broker.inFlightCount(for: "cap-1") == 1)
+            #expect(second.value == nil)
 
-        // Exactly one in flight, one parked — never two believing they own the slot.
-        #expect(await broker.inFlightCount(for: "cap-1") == 1)
-        #expect(second.value == nil)
+            await broker.release(first)
+            await waitUntil { second.value != nil }
+            #expect(second.value != nil)
+            #expect(await broker.inFlightCount(for: "cap-1") == 1)
 
-        await broker.release(first)
-        await waitUntil { second.value != nil }
-        #expect(second.value != nil)
-        #expect(await broker.inFlightCount(for: "cap-1") == 1)
-
-        if let s = second.value { await broker.release(s) }
-        _ = await waiter.result
-        #expect(await broker.inFlightCount(for: "cap-1") == 0)
-        #expect(await broker.activeReservationCount() == 0)
+            if let s = second.value { await broker.release(s) }
+            _ = await waiter.result
+            #expect(await broker.inFlightCount(for: "cap-1") == 0)
+            #expect(await broker.activeReservationCount() == 0)
+        }
     }
 
     @Test func capacityTwoNeverExceedsTwoConcurrent() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 2), for: "cap-2")
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 2), for: "cap-2")
 
-        var held: [ProviderReservation] = []
-        held.append(try await broker.acquire(request("cap-2")))
-        held.append(try await broker.acquire(request("cap-2")))
-        #expect(await broker.inFlightCount(for: "cap-2") == 2)
+            var held: [ProviderReservation] = []
+            held.append(try await broker.acquire(request("cap-2")))
+            held.append(try await broker.acquire(request("cap-2")))
+            #expect(await broker.inFlightCount(for: "cap-2") == 2)
 
-        let third = LockedValue<ProviderReservation?>(nil)
-        let waiter = Task { third.value = try? await broker.acquire(self.request("cap-2")) }
-        await waitUntil { await self.broker.waitingCount(for: "cap-2") == 1 }
-        #expect(third.value == nil, "a third request must wait while two are in flight")
+            let third = LockedValue<ProviderReservation?>(nil)
+            let waiter = Task { third.value = try? await broker.acquire(self.request("cap-2")) }
+            await waitUntil { await broker.waitingCount(for: "cap-2") == 1 }
+            #expect(third.value == nil, "a third request must wait while two are in flight")
 
-        await broker.release(held[0])
-        await waitUntil { third.value != nil }
-        #expect(await broker.inFlightCount(for: "cap-2") == 2)
+            await broker.release(held[0])
+            await waitUntil { third.value != nil }
+            #expect(await broker.inFlightCount(for: "cap-2") == 2)
 
-        for reservation in held.dropFirst() { await broker.release(reservation) }
-        if let t = third.value { await broker.release(t) }
-        _ = await waiter.result
-        #expect(await broker.activeReservationCount() == 0)
+            for reservation in held.dropFirst() { await broker.release(reservation) }
+            if let t = third.value { await broker.release(t) }
+            _ = await waiter.result
+            #expect(await broker.activeReservationCount() == 0)
+        }
     }
 
     // MARK: - 2. Budget reservation (paid providers)
 
     @Test func paidBudgetReservationNeverExceedsTheAuthorizedLimit() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 4, costClass: .paid), for: "paid-x")
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 4, costClass: .paid), for: "paid-x")
 
-        let first = try await broker.acquire(request("paid-x", cost: 0.6, spent: 0, limit: 1.0))
-        #expect(await broker.reservedCost(for: "paid-x") == 0.6)
+            let first = try await broker.acquire(request("paid-x", cost: 0.6, spent: 0, limit: 1.0))
+            #expect(await broker.reservedCost(for: "paid-x") == 0.6)
 
-        // A second concurrent paid call would project 0.6 + 0.6 = 1.2 > 1.0.
-        await #expect(throws: ResourceBrokerError.self) {
-            _ = try await self.broker.acquire(self.request("paid-x", cost: 0.6, spent: 0, limit: 1.0))
+            await #expect(throws: ResourceBrokerError.self) {
+                _ = try await broker.acquire(self.request("paid-x", cost: 0.6, spent: 0, limit: 1.0))
+            }
+            #expect(await broker.reservedCost(for: "paid-x") == 0.6,
+                    "a denied reservation must never be counted as reserved")
+
+            await broker.release(first)
+            #expect(await broker.reservedCost(for: "paid-x") == 0)
+            let again = try await broker.acquire(request("paid-x", cost: 0.6, spent: 0, limit: 1.0))
+            await broker.release(again)
         }
-        #expect(await broker.reservedCost(for: "paid-x") == 0.6,
-                "a denied reservation must never be counted as reserved")
-
-        await broker.release(first)
-        #expect(await broker.reservedCost(for: "paid-x") == 0)
-        // With the budget freed, the same request now fits.
-        let again = try await broker.acquire(request("paid-x", cost: 0.6, spent: 0, limit: 1.0))
-        await broker.release(again)
     }
 
-    @Test func paidProviderWithUnknownBudgetFailsClosed() async {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 4, costClass: .paid), for: "paid-unknown")
-
-        // No known daily limit → the broker must not invent one.
-        await #expect(throws: ResourceBrokerError.self) {
-            _ = try await self.broker.acquire(self.request("paid-unknown", cost: 0, spent: 0, limit: nil))
-        }
-        // No known observed spend → also fail closed.
-        await #expect(throws: ResourceBrokerError.self) {
-            _ = try await self.broker.acquire(self.request("paid-unknown", cost: 0, spent: nil, limit: 5))
+    @Test func paidProviderWithUnknownBudgetFailsClosed() async throws {
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 4, costClass: .paid), for: "paid-unknown")
+            await #expect(throws: ResourceBrokerError.self) {
+                _ = try await broker.acquire(self.request("paid-unknown", cost: 0, spent: 0, limit: nil))
+            }
+            await #expect(throws: ResourceBrokerError.self) {
+                _ = try await broker.acquire(self.request("paid-unknown", cost: 0, spent: nil, limit: 5))
+            }
         }
     }
 
     @Test func trialReserveCannotBeDoubleSpent() async throws {
-        await freshBroker()
-        // A reserve/trial provider is single-slot: concurrent tasks share it, never
-        // double-spend it.
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1, costClass: .trial), for: "reserve-x")
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1, costClass: .trial), for: "reserve-x")
+            let first = try await broker.acquire(request("reserve-x"))
+            let second = LockedValue<ProviderReservation?>(nil)
+            let waiter = Task { second.value = try? await broker.acquire(self.request("reserve-x")) }
+            await waitUntil { await broker.waitingCount(for: "reserve-x") == 1 }
+            #expect(second.value == nil)
 
-        let first = try await broker.acquire(request("reserve-x"))
-        let second = LockedValue<ProviderReservation?>(nil)
-        let waiter = Task { second.value = try? await broker.acquire(self.request("reserve-x")) }
-        await waitUntil { await self.broker.waitingCount(for: "reserve-x") == 1 }
-        #expect(second.value == nil)
-
-        await broker.release(first)
-        await waitUntil { second.value != nil }
-        #expect(second.value != nil)
-        if let s = second.value { await broker.release(s) }
-        _ = await waiter.result
+            await broker.release(first)
+            await waitUntil { second.value != nil }
+            #expect(second.value != nil)
+            if let s = second.value { await broker.release(s) }
+            _ = await waiter.result
+        }
     }
 
     // MARK: - 3. Quota windows (only when actually known)
 
     @Test func configuredRequestWindowAdmitsOnlyWithinLimit() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 8, requestsPerMinute: 1), for: "win-x")
-
-        let first = try await broker.acquire(request("win-x"))
-        await #expect(throws: ResourceBrokerError.self) {
-            _ = try await self.broker.acquire(self.request("win-x"))
-        }
-        await broker.release(first)
-        // Releasing a slot does not reopen a *rate window* — the request is still
-        // within the minute.
-        await #expect(throws: ResourceBrokerError.self) {
-            _ = try await self.broker.acquire(self.request("win-x"))
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 8, requestsPerMinute: 1), for: "win-x")
+            let first = try await broker.acquire(request("win-x"))
+            await #expect(throws: ResourceBrokerError.self) {
+                _ = try await broker.acquire(self.request("win-x"))
+            }
+            await broker.release(first)
+            await #expect(throws: ResourceBrokerError.self) {
+                _ = try await broker.acquire(self.request("win-x"))
+            }
         }
     }
 
     @Test func unknownWindowIsNeverInvented() async throws {
-        await freshBroker()
-        // No requestsPerMinute configured → no window enforcement at all.
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 4), for: "no-window")
-        var held: [ProviderReservation] = []
-        for _ in 0..<4 { held.append(try await broker.acquire(request("no-window"))) }
-        #expect(await broker.inFlightCount(for: "no-window") == 4)
-        for reservation in held { await broker.release(reservation) }
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 4), for: "no-window")
+            var held: [ProviderReservation] = []
+            for _ in 0..<4 { held.append(try await broker.acquire(request("no-window"))) }
+            #expect(await broker.inFlightCount(for: "no-window") == 4)
+            for reservation in held { await broker.release(reservation) }
+        }
     }
 
     @Test func observedZeroQuotaBlocksUntilReset() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 4), for: "obs-x")
-        let now = Date()
-
-        // Server-reported exhaustion with a future reset → blocked.
-        await broker.observeQuota(
-            ProviderQuota(requestsRemaining: .known(0), tokensRemaining: .unknown,
-                          resetAt: now.addingTimeInterval(30)),
-            for: "obs-x")
-        await #expect(throws: ResourceBrokerError.self) {
-            _ = try await self.broker.acquire(self.request("obs-x"))
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 4), for: "obs-x")
+            let now = Date()
+            await broker.observeQuota(
+                ProviderQuota(requestsRemaining: .known(0), tokensRemaining: .unknown,
+                              resetAt: now.addingTimeInterval(30)),
+                for: "obs-x")
+            await #expect(throws: ResourceBrokerError.self) {
+                _ = try await broker.acquire(self.request("obs-x"))
+            }
+            await broker.observeQuota(
+                ProviderQuota(requestsRemaining: .known(0), tokensRemaining: .unknown,
+                              resetAt: now.addingTimeInterval(-1)),
+                for: "obs-x")
+            let reservation = try await broker.acquire(request("obs-x"))
+            await broker.release(reservation)
         }
-
-        // Once the reset has passed, capacity is available again.
-        await broker.observeQuota(
-            ProviderQuota(requestsRemaining: .known(0), tokensRemaining: .unknown,
-                          resetAt: now.addingTimeInterval(-1)),
-            for: "obs-x")
-        let reservation = try await broker.acquire(request("obs-x"))
-        await broker.release(reservation)
     }
 
-    @Test func unknownQuotaSignalIsNotStored() async {
-        await freshBroker()
-        await broker.observeQuota(.unknown, for: "ghost-x")
-        let snapshot = await broker.snapshot()
-        #expect(snapshot.provider("ghost-x") == nil, "an all-unknown quota must not create state")
+    @Test func unknownQuotaSignalIsNotStored() async throws {
+        try await withIsolatedBroker { broker in
+            await broker.observeQuota(.unknown, for: "ghost-x")
+            let snapshot = await broker.snapshot()
+            #expect(snapshot.provider("ghost-x") == nil, "an all-unknown quota must not create state")
+        }
     }
 
     // MARK: - 4. Priority + fairness
 
     @Test func highPriorityReceivesCapacityBeforeLowPriority() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "p1")
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "p1")
+            let holder = try await broker.acquire(request("p1", priority: 0))
 
-        let holder = try await broker.acquire(request("p1", priority: 0))
+            let low = LockedValue<ProviderReservation?>(nil)
+            let high = LockedValue<ProviderReservation?>(nil)
+            let lowTask = Task { low.value = try? await broker.acquire(self.request("p1", priority: TaskPriority.backgroundMaintenance)) }
+            await waitUntil { await broker.waitingCount(for: "p1") == 1 }
+            let highTask = Task { high.value = try? await broker.acquire(self.request("p1", priority: TaskPriority.interactive)) }
+            await waitUntil { await broker.waitingCount(for: "p1") == 2 }
 
-        let low = LockedValue<ProviderReservation?>(nil)
-        let high = LockedValue<ProviderReservation?>(nil)
-        let lowTask = Task { low.value = try? await self.broker.acquire(self.request("p1", priority: TaskPriority.backgroundMaintenance)) }
-        await waitUntil { await self.broker.waitingCount(for: "p1") == 1 }
-        let highTask = Task { high.value = try? await self.broker.acquire(self.request("p1", priority: TaskPriority.interactive)) }
-        await waitUntil { await self.broker.waitingCount(for: "p1") == 2 }
+            await broker.release(holder)
+            await waitUntil { high.value != nil || low.value != nil }
 
-        await broker.release(holder)
-        await waitUntil { high.value != nil || low.value != nil }
+            #expect(high.value != nil, "the interactive waiter must win the freed slot")
+            #expect(low.value == nil, "the background waiter must still be queued")
+            #expect(await broker.waitingCount(for: "p1") == 1)
 
-        #expect(high.value != nil, "the interactive waiter must win the freed slot")
-        #expect(low.value == nil, "the background waiter must still be queued")
-        #expect(await broker.waitingCount(for: "p1") == 1)
-
-        if let h = high.value { await broker.release(h) }
-        await waitUntil { low.value != nil }
-        if let l = low.value { await broker.release(l) }
-        _ = await lowTask.result
-        _ = await highTask.result
+            if let h = high.value { await broker.release(h) }
+            await waitUntil { low.value != nil }
+            if let l = low.value { await broker.release(l) }
+            _ = await lowTask.result
+            _ = await highTask.result
+        }
     }
 
     @Test func equalPriorityIsStrictlyFIFO() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "fifo")
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "fifo")
+            let holder = try await broker.acquire(request("fifo"))
+            let a = LockedValue<ProviderReservation?>(nil)
+            let b = LockedValue<ProviderReservation?>(nil)
+            let c = LockedValue<ProviderReservation?>(nil)
+            let ta = Task { a.value = try? await broker.acquire(self.request("fifo")) }
+            await waitUntil { await broker.waitingCount(for: "fifo") == 1 }
+            let tb = Task { b.value = try? await broker.acquire(self.request("fifo")) }
+            await waitUntil { await broker.waitingCount(for: "fifo") == 2 }
+            let tc = Task { c.value = try? await broker.acquire(self.request("fifo")) }
+            await waitUntil { await broker.waitingCount(for: "fifo") == 3 }
 
-        let holder = try await broker.acquire(request("fifo"))
-        let a = LockedValue<ProviderReservation?>(nil)
-        let b = LockedValue<ProviderReservation?>(nil)
-        let c = LockedValue<ProviderReservation?>(nil)
-        let ta = Task { a.value = try? await self.broker.acquire(self.request("fifo")) }
-        await waitUntil { await self.broker.waitingCount(for: "fifo") == 1 }
-        let tb = Task { b.value = try? await self.broker.acquire(self.request("fifo")) }
-        await waitUntil { await self.broker.waitingCount(for: "fifo") == 2 }
-        let tc = Task { c.value = try? await self.broker.acquire(self.request("fifo")) }
-        await waitUntil { await self.broker.waitingCount(for: "fifo") == 3 }
+            await broker.release(holder)
+            await waitUntil { a.value != nil }
+            #expect(a.value != nil && b.value == nil && c.value == nil, "the earliest waiter goes first")
 
-        await broker.release(holder)
-        await waitUntil { a.value != nil }
-        #expect(a.value != nil && b.value == nil && c.value == nil, "the earliest waiter goes first")
-
-        if let ra = a.value { await broker.release(ra) }
-        await waitUntil { b.value != nil }
-        #expect(b.value != nil && c.value == nil)
-        if let rb = b.value { await broker.release(rb) }
-        await waitUntil { c.value != nil }
-        if let rc = c.value { await broker.release(rc) }
-        _ = await ta.result; _ = await tb.result; _ = await tc.result
+            if let ra = a.value { await broker.release(ra) }
+            await waitUntil { b.value != nil }
+            #expect(b.value != nil && c.value == nil)
+            if let rb = b.value { await broker.release(rb) }
+            await waitUntil { c.value != nil }
+            if let rc = c.value { await broker.release(rc) }
+            _ = await ta.result; _ = await tb.result; _ = await tc.result
+        }
     }
 
     @Test func agingLetsAnOldWaiterEventuallyOutrankANewcomer() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "age")
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "age")
+            let now = LockedValue<Date>(Date(timeIntervalSince1970: 1_700_000_000))
+            await broker.setClock { now.value }
 
-        // Deterministic clock so aging is exact.
-        let now = LockedValue<Date>(Date(timeIntervalSince1970: 1_700_000_000))
-        await broker.setClock { now.value }
+            let holder = try await broker.acquire(request("age", priority: 0))
+            let old = LockedValue<ProviderReservation?>(nil)
+            let newcomer = LockedValue<ProviderReservation?>(nil)
+            let oldTask = Task { old.value = try? await broker.acquire(self.request("age", priority: 10)) }
+            await waitUntil { await broker.waitingCount(for: "age") == 1 }
 
-        let holder = try await broker.acquire(request("age", priority: 0))
+            now.value = now.value.addingTimeInterval(100)
 
-        let old = LockedValue<ProviderReservation?>(nil)
-        let newcomer = LockedValue<ProviderReservation?>(nil)
-        let oldTask = Task { old.value = try? await self.broker.acquire(self.request("age", priority: 10)) }
-        await waitUntil { await self.broker.waitingCount(for: "age") == 1 }
+            let newcomerTask = Task { newcomer.value = try? await broker.acquire(self.request("age", priority: 20)) }
+            await waitUntil { await broker.waitingCount(for: "age") == 2 }
 
-        // The old waiter ages well past the priority gap (cap = 20 at 5s/step).
-        now.value = now.value.addingTimeInterval(100)
+            await broker.release(holder)
+            await waitUntil { old.value != nil || newcomer.value != nil }
+            #expect(old.value != nil, "aging must let a long-waiting waiter break starvation")
 
-        let newcomerTask = Task { newcomer.value = try? await self.broker.acquire(self.request("age", priority: 20)) }
-        await waitUntil { await self.broker.waitingCount(for: "age") == 2 }
-
-        await broker.release(holder)
-        await waitUntil { old.value != nil || newcomer.value != nil }
-        #expect(old.value != nil, "aging must let a long-waiting waiter break starvation")
-
-        if let r = old.value { await broker.release(r) }
-        await waitUntil { newcomer.value != nil }
-        if let r = newcomer.value { await broker.release(r) }
-        _ = await oldTask.result; _ = await newcomerTask.result
+            if let r = old.value { await broker.release(r) }
+            await waitUntil { newcomer.value != nil }
+            if let r = newcomer.value { await broker.release(r) }
+            _ = await oldTask.result; _ = await newcomerTask.result
+        }
     }
 
     // MARK: - 5. Cancellation safety
 
     @Test func cancellationWhileWaitingRemovesTheWaiterCleanly() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "cancel-wait")
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "cancel-wait")
+            let holder = try await broker.acquire(request("cancel-wait"))
+            let waiter = Task { try await broker.acquire(self.request("cancel-wait")) }
+            await waitUntil { await broker.waitingCount(for: "cancel-wait") == 1 }
 
-        let holder = try await broker.acquire(request("cancel-wait"))
-        let waiter = Task { try await self.broker.acquire(self.request("cancel-wait")) }
-        await waitUntil { await self.broker.waitingCount(for: "cancel-wait") == 1 }
+            waiter.cancel()
+            let result = await waiter.result
+            #expect({
+                if case .failure = result { return true }
+                return false
+            }(), "a cancelled waiter must fail, not receive a reservation")
 
-        waiter.cancel()
-        let result = await waiter.result
-        #expect({
-            if case .failure = result { return true }
-            return false
-        }(), "a cancelled waiter must fail, not receive a reservation")
+            await waitUntil { await broker.waitingCount() == 0 }
+            #expect(await broker.activeReservationCount() == 1, "only the holder's reservation remains")
 
-        await waitUntil { await self.broker.waitingCount() == 0 }
-        #expect(await broker.activeReservationCount() == 1, "only the holder's reservation remains")
-
-        await broker.release(holder)
-        #expect(await broker.activeReservationCount() == 0)
-        #expect(await broker.inFlightCount(for: "cancel-wait") == 0, "no leaked slot")
+            await broker.release(holder)
+            #expect(await broker.activeReservationCount() == 0)
+            #expect(await broker.inFlightCount(for: "cancel-wait") == 0, "no leaked slot")
+        }
     }
 
     @Test func releaseIsIdempotentAndNeverInvertsCapacity() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "idem")
-        let reservation = try await broker.acquire(request("idem"))
-        await broker.release(reservation)
-        await broker.release(reservation) // double-release must be ignored
-        #expect(await broker.inFlightCount(for: "idem") == 0)
-        let again = try await broker.acquire(request("idem"))
-        await broker.release(again)
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "idem")
+            let reservation = try await broker.acquire(request("idem"))
+            await broker.release(reservation)
+            await broker.release(reservation)
+            #expect(await broker.inFlightCount(for: "idem") == 0)
+            let again = try await broker.acquire(request("idem"))
+            await broker.release(again)
+        }
     }
 
     @Test func concurrentCancellationAndReleaseLeaveNoLeaks() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 2), for: "stress")
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 2), for: "stress")
+            var holders: [ProviderReservation] = []
+            holders.append(try await broker.acquire(request("stress")))
+            holders.append(try await broker.acquire(request("stress")))
 
-        // Launch a batch of waiters, cancel half of them, release as slots free.
-        var holders: [ProviderReservation] = []
-        holders.append(try await broker.acquire(request("stress")))
-        holders.append(try await broker.acquire(request("stress")))
-
-        var waiters: [Task<Void, Never>] = []
-        for _ in 0..<10 {
-            let task = Task<Void, Never> {
-                if let reservation = try? await self.broker.acquire(self.request("stress")) {
-                    await self.broker.release(reservation)
+            var waiters: [Task<Void, Never>] = []
+            for _ in 0..<10 {
+                let task = Task<Void, Never> {
+                    if let reservation = try? await broker.acquire(self.request("stress")) {
+                        await broker.release(reservation)
+                    }
                 }
+                waiters.append(task)
             }
-            waiters.append(task)
+            await waitUntil { await broker.waitingCount() >= 8 }
+
+            for (index, task) in waiters.enumerated() where index % 2 == 0 { task.cancel() }
+            for reservation in holders { await broker.release(reservation) }
+            for task in waiters { _ = await task.result }
+
+            await waitUntil { await broker.waitingCount() == 0 }
+            #expect(await broker.activeReservationCount() == 0, "no reservation may leak")
+            #expect(await broker.inFlightCount(for: "stress") == 0, "no slot may leak")
         }
-        await waitUntil { await self.broker.waitingCount() >= 8 }
-
-        for (index, task) in waiters.enumerated() where index % 2 == 0 { task.cancel() }
-        for reservation in holders { await broker.release(reservation) }
-        for task in waiters { _ = await task.result }
-
-        await waitUntil { await self.broker.waitingCount() == 0 }
-        #expect(await broker.activeReservationCount() == 0, "no reservation may leak")
-        #expect(await broker.inFlightCount(for: "stress") == 0, "no slot may leak")
     }
 
     // MARK: - 6. Diagnostics
 
     @Test func snapshotExplainsStateTruthfully() async throws {
-        await freshBroker()
-        await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1, requestsPerMinute: 5, costClass: .paid), for: "diag")
-        let reservation = try await broker.acquire(request("diag", cost: 0.1, spent: 0, limit: 5))
+        try await withIsolatedBroker { broker in
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1, requestsPerMinute: 5, costClass: .paid), for: "diag")
+            let reservation = try await broker.acquire(request("diag", cost: 0.1, spent: 0, limit: 5))
 
-        let snapshot = await broker.snapshot()
-        let provider = snapshot.provider("diag")
-        #expect(provider?.inFlight == 1)
-        #expect(provider?.maxConcurrent == 1)
-        #expect(provider?.requestsPerMinute == 5)
-        #expect(provider?.requestsInWindow == 1)
-        #expect(provider?.reservedCostUSD == 0.1)
-        #expect(!snapshot.recentDecisions.isEmpty)
+            let snapshot = await broker.snapshot()
+            let provider = snapshot.provider("diag")
+            #expect(provider?.inFlight == 1)
+            #expect(provider?.maxConcurrent == 1)
+            #expect(provider?.requestsPerMinute == 5)
+            #expect(provider?.requestsInWindow == 1)
+            #expect(provider?.reservedCostUSD == 0.1)
+            #expect(!snapshot.recentDecisions.isEmpty)
 
-        await broker.release(reservation)
+            await broker.release(reservation)
+        }
     }
-}
 
-/// Integration: the broker must sit on the *real* dispatch path, so concurrent
-/// fallback executions against a single-slot provider are serialized.
-@MainActor
-@Suite(.serialized) struct ProviderResourceBrokerIntegrationTests {
+    // MARK: - 7. Integration: the broker is on the real dispatch path
 
     /// A provider whose stream records how many calls overlap.
     actor ConcurrencyProbe {
@@ -414,24 +428,24 @@ import Testing
     }
 
     @Test func concurrentExecutionsRespectTheBrokerSlotLimit() async throws {
-        await ProviderResourceBroker.shared.resetForTesting()
-        let probe = ConcurrencyProbe()
-        let provider = GatedProvider(id: "gated-1", probe: probe)
-        await ProviderResourceBroker.shared.configure(
-            ProviderCapacityPolicy(maxConcurrent: 1), for: "gated-1")
+        try await withIsolatedBroker { broker in
+            let probe = ConcurrencyProbe()
+            let provider = GatedProvider(id: "gated-1", probe: probe)
+            await broker.configure(ProviderCapacityPolicy(maxConcurrent: 1), for: "gated-1")
 
-        async let first = ProviderManager.shared.executeFallbackChain(
-            [provider], messages: [Message(role: .user, content: "a")])
-        async let second = ProviderManager.shared.executeFallbackChain(
-            [provider], messages: [Message(role: .user, content: "b")])
-        async let third = ProviderManager.shared.executeFallbackChain(
-            [provider], messages: [Message(role: .user, content: "c")])
+            async let first = ProviderManager.shared.executeFallbackChain(
+                [provider], messages: [Message(role: .user, content: "a")])
+            async let second = ProviderManager.shared.executeFallbackChain(
+                [provider], messages: [Message(role: .user, content: "b")])
+            async let third = ProviderManager.shared.executeFallbackChain(
+                [provider], messages: [Message(role: .user, content: "c")])
 
-        _ = try await (first, second, third)
+            _ = try await (first, second, third)
 
-        #expect(await probe.maxActive == 1,
-                "a single-slot provider must never serve two requests at once")
-        #expect(await ProviderResourceBroker.shared.activeReservationCount() == 0,
-                "every reservation must be released after dispatch")
+            #expect(await probe.maxActive == 1,
+                    "a single-slot provider must never serve two requests at once")
+            #expect(await broker.activeReservationCount() == 0,
+                    "every reservation must be released after dispatch")
+        }
     }
 }

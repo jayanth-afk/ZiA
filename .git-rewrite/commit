@@ -1,0 +1,6 @@
+tree 13a2a2aa45265bd9d8d37f2f0639e0e26ddfccf4
+parent 32b7ebac6afd23e80aaf6bb4e209f7113c2a525b
+author jayanth-afk <jaykonada007@gmail.com> 1790966104 +0530
+committer jayanth-afk <jaykonada007@gmail.com> 1790966104 +0530
+
+test: treat unavailable screen capture as skipped

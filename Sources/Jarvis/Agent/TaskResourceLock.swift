@@ -125,7 +125,7 @@ actor TaskResourceLock: @unchecked Sendable {
     func removeFromWaitQueues(task: UUID) {
         for key in waiters.keys {
             waiters[key]?.removeAll { $0 == task }
-            if waiters[key].isEmpty {
+            if waiters[key]?.isEmpty == true {
                 waiters.removeValue(forKey: key)
             }
         }

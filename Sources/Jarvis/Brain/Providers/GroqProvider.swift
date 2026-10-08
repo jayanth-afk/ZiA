@@ -298,10 +298,7 @@ actor GroqProvider: LLMProvider {
     /// broker. Absent headers are ignored — an unknown quota is never invented.
     /// This is the sanctioned intake path for server-reported limits.
     private func reportQuota(from response: URLResponse?) async {
-        guard let http = response as? HTTPURLResponse else { return }
-        let quota = ProviderQuotaSignal.parse(response: http)
-        guard quota.hasKnownValue else { return }
-        await ProviderResourceBroker.shared.observeQuota(quota, for: id)
+        await ProviderQuotaSignal.report(response, for: id)
     }
 
     private static func usage(from json: [String: Any]) -> TokenUsage {

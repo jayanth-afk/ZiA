@@ -1,0 +1,17 @@
+tree 43d1b67fb95385ba90ee4434445068058e0b53c2
+parent c7daa9153f37d4f16844b549822a57d2d8ee2ab1
+author jayanth-afk <jaykonada007@gmail.com> 1790538176 +0530
+committer jayanth-afk <jaykonada007@gmail.com> 1790538176 +0530
+
+feat: append-only planner evidence ledger for reconstructable trajectories
+
+Every planning attempt is now persistently recorded with runID, taskID,
+cycleID, attempt number, repair classification, raw model output, validator
+errors, and compiled arguments, attributed via an explicit run-to-task
+registry instead of latest-goal heuristics. The schema experiment harness
+adds per-run argument-preservation chains (raw -> compiled -> executed ->
+stdout) and plan-snapshot history so initial plans are never overwritten by
+replans. Reporting-only: no agent behavior depends on the ledger.
+
+🤖 Generated with Codebuff
+Co-Authored-By: Codebuff <noreply@codebuff.com>

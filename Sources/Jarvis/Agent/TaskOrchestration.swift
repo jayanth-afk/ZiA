@@ -69,7 +69,7 @@ actor TaskOrchestration: @unchecked Sendable {
 
         // If we already have the task and it is not eligible yet, register it as waiting
         // and transition it into the BLOCKED state deterministically.
-        if !prerequisitesSatisfied(taskID: taskID, prerequisiteIDs: prerequisiteIDs) {
+        if !prerequisitesSatisfied(taskID: taskID, prerequisiteIDs) {
             await graph.registerWaiting(taskID: taskID, prerequisiteIDs: prerequisiteIDs)
             blockedByMissingPrerequisite.insert(taskID)
             do {
@@ -100,7 +100,7 @@ actor TaskOrchestration: @unchecked Sendable {
         if blockedByDependencyCycle.contains(taskID) { return [] }
 
         // If prerequisites still missing, keep waiting registration accurate and stay blocked.
-        if !prerequisitesSatisfied(taskID: taskID, prerequisiteIDs: prerequisiteIDs) {
+        if !prerequisitesSatisfied(taskID: taskID, prerequisiteIDs) {
             await graph.registerWaiting(taskID: taskID, prerequisiteIDs: prerequisiteIDs)
             blockedByMissingPrerequisite.insert(taskID)
             return []

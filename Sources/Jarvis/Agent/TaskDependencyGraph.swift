@@ -62,8 +62,8 @@ actor TaskDependencyGraph: @unchecked Sendable {
     /// Forget a task that is no longer waiting. Safe to call redundantly.
     func unregisterWaiting(taskID: UUID) {
         waiting.removeAll { $0 == taskID }
-        for list in dependents.values {
-            list.removeAll { $0 == taskID }
+        for key in dependents.keys {
+            dependents[key] = dependents[key]?.filter { $0 != taskID }
         }
     }
 
@@ -148,7 +148,7 @@ actor TaskDependencyGraph: @unchecked Sendable {
         var inDegree: [UUID: Int] = [:]
         for src in edges.keys {
             inDegree[src, default: 0] += 0
-            for dst in edges[src] { inDegree[dst, default: 0] += 1 }
+            if let dsts = edges[src] { for dst in dsts { inDegree[dst, default: 0] += 1 } }
         }
 
         var queue: [UUID] = inDegree.keys.filter { inDegree[$0, default: 0] == 0 }.sorted { $0.uuidString < $1.uuidString }

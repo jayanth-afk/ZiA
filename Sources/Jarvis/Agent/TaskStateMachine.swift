@@ -147,6 +147,7 @@ struct JarvisTask: Identifiable, Sendable {
     var priority: Int
     var result: String?
     var prerequisiteTaskIDs: [UUID]
+    var requiredResourceIDs: [String]
 
     init(
         id: UUID = UUID(),
@@ -166,7 +167,8 @@ struct JarvisTask: Identifiable, Sendable {
         parentTaskID: UUID? = nil,
         priority: Int = 0,
         result: String? = nil,
-        prerequisiteTaskIDs: [UUID] = []
+        prerequisiteTaskIDs: [UUID] = [],
+        requiredResourceIDs: [String] = []
     ) {
         self.id = id
         self.title = title
@@ -186,6 +188,7 @@ struct JarvisTask: Identifiable, Sendable {
         self.priority = priority
         self.result = result
         self.prerequisiteTaskIDs = prerequisiteTaskIDs
+        self.requiredResourceIDs = requiredResourceIDs
     }
 
     /// Progress completion percentage (0.0 to 1.0).

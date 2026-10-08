@@ -53,6 +53,7 @@ actor TaskDependencyGraph: @unchecked Sendable {
     func validateSubmission(
         taskID: UUID,
         prerequisiteIDs: [UUID],
+        existingDependents: [UUID: [UUID]],
         allKnownTaskIDs: Set<UUID>
     ) -> String? {
         guard !prerequisiteIDs.contains(taskID) else {
@@ -61,8 +62,9 @@ actor TaskDependencyGraph: @unchecked Sendable {
         guard prerequisiteIDs.allSatisfy({ allKnownTaskIDs.contains($0) }) else {
             return "prerequisite dependency references a task not present in the dependency graph"
         }
-        if let cycle = smallestCycle(around: taskID, in: transitiveDependencies(taskID, from: makeLocalGraph(prerequisiteIDs)) ) {
-            return "dependency cycle detected: \(cycle)"
+        let subgraph = buildSubgraph(taskID: taskID, prerequisiteIDs: prerequisiteIDs, existingDependents: existingDependents)
+        if let cycle = smallestCycle(around: taskID, in: subgraph) {
+            return "dependency cycle detected: \(cycle.map { $0.uuidString.prefix(8) }.joined(separator: " -> " ))"
         }
         return nil
     }
@@ -121,61 +123,6 @@ actor TaskDependencyGraph: @unchecked Sendable {
 
     // MARK: - cycle detection
 
-    /// Returns the smallest cycle reachable from `start`, or nil when acyclic.
-    private func smallestCycle(around start: UUID, in edges: [UUID: [UUID]]) -> [UUID]? {
-        // Kahn’s algorithm on the full graph; remaining nodes with in-degree > 0 are in cycles.
-        var inDegree: [UUID: Int] = [:]
-        for src in edges.keys {
-            inDegree[src, default: 0] += 0
-            for dst in edges[src] { inDegree[dst, default: 0] += 1 }
-        }
-
-        var queue: [UUID] = inDegree.keys.filter { inDegree[$0, default: 0] == 0 }.sorted { $0.uuidString < $1.uuidString }
-        var remaining = Set(inDegree.keys)
-        while !queue.isEmpty {
-            let node = queue.removeFirst()
-            remaining.remove(node)
-            for neighbor in (edges[node] ?? []) {
-                inDegree[neighbor, default: 0] -= 1
-                if inDegree[neighbor] == 0 && remaining.contains(neighbor) {
-                    queue.append(neighbor)
-                }
-            }
-        }
-
-        guard !remaining.isEmpty else { return nil }
-        // Pick a deterministic cycle starting from the smallest remaining node.
-        let first = remaining.sorted { $0.uuidString < $1.uuidString }.first!
-        return cycleContaining(first, in: edges)
-    }
-
-    private func cycleContaining(_ start: UUID, in edges: [UUID: [UUID]]) -> [UUID]? {
-        var visited: [UUID: UUID] = [:] // node -> predecessor
-        var stack: [UUID] = [start]
-        visited[start] = start
-        while let current = stack.popLast() {
-            for next in (edges[current] ?? []).sorted { $0.uuidString < $1.uuidString } {
-                if next == start {
-                    // Reconstruct cycle
-                    var cycle: [UUID] = [start]
-                    var cursor = current
-                    while cursor != start {
-                        cycle.append(cursor)
-                        guard let pred = visited[cursor] else { return nil }
-                        cursor = pred
-                    }
-                    cycle.reverse()
-                    return cycle
-                }
-                if visited[next] == nil {
-                    visited[next] = current
-                    stack.append(next)
-                }
-            }
-        }
-        return nil
-    }
-
     /// Build the dependency subgraph used for cycle detection: a set of edges from each
     /// node to the nodes it depends on. For submission of `taskID`, we add the edge
     /// taskID -> each declared prerequisite, plus any prerequisite->prerequisite edges already
@@ -209,18 +156,19 @@ actor TaskDependencyGraph: @unchecked Sendable {
         }
         let subgraph = buildSubgraph(taskID: taskID, prerequisiteIDs: prerequisiteIDs, existingDependents: existingDependents)
         if let cycle = smallestCycle(around: taskID, in: subgraph) {
-            return "dependency cycle detected: \(cycle.map { $0.uuidString.prefix(8) }.joined(separator: " -> "))"
+            return "dependency cycle detected: \(cycle.map { $0.uuidString.prefix(8) }.joined(separator: " -> " ))"
         }
         return nil
     }
 
-    /// Temporary in-memory graph used only during submission validation. Not persisted.
-    private func smallestCycle(around start: UUID, in edges: [UUID: [UUID]]) -> [UUID]? {
+    /// Returns the smallest cycle reachable from `start`, or nil when acyclic.
+    func smallestCycle(around start: UUID, in edges: [UUID: [UUID]]) -> [UUID]? {
         var inDegree: [UUID: Int] = [:]
         for src in edges.keys {
             inDegree[src, default: 0] += 0
             for dst in edges[src] { inDegree[dst, default: 0] += 1 }
         }
+
         var queue: [UUID] = inDegree.keys.filter { inDegree[$0, default: 0] == 0 }.sorted { $0.uuidString < $1.uuidString }
         var remaining = Set(inDegree.keys)
         while !queue.isEmpty {
@@ -233,18 +181,21 @@ actor TaskDependencyGraph: @unchecked Sendable {
                 }
             }
         }
+
         guard !remaining.isEmpty else { return nil }
+        // Pick a deterministic cycle starting from the smallest remaining node.
         let first = remaining.sorted { $0.uuidString < $1.uuidString }.first!
         return cycleContaining(first, in: edges)
     }
 
     private func cycleContaining(_ start: UUID, in edges: [UUID: [UUID]]) -> [UUID]? {
-        var visited: [UUID: UUID] = [:]
+        var visited: [UUID: UUID] = [:] // node -> predecessor
         var stack: [UUID] = [start]
         visited[start] = start
         while let current = stack.popLast() {
             for next in (edges[current] ?? []).sorted(by: { $0.uuidString < $1.uuidString }) {
                 if next == start {
+                    // Reconstruct cycle
                     var cycle: [UUID] = [start]
                     var cursor = current
                     while cursor != start {

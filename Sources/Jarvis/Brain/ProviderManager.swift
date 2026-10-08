@@ -438,7 +438,8 @@ final class ProviderManager {
             messages: messages,
             context: context,
             onChunk: onChunk,
-            label: "category \(category.rawValue)")
+            label: "category \(category.rawValue)",
+            requirements: requirements(for: category))
         return result.response
     }
 
@@ -548,10 +549,18 @@ final class ProviderManager {
         onChunk: (@Sendable (String) -> Void)? = nil,
         label: String = "chain",
         priority: Int = TaskPriority.interactive,
-        broker: ProviderResourceBroker = .shared
+        broker: ProviderResourceBroker = .shared,
+        requirements: TaskRequirements? = nil
     ) async throws -> (response: String, providerID: String) {
         let estimatedTokens = Self.estimatedTokens(for: messages)
-        for provider in chain {
+        // Capability-aware ordering: eligibility (capability/privacy/context/
+        // quota/health) and suitability (strength/latency/cost/capacity). When
+        // no requirements are supplied the caller's order is used verbatim.
+        var orderedChain = chain
+        if let requirements {
+            orderedChain = await rankProviders(for: chain, requirements: requirements, broker: broker)
+        }
+        for provider in orderedChain {
             if isQuarantined(provider.id) {
                 JarvisLogger.brain.warning("Skipping \(provider.id): \(self.quarantineReason(provider.id) ?? "quarantined")")
                 continue

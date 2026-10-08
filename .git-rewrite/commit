@@ -1,6 +1,6 @@
-tree 13a2a2aa45265bd9d8d37f2f0639e0e26ddfccf4
-parent 32b7ebac6afd23e80aaf6bb4e209f7113c2a525b
-author jayanth-afk <jaykonada007@gmail.com> 1790966104 +0530
-committer jayanth-afk <jaykonada007@gmail.com> 1790966104 +0530
+tree 2dafd1a983b6b10efad655f2ef02ef6db7a794f7
+parent 1d55bd16b56f2be277bf22712d9bd97ec2f58770
+author jayanth-afk <jaykonada007@gmail.com> 1791399948 +0530
+committer jayanth-afk <jaykonada007@gmail.com> 1791399948 +0530
 
-test: treat unavailable screen capture as skipped
+feat: add StreamingTurnPreparer for low-latency voice intent classification and emergency stops

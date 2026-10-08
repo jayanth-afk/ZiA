@@ -112,7 +112,7 @@ actor TaskResourceLock: @unchecked Sendable {
                 owners.removeValue(forKey: resource)
             }
             waiters[resource]?.removeAll { $0 == task }
-            if waiters[resource].isEmpty {
+            if waiters[resource]?.isEmpty == true {
                 waiters.removeValue(forKey: resource)
             }
         }

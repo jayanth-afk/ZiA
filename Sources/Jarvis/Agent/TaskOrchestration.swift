@@ -153,4 +153,27 @@ actor TaskOrchestration: @unchecked Sendable {
     func clearBlockedByResourceWait(_ taskID: UUID) {
         blockedByResourceWait.remove(taskID)
     }
+
+    // MARK: - outcome mapping (production seam)
+
+    /// Map a terminal task state to the dependency outcome broadcast that the
+    /// dependency graph and waiting dependents expect.
+    func outcomeForState(_ state: TaskState, taskID: UUID) -> TaskDependencyGraph.DependencyOutcome {
+        let out: TaskDependencyGraph.DependencyOutcome.Outcome
+        switch state {
+        case .completed: out = .completed
+        case .failed:    out = .failed
+        case .cancelled: out = .cancelled
+        default:         out = .missing
+        }
+        return TaskDependencyGraph.DependencyOutcome(taskID: taskID, outcome: out, at: Date())
+    }
+
+    /// Broadcast a terminal task outcome to the dependency graph and unblock
+    /// eligible dependents. Best-effort: if the task is not in the state machine
+    /// the outcome is treated as .missing, which still clears waiting state.
+    func broadcastOutcome(taskID: UUID, state: TaskState) async {
+        let outcome = outcomeForState(state, taskID: taskID)
+        _ = await recordOutcome(outcome)
+    }
 }

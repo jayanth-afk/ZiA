@@ -261,9 +261,18 @@ final class CerebrasMockURLProtocol: URLProtocol {
     @Test func absentOrMalformedHeaderIsNil() {
         #expect(ProviderRateLimit.retryAfter(from: resp([:])) == nil)
         #expect(ProviderRateLimit.retryAfter(from: resp(["Retry-After": ""])) == nil)
-        // HTTP-date form is intentionally not parsed; falls back to the default.
-        #expect(ProviderRateLimit.retryAfter(from: resp(["Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"])) == nil)
+        // A value that is neither delta-seconds nor an HTTP-date is unparseable
+        // and falls back to the default cooldown — never crashes, never absurd.
+        #expect(ProviderRateLimit.retryAfter(from: resp(["Retry-After": "soon"])) == nil)
+        #expect(ProviderRateLimit.retryAfter(from: resp(["Retry-After": "12 parsecs"])) == nil)
         #expect(ProviderRateLimit.retryAfter(from: nil) == nil)
+    }
+
+    @Test func parsesHTTPDateForm() {
+        // A date in the past collapses to the 1s floor (deterministic, no clock
+        // dependency); a far-future date clamps to the max cooldown.
+        #expect(ProviderRateLimit.retryAfter(fromRawValue: "Wed, 21 Oct 2015 07:28:00 GMT") == 1)
+        #expect(ProviderRateLimit.retryAfter(fromRawValue: "Fri, 31 Dec 9999 23:59:59 GMT") == ProviderRateLimit.maxCooldown)
     }
 
     @Test func clampsToSaneRange() {

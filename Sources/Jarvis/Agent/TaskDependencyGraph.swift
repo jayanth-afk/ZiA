@@ -176,30 +176,91 @@ actor TaskDependencyGraph: @unchecked Sendable {
         return nil
     }
 
-    /// Builds the transitive prerequisite closure for the task being admitted.
-    /// This is what we run cycle detection over: the submitted task plus its declared prerequisites.
-    private func transitiveDependencies(_ taskID: UUID, from explicitEdges: [UUID: [UUID]]) -> [UUID: [UUID]] {
-        var edges = explicitEdges
-        var seen = Set<UUID>()
-        var stack: [UUID] = [taskID]
-        while let current = stack.popLast() {
-            guard !seen.contains(current) else { continue }
-            seen.insert(current)
-            for dep in (explicitEdges[current] ?? []) {
-                edges[current, default: []].append(dep)
-                stack.append(dep)
+    /// Build the dependency subgraph used for cycle detection: a set of edges from each
+    /// node to the nodes it depends on. For submission of `taskID`, we add the edge
+    /// taskID -> each declared prerequisite, plus any prerequisite->prerequisite edges already
+    /// present in the graph (so indirect cycles are detected too).
+    private func buildSubgraph(taskID: UUID, prerequisiteIDs: [UUID], existingDependents: [UUID: [UUID]]) -> [UUID: [UUID]] {
+        var g: [UUID: [UUID]] = [:]
+        // The submitted task depends on each prerequisite.
+        g[taskID] = prerequisiteIDs
+        // Existing edges: if any prerequisite already declares its own prerequisites, include them.
+        for pid in prerequisiteIDs {
+            if let deps = existingDependents[pid] {
+                g[pid] = deps
             }
         }
-        return edges
+        return g
+    }
+
+    /// Validate submission-time dependency graph for `taskID`. Returns a description of the
+    /// first problem found, or nil when the submission is acyclic and self-consistent.
+    func validateSubmission(
+        taskID: UUID,
+        prerequisiteIDs: [UUID],
+        existingDependents: [UUID: [UUID]],
+        allKnownTaskIDs: Set<UUID>
+    ) -> String? {
+        guard !prerequisiteIDs.contains(taskID) else {
+            return "task dependency on itself"
+        }
+        guard prerequisiteIDs.allSatisfy({ allKnownTaskIDs.contains($0) }) else {
+            return "prerequisite dependency references a task not present in the dependency graph"
+        }
+        let subgraph = buildSubgraph(taskID: taskID, prerequisiteIDs: prerequisiteIDs, existingDependents: existingDependents)
+        if let cycle = smallestCycle(around: taskID, in: subgraph) {
+            return "dependency cycle detected: \(cycle.map { $0.uuidString.prefix(8) }.joined(separator: " -> "))"
+        }
+        return nil
     }
 
     /// Temporary in-memory graph used only during submission validation. Not persisted.
-    private func makeLocalGraph(_ prerequisiteIDs: [UUID]) -> [UUID: [UUID]] {
-        var g: [UUID: [UUID]] = [:]
-        // For validation we model the submitted task ID -> its prerequisites.
-        // Cycle detection needs edges directed prerequisite -> dependent? No: we need
-        // dependency direction (task depends on prerequisite), so edge = dependent -> prerequisite.
-        // A cycle in that direction is exactly a dependency cycle.
-        return g
+    private func smallestCycle(around start: UUID, in edges: [UUID: [UUID]]) -> [UUID]? {
+        var inDegree: [UUID: Int] = [:]
+        for src in edges.keys {
+            inDegree[src, default: 0] += 0
+            for dst in edges[src] { inDegree[dst, default: 0] += 1 }
+        }
+        var queue: [UUID] = inDegree.keys.filter { inDegree[$0, default: 0] == 0 }.sorted { $0.uuidString < $1.uuidString }
+        var remaining = Set(inDegree.keys)
+        while !queue.isEmpty {
+            let node = queue.removeFirst()
+            remaining.remove(node)
+            for neighbor in (edges[node] ?? []).sorted(by: { $0.uuidString < $1.uuidString }) {
+                inDegree[neighbor, default: 0] -= 1
+                if inDegree[neighbor] == 0 && remaining.contains(neighbor) {
+                    queue.append(neighbor)
+                }
+            }
+        }
+        guard !remaining.isEmpty else { return nil }
+        let first = remaining.sorted { $0.uuidString < $1.uuidString }.first!
+        return cycleContaining(first, in: edges)
+    }
+
+    private func cycleContaining(_ start: UUID, in edges: [UUID: [UUID]]) -> [UUID]? {
+        var visited: [UUID: UUID] = [:]
+        var stack: [UUID] = [start]
+        visited[start] = start
+        while let current = stack.popLast() {
+            for next in (edges[current] ?? []).sorted(by: { $0.uuidString < $1.uuidString }) {
+                if next == start {
+                    var cycle: [UUID] = [start]
+                    var cursor = current
+                    while cursor != start {
+                        cycle.append(cursor)
+                        guard let pred = visited[cursor] else { return nil }
+                        cursor = pred
+                    }
+                    cycle.reverse()
+                    return cycle
+                }
+                if visited[next] == nil {
+                    visited[next] = current
+                    stack.append(next)
+                }
+            }
+        }
+        return nil
     }
 }

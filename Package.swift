@@ -46,7 +46,7 @@ let package = Package(
         ),
         .testTarget(
             name: "JarvisTests",
-            dependencies: ["Jarvis", .product(name: "JarvisXCTestLocal", package: "jarvis-xctest-local")],
+            dependencies: ["Jarvis", .product(name: "JarvisXCTestLocal", package: "jarvis-xctest")],
             path: "Tests/JarvisTests"
         )
     ]

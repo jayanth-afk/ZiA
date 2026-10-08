@@ -115,6 +115,10 @@ actor OpenRouterProvider: LLMProvider {
                         continuation.yield(.done(usage: TokenUsage(promptTokens: inTokens, completionTokens: outTokens, totalTokens: inTokens + outTokens)))
                     }
 
+                    // Truthful quota intake: report only what the server's own headers
+                    // expose. Absent headers leave the broker's view UNKNOWN (never inferred).
+                    await ProviderQuotaSignal.report(response, for: self.id)
+
                     continuation.finish()
                 } catch {
                     continuation.yield(.error(error.localizedDescription))

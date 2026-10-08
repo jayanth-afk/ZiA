@@ -11,27 +11,6 @@ import Testing
 @MainActor
 @Suite(.serialized) struct ProviderResourceBrokerTests {
 
-    private func isolated() -> ProviderResourceBroker {
-        let previous = ProviderResourceBroker.beginIsolatedTesting()
-        isolatedRestores.append(previous)
-        return ProviderResourceBroker.shared
-    }
-
-    /// Previous overrides to restore, in LIFO order (a test calls `isolated()`
-    /// once, so this holds exactly one).
-    private static let restoreStack = LockedValue<[ProviderResourceBroker?]>([])
-    private var isolatedRestores: [ProviderResourceBroker?] { Self.restoreStack.value }
-
-    private func restore() {
-        guard let previous = Self.restoreStack.value.popLast() ?? nil else {
-            // popLast on empty returns nil; nothing to restore.
-            _ = ProviderResourceBroker.endIsolatedTesting(restoring: nil)
-            return
-        }
-        _ = previous
-        ProviderResourceBroker.endIsolatedTesting(restoring: previous)
-    }
-
     /// Bounded poll instead of a fixed sleep: proceed as soon as the actor
     /// reaches the expected state, and fail (not hang) if it never does.
     private func waitUntil(_ condition: @Sendable () async -> Bool, timeout: TimeInterval = 3) async {

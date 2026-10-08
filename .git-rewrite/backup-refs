@@ -1,9 +1,0 @@
-a5a0bdda9f9456de5f00f787ccae600a15a8193b tree	refs/codex/turn-diffs/checkpoints/28554b5499c298041c0946efb831677b/f0a39018e9a8825df003fa378e289621/1790750312388/3111936d-48e3-40ce-b80f-5f9ae9da3f64
-1b3c0523e86cb3ddaeae15ed55be66dae61f1dd6 commit	refs/heads/backup-master-pre-author-fix
-6c7d8443228893acf27dc4aaa31112106626bbc0 commit	refs/heads/freebuff/verification-subsystem
-5dc923209895c7129d45a870329d0ebfab4351b4 commit	refs/heads/gemini/milestone4-verification
-a0d1fd5126db7263559fde5ba8ef2a2b9528152a commit	refs/heads/master
-b851f8afb7c2eb51142dd329d2b740963431b251 commit	refs/remotes/origin/HEAD
-6c7d8443228893acf27dc4aaa31112106626bbc0 commit	refs/remotes/origin/freebuff/verification-subsystem
-5dc923209895c7129d45a870329d0ebfab4351b4 commit	refs/remotes/origin/gemini/milestone4-verification
-b851f8afb7c2eb51142dd329d2b740963431b251 commit	refs/remotes/origin/master

@@ -67,19 +67,6 @@ actor TaskDependencyGraph: @unchecked Sendable {
         }
     }
 
-    /// Record that a task reached a terminal outcome and return the dependents that should be
-    /// reevaluated. Actual eligibility filtering is done by the caller using the authoritative
-    /// TaskStateMachine so the scheduling layer can remain Sendable.
-    func recordOutcome(_ outcome: DependencyOutcome) async -> [UUID] {
-        unregisterWaiting(taskID: outcome.taskID)
-        switch outcome.outcome {
-        case .missing, .failed, .cancelled:
-            return []
-        case .completed:
-            return await potentialDependents(of: outcome.taskID)
-        }
-    }
-
     /// Return the dependents that the graph would consider for reevaluation when `completedID`
     /// finishes. The caller is responsible for filtering those by its own Sendable eligibility
     /// predicate (e.g. the authoritative TaskStateMachine state) so that no non-Sendable closure
@@ -154,10 +141,12 @@ actor TaskDependencyGraph: @unchecked Sendable {
         while !queue.isEmpty {
             let node = queue.removeFirst()
             remaining.remove(node)
-            for neighbor in (edges[node] ?? []).sorted(by: { $0.uuidString < $1.uuidString }) {
-                inDegree[neighbor, default: 0] -= 1
-                if inDegree[neighbor] == 0 && remaining.contains(neighbor) {
-                    queue.append(neighbor)
+            if let neighbors = edges[node] {
+                for neighbor in neighbors.sorted(by: { $0.uuidString < $1.uuidString }) {
+                    inDegree[neighbor, default: 0] -= 1
+                    if inDegree[neighbor] == 0 && remaining.contains(neighbor) {
+                        queue.append(neighbor)
+                    }
                 }
             }
         }
@@ -172,21 +161,23 @@ actor TaskDependencyGraph: @unchecked Sendable {
         var stack: [UUID] = [start]
         visited[start] = start
         while let current = stack.popLast() {
-            for next in (edges[current] ?? []).sorted(by: { $0.uuidString < $1.uuidString }) {
-                if next == start {
-                    var cycle: [UUID] = [start]
-                    var cursor = current
-                    while cursor != start {
-                        cycle.append(cursor)
-                        guard let pred = visited[cursor] else { return nil }
-                        cursor = pred
+            if let neighbors = edges[current] {
+                for next in neighbors.sorted(by: { $0.uuidString < $1.uuidString }) {
+                    if next == start {
+                        var cycle: [UUID] = [start]
+                        var cursor = current
+                        while cursor != start {
+                            cycle.append(cursor)
+                            guard let pred = visited[cursor] else { return nil }
+                            cursor = pred
+                        }
+                        cycle.reverse()
+                        return cycle
                     }
-                    cycle.reverse()
-                    return cycle
-                }
-                if visited[next] == nil {
-                    visited[next] = current
-                    stack.append(next)
+                    if visited[next] == nil {
+                        visited[next] = current
+                        stack.append(next)
+                    }
                 }
             }
         }

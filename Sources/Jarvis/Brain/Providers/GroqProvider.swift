@@ -223,6 +223,7 @@ actor GroqProvider: LLMProvider {
         continuation: AsyncThrowingStream<StreamChunk, any Error>.Continuation
     ) async throws {
         let (data, response) = try await session.data(for: request)
+        await reportQuota(from: response)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             let body = (String(data: data, encoding: .utf8) ?? "").prefix(300)
@@ -253,6 +254,7 @@ actor GroqProvider: LLMProvider {
         continuation: AsyncThrowingStream<StreamChunk, any Error>.Continuation
     ) async throws {
         let (bytes, response) = try await session.bytes(for: request)
+        await reportQuota(from: response)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             // Drain a bounded prefix of the error body for an exact message.
@@ -290,6 +292,16 @@ actor GroqProvider: LLMProvider {
             }
         }
         continuation.yield(.done(usage: usage))
+    }
+
+    /// Feed any provider-reported rate-limit/quota headers to the resource
+    /// broker. Absent headers are ignored — an unknown quota is never invented.
+    /// This is the sanctioned intake path for server-reported limits.
+    private func reportQuota(from response: URLResponse?) async {
+        guard let http = response as? HTTPURLResponse else { return }
+        let quota = ProviderQuotaSignal.parse(response: http)
+        guard quota.hasKnownValue else { return }
+        await ProviderResourceBroker.shared.observeQuota(quota, for: id)
     }
 
     private static func usage(from json: [String: Any]) -> TokenUsage {

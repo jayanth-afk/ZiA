@@ -1,95 +1,173 @@
-# Jarvis System Progress & Blueprint
+# ZiA Implementation Status & Roadmap
 
-Welcome to the development directory of **Jarvis** (Zia Platform). This document tracks the implementation progress, architectural goals, and system state of our ultra-high-performance, native macOS desktop intelligence agent.
+This file is the current implementation status. It is intentionally maintained as a present-state document rather than a historical changelog.
 
----
+## Verified now
 
-## 🌟 Architectural Vision
+Repository: `/Users/jayanthpranaykonada/Zia`  
+HEAD: `0a0a81f`  
+Branch: `master`  
+Working tree: clean
 
-Jarvis is a zero-latency, highly autonomous macOS agent designed to run as a native status bar and floating overlay application. Key architectural pillars:
-1. **Zero External Swift Dependencies**: Leverages pure macOS SDKs (AppKit, AVFoundation, Speech, Vision, ScreenCaptureKit) for ultra-fast, safe compilation.
-2. **Local + Cloud Hybrid Brain**: Uses a unified router supporting both cloud LLMs (Claude, Gemini, OpenAI, Groq) and local execution via Python MLX server integration.
-3. **Multimodal Feedback Loop**: Integration of Screen Capture (FastUI and DeepVisual) with native macOS accessibility APIs, plus dual voice wake-word/VAD detection.
-4. **Deterministic Action Sandbox**: Shell execution with sandbox constraints, native browser control, and system automation via AppleScript/JXA bridges.
+### Build and tests
 
----
+- Swift release build: **PASS**
+- Swift tests: **488 / 488 PASS**
+- Test suites: **64**
+- Task dependency/resource integration: **26 / 26 PASS**
+- Agent Bridge tests: **364 PASS / 8 intentionally skipped / 0 failed**
 
-## 📊 Feature Checklist & Status
+The broader ZiA self-test is a separate gate and was not independently completed during this documentation refresh.
 
-### 1. Core Architecture (`Sources/Jarvis/Core`)
-- [x] **Configuration Manager (`Config.swift`)**: Unified API keys, endpoints, and toggle states with secure Keychain fallback.
-- [x] **Secure Keychain Manager (`KeychainManager.swift`)**: Encrypted storage for LLM credentials via macOS Security framework.
-- [x] **Thread-Safe Memory (`LockedValue.swift`)**: Atomic locks for synchronized cross-thread state.
-- [x] **Event Bus (`EventBus.swift`)**: Publisher/subscriber pattern for decoupling voice, vision, and action systems.
-- [x] **Logger (`Logger.swift`)**: Multi-level console logger with file rotators and performance timing hooks.
-- [x] **Network Monitor (`NetworkMonitor.swift`)**: Automatic online/offline transition handling via Network framework.
-- [x] **Resource Monitor (`ResourceManager.swift`)**: Monitors CPU, memory, and energy metrics to throttle agents when system load is extreme.
-- [x] **Self-Testing Suite (`SelfTest.swift`)**: Validation run on startup to test API keys, microphones, and shell sandboxes.
+## Implemented system
 
-### 2. UI & Menubar (`Sources/Jarvis/UI`)
-- [x] **Menubar Manager (`MenuBarManager.swift`)**: Interactive menu bar extra showing CPU usage, active tasks, and status.
-- [x] **Floating Action Overlay (`FloatingPanel.swift`)**: Custom, non-activating panel (similar to Spotlight or Siri) with a visual waveform.
-- [x] **Interactive Waveform View (`WaveformView.swift`)**: Smooth, high-performance CoreGraphics audio visualizer.
-- [x] **Settings Control (`SettingsView.swift`)**: SwiftUI view for managing local models, voice configurations, and prompt defaults.
-- [x] **API Keys Management (`APIKeysView.swift`)**: Dedicated keychain interface.
-- [x] **Dynamic Design System (`DesignTokens.swift`)**: Premium Dark/Neon aesthetic with custom blur materials.
+### Core
 
-### 3. Voice Pipeline (`Sources/Jarvis/Voice`)
-- [x] **Wake-Word Detector (`WakeWordDetector.swift`)**: Real-time microphone buffer analyzer looking for triggering phonemes or energy spikes.
-- [x] **Voice Activity Detector (`VoiceActivityDetector.swift`)**: Silence detection and audio segmentation to avoid shipping dead air.
-- [x] **Audio Recording Engine (`AudioCapture.swift`)**: Direct AVFoundation tap managing PCM buffers.
-- [x] **Speech Recognition (`SpeechRecognizer.swift`)**: Local `SFSpeechRecognizer` pipeline with prompt-inject fallback.
-- [x] **TTS Engine (`TTSEngine.swift`)**: Low-latency Speech Synthesis engine (`AVSpeechSynthesizer`) using high-quality voices.
-- [x] **Emergency Interruption (`EmergencyInterrupt.swift`)**: Instant stop trigger for audio playback if the user speaks or hits escape.
-- [x] **Unified Pipeline Coordinator (`VoicePipeline.swift`)**: Bridges capture, wake, VAD, transcription, brain response, and TTS.
+- canonical configuration and secure credential handling
+- durable task state
+- memory/context infrastructure
+- deterministic intent/routing
+- execution verification
+- permission/sandbox boundaries
+- recovery and provider health
 
-### 4. Vision Engine (`Sources/Jarvis/Vision`)
-- [x] **Screen Capture System (`ScreenCapture.swift`)**: ScreenCaptureKit framework capture with selective application/window cropping.
-- [x] **FastUI Visual Mode (`FastUIMode.swift`)**: Low-overhead downscaled frames analyzed for structural UI changes.
-- [x] **DeepVisual Vision Mode (`DeepVisualMode.swift`)**: High-res visual reasoning frames sent directly to multimodal models (Gemini Flash/Claude).
-- [x] **Accessibility Bridge (`AccessibilityBridge.swift`)**: Uses macOS AXUIElement to extract coordinates of buttons, text fields, and system menus.
+### Task execution
 
-### 5. Unified Brain Router (`Sources/Jarvis/Brain`)
-- [x] **Provider Interface (`Provider.swift`)**: Clean protocol for standardizing text, vision, and tool-calling structures.
-- [x] **Provider Suite**:
-  - [x] **Claude (`ClaudeProvider.swift`)** (Anthropic Claude 3.5 Sonnet / Haiku integration)
-  - [x] **Gemini (`GeminiProvider.swift`)** (Google Gemini 1.5 Pro / Flash with tool support)
-  - [x] **OpenAI (`OpenAIProvider.swift`)** (GPT-4o / GPT-4o-mini support)
-  - [x] **Groq (`GroqProvider.swift`)** (Ultra-fast Llama 3 / Mixtral inference)
-  - [x] **Local MLX (`MLXProvider.swift`)** (Integration with python-based mlx-lm servers)
-- [x] **Intent Classifier (`IntentClassifier.swift`)**: Sub-10ms prompt analysis to route conversational vs. action-driven inputs.
-- [x] **Usage & Cost Tracker (`UsageManager.swift`)**: Persistent local storage counting tokens and estimating running costs.
-- [x] **Conversation Memory Engine (`ConversationManager.swift` / `ContextBuilder.swift`)**: Implements dynamic conversational sliding windows.
+- task state machine
+- parent/child task relationships
+- prerequisite dependencies
+- dependency cycle detection
+- TaskOrchestration integration
+- TaskResourceLock
+- TaskWorkerPool
+- cancellation propagation
+- resource cleanup
+- dependency unblocking
+- mixed multitask execution
 
-### 6. Memory & Knowledge Manager (`Sources/Jarvis/Memory`)
-- [x] **Conversation Store (`ConversationStore.swift`)**: Disk-backed JSON cache of local interactions.
-- [x] **User Profiler (`UserProfile.swift`)**: Dynamic extraction of user details, preferences, and long-term context.
-- [x] **Local Embedding Engine (`EmbeddingEngine.swift`)**: CoreML / NaturalLanguage embedding generator.
-- [x] **Vector Search database (`VectorSearch.swift`)**: Lightweight, pure Swift vector matching for RAG context extraction.
-- [x] **Unified Memory Manager (`MemoryManager.swift`)**: Orchestrates long-term semantic context, ephemeral memory, and short-term profiles.
+### Provider system
 
-### 7. Actions & Agent Loops (`Sources/Jarvis/Actions` & `Sources/Jarvis/Agent`)
-- [x] **Deterministic Router (`DeterministicRouter.swift`)**: Maps natural language or structured tools directly to Swift handlers.
-- [x] **Command Sandbox (`CommandSandbox.swift`)**: Secure `Process` executor constraining shell commands with timeout/path restrictions.
-- [x] **Shell Executor (`ShellExecutor.swift`)**: Handles Zsh terminal interactions, tracking output and environment.
-- [x] **AppleScript / JXA Bridge (`AppleScriptBridge.swift`)**: Native system-level automation (Calendar, Reminders, Notes, Finder).
-- [x] **Browser Manager (`BrowserManager.swift`)**: Interacts with Safari/Chrome, extracting active tabs, history, and HTML content.
-- [x] **File Manager Tool (`FileManagerJarvis.swift`)**: Safe local file system reading, writing, searching, and structural mapping.
-- [x] **Web Search / Scraper (`WebSearch.swift` / `URLFetcher.swift`)**: Fetches live web contents and searches via SearXNG/DuckDuckGo.
-- [x] **Task State Machine (`TaskStateMachine.swift`)**: Multi-step agent planning state tracking (Pending -> Planning -> Executing -> Validating -> Completed).
-- [x] **Agent Planner (`MLXPlanner.swift` / `DirectComposer.swift`)**: Formulates multi-step actions to execute complex objectives.
-- [x] **Task Worker & Worker Pool (`TaskWorker.swift` / `TaskWorkerPool.swift`)**: Concurrent execution workers for processing agent plans.
-- [x] **Plan Validator (`PlanValidator.swift`)**: Critically examines actions before run, verifying paths, URLs, and commands against rules.
-- [x] **Permission Gate (`PermissionGate.swift`)**: Interactive GUI confirmation intercepting high-risk operations (e.g. `rm -rf`, curl execution).
+- unified provider protocol
+- ProviderManager
+- provider health and availability
+- rate-limit cooldowns
+- circuit breaker/quarantine
+- ProviderSuitabilityScorer
+- ProviderResourceBroker
+- quota signal parsing
+- capacity-aware admission
+- cancellation-safe provider reservations
+- provider recovery behavior
 
----
+### Current provider integrations
 
-## 🛠️ Next Steps & Active Engineering Fronts
+- local MLX
+- Groq
+- Cerebras
+- SambaNova
+- OpenRouter
+- ChatGPT Desktop
+- Claude
+- Gemini
+- OpenAI
 
-We have built out an incredibly rich, modular, and deep macOS foundation. The next phase of development centers around:
-1. **End-to-End System Integration**: Fully tying the Voice pipeline to the Brain routing loop, triggering actions dynamically based on voice requests.
-2. **Vision-to-Action Coordination**: Correlating accessibility element coordinates extracted by `AccessibilityBridge` with visual screenshot bounding boxes to perform actual mouse clicks.
-3. **Refining Action Sandboxing**: Tightening shell security filters and perfecting the interactive permission gate dialogs.
-4. **Optimizing Local LLM Execution**: Tuning local python-based MLX server scripts and establishing seamless zero-latency IPC.
+Runtime policy decides which of these are actually eligible. Code presence alone does not imply live configuration or permission to spend.
 
-Let's maintain extreme performance discipline: avoiding unnecessary heap allocations, maximizing Grand Central Dispatch (GCD) thread safety, and retaining pure native code execution.
+### Agent Bridge
+
+ZiA can use Agent Bridge as a local transport/control layer for ChatGPT Desktop and other agent integrations.
+
+The bridge supplies communication and controlled tool access; it does not replace ZiA's canonical task/state authority.
+
+## What is deliberately not claimed
+
+- A registered provider is not necessarily live.
+- A passing unit test is not physical macOS acceptance.
+- ChatGPT background transport tests do not by themselves prove every real multi-Space arrangement.
+- Voice logic tests do not prove microphone/TCC hardware behavior.
+- Unknown provider quota is not assumed to be unlimited.
+- Paid-provider code does not authorize spending.
+
+## Active roadmap
+
+### 1. Adaptive scheduler hardening
+
+Make the existing suitability + broker + task orchestration stack increasingly workload-aware.
+
+Target decisions should account for:
+
+- task priority
+- foreground/background status
+- capability requirements
+- privacy
+- complexity/reasoning need
+- coding need
+- context size
+- structured output
+- latency
+- provider health
+- live capacity
+- quota
+- cost/budget
+
+### 2. Quota intelligence
+
+Extend `ProviderQuotaSignal` intake wherever providers expose compatible information.
+
+Never manufacture missing values.
+
+### 3. Cross-task fairness
+
+Validate that urgent/interactive work remains responsive while background tasks continue making progress.
+
+Avoid starvation without forcing an arbitrary fixed worker count.
+
+### 4. Recovery
+
+Improve:
+
+- rate-limit recovery
+- provider quarantine recovery
+- bounded re-planning
+- task-level retry classification
+- cancellation during admission
+- partial-failure handling
+
+### 5. Physical acceptance
+
+Validate on the real Mac:
+
+- ChatGPT background operation
+- no unwanted activation/focus theft
+- multiple Spaces
+- persistent desktop sessions
+- microphone/TTS behavior where permissions allow
+
+### 6. Product layer
+
+After core reliability is stable:
+
+- continue premium ZiA presence/UI
+- improve voice naturalness
+- improve background autonomy UX
+- expose useful explanations of what ZiA is doing without exposing internal routing clutter
+
+## North-star behavior
+
+A user should be able to give ZiA several goals and then continue using the Mac.
+
+ZiA should:
+
+- keep one identity
+- run eligible tasks concurrently
+- respect dependencies
+- respect resource ownership
+- select suitable reasoning workers dynamically
+- conserve free/authorized capacity
+- avoid accidental paid usage
+- recover from provider failures
+- verify completed actions
+- remain responsive to foreground interaction
+- continue safe background work without stealing focus
+
+That is the current direction of the project.

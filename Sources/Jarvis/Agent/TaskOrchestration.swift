@@ -156,13 +156,7 @@ actor TaskOrchestration: @unchecked Sendable {
         let ids = prerequisiteIDs.map { $0.uuidString.prefix(8) }.joined(separator: ", ")
         return "blocked: waiting for prerequisite task(s) [\(ids)]"
     }
-
-    func dependencyGraphSnapshot() async -> [UUID: [UUID]] {
-        return await graph.dependencyEdges()
-    }
 }
-
-// MARK: - TaskDependencyGraph dependency-edge exposure (read-only diagnostics)
 
 private extension TaskDependencyGraph {
     func dependencyEdges() async -> [UUID: [UUID]] {

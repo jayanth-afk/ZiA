@@ -132,7 +132,8 @@ actor TaskOrchestration: @unchecked Sendable {
             Task { [self] in
                 _ = self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
             }
-            return self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
+            let ok = self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
+            return ok
         })
         // Reevaluate each newly-made-eligible dependent through the same admission path.
         var newlyAdmitted: [UUID] = []

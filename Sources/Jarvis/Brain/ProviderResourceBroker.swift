@@ -169,43 +169,14 @@ struct ProviderResourceSnapshot: Sendable, Equatable {
 /// fallback ordering — those stay with `ProviderManager`, the single source of
 /// truth. The broker answers one question: "may this request run right now?"
 actor ProviderResourceBroker {
-    // MARK: Injectable selection
-    //
-    // Production talks to `shared`. Tests install a private instance so the
-    // broker's admission state is fully isolated and deterministically
-    // observable — the same seam `TaskScheduler` uses. This is the provider
-    // registry injection point: `ProviderManager` never hard-codes a broker
-    // instance, it always resolves `shared`.
-    private final class Selection: @unchecked Sendable {
-        let lock = NSLock()
-        var override: ProviderResourceBroker?
-    }
-    private static let selection = Selection()
-    private static let production = ProviderResourceBroker()
+    /// The production broker. Callers depend on this abstraction, never on a
+    /// concrete instance, so a test can inject a private broker instead
+    /// (see `executeFallbackChain(_:...:broker:)` and `makeIsolated()`).
+    static let shared = ProviderResourceBroker()
 
-    static var shared: ProviderResourceBroker {
-        selection.lock.lock()
-        defer { selection.lock.unlock() }
-        return selection.override ?? production
-    }
-
-    /// Install a fresh, empty broker for the duration of a test. Returns the
-    /// previous override so the caller can restore it (nil in production).
-    @discardableResult
-    static func beginIsolatedTesting() -> ProviderResourceBroker? {
-        let isolated = ProviderResourceBroker()
-        selection.lock.lock()
-        defer { selection.lock.unlock() }
-        let previous = selection.override
-        selection.override = isolated
-        return previous
-    }
-
-    static func endIsolatedTesting(restoring previous: ProviderResourceBroker?) {
-        selection.lock.lock()
-        defer { selection.lock.unlock() }
-        selection.override = previous
-    }
+    /// A private, empty broker for deterministic tests. It never touches the
+    /// production singleton, so parallel test suites cannot interfere.
+    static func makeIsolated() -> ProviderResourceBroker { ProviderResourceBroker() }
 
     // MARK: Types
 

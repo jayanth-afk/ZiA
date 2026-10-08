@@ -126,13 +126,10 @@ actor TaskOrchestration: @unchecked Sendable {
         blockedByDependencyCycle.remove(outcome.taskID)
         blockedByMissingPrerequisite.remove(outcome.taskID)
         blockedByResourceWait.remove(outcome.taskID)
-        let madeReady = await graph.recordOutcome(outcome, eligibility: { id in
-            Task { [weak self] in
-                guard let self else { return false }
-                let prerequisiteIDs = self.stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? []
-                _ = await self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
-            }
-            return await self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
+        let madeReady = await graph.recordOutcome(outcome, eligibility: { [weak self] id in
+            guard let self else { return false }
+            let prerequisiteIDs = self.stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? []
+            return self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
         })
         // Reevaluate each newly-made-eligible dependent through the same admission path.
         var newlyAdmitted: [UUID] = []
@@ -145,8 +142,8 @@ actor TaskOrchestration: @unchecked Sendable {
 
     // MARK: - eligibility
 
-    func prerequisitesSatisfied(taskID: UUID, _ prerequisiteIDs: [UUID]) async -> Bool {
-        return await stateMachine.arePrerequisitesSatisfied(taskId: taskID)
+    func prerequisitesSatisfied(taskID: UUID, _ prerequisiteIDs: [UUID]) -> Bool {
+        return stateMachine.arePrerequisitesSatisfied(taskId: taskID)
     }
 
     func dependencyBlockedReason(prerequisiteIDs: [UUID]) -> String {

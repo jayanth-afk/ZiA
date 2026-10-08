@@ -85,8 +85,9 @@ actor TaskDependencyGraph: @unchecked Sendable {
         guard let newlyUnblocked = dependents.removeValue(forKey: completedID) else { return [] }
         var eligible: [UUID] = []
         for dependentID in newlyUnblocked {
-            guard eligibility(dependentID) else { continue }
-            eligible.append(dependentID)
+            if await eligibility(dependentID) {
+                eligible.append(dependentID)
+            }
         }
         return eligible
     }

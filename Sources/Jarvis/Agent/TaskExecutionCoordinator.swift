@@ -472,6 +472,7 @@ actor TaskExecutionCoordinator {
         }
         try stateMachine.transition(taskId: task.id, to: .verifying)
         try stateMachine.transition(taskId: task.id, to: .completed)
+        Task { await TaskOrchestration.shared.broadcastOutcome(taskID: task.id, state: .completed) }
         route = route ?? .planner
         let response = outputs.filter { !$0.isEmpty }.joined(separator: "\n")
         telemetry(taskID: task.id, step: nil, kind: .taskCompleted, status: "completed")

@@ -67,29 +67,26 @@ actor TaskDependencyGraph: @unchecked Sendable {
         }
     }
 
-    /// Record that a task reached a terminal outcome and reevaluate dependents.
-    /// The caller supplies the current TaskState so we can classify success/failure/cancellation.
-    func recordOutcome(_ outcome: DependencyOutcome, eligibility: @escaping (UUID) async -> Bool) async -> [UUID] {
+    /// Record that a task reached a terminal outcome and return the dependents that should be
+    /// reevaluated. Actual eligibility filtering is done by the caller using the authoritative
+    /// TaskStateMachine so the scheduling layer can remain Sendable.
+    func recordOutcome(_ outcome: DependencyOutcome) async -> [UUID] {
         unregisterWaiting(taskID: outcome.taskID)
         switch outcome.outcome {
         case .missing, .failed, .cancelled:
             return []
         case .completed:
-            return await reevaluateDependents(of: outcome.taskID, eligibility: eligibility)
+            return await potentialDependents(of: outcome.taskID)
         }
     }
 
-    /// Recompute dependents of a newly-completed task. Only tasks whose *entire* dependency
-    /// set is now satisfied become eligible; others remain waiting.
-    private func reevaluateDependents(of completedID: UUID, eligibility: (UUID) async -> Bool) async -> [UUID] {
+    /// Return the dependents that the graph would consider for reevaluation when `completedID`
+    /// finishes. The caller is responsible for filtering those by its own Sendable eligibility
+    /// predicate (e.g. the authoritative TaskStateMachine state) so that no non-Sendable closure
+    /// crosses actor isolation boundaries.
+    func potentialDependents(of completedID: UUID) async -> [UUID] {
         guard let newlyUnblocked = dependents.removeValue(forKey: completedID) else { return [] }
-        var eligible: [UUID] = []
-        for dependentID in newlyUnblocked {
-            if await eligibility(dependentID) {
-                eligible.append(dependentID)
-            }
-        }
-        return eligible
+        return newlyUnblocked.sorted { $0.uuidString < $1.uuidString }
     }
 
     /// Read-only dependency-edges snapshot used by the orchestration layer for submission-time

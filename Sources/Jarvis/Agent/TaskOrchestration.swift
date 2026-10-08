@@ -126,11 +126,18 @@ actor TaskOrchestration: @unchecked Sendable {
         blockedByDependencyCycle.remove(outcome.taskID)
         blockedByMissingPrerequisite.remove(outcome.taskID)
         blockedByResourceWait.remove(outcome.taskID)
-        let madeReady = await graph.recordOutcome(outcome, eligibility: { [weak self] id in
-            guard let self else { return false }
-            let prerequisiteIDs = self.stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? []
-            return self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
-        })
+        var madeReady: [UUID] = []
+        {
+            let ids = await graph.recordOutcome(outcome, eligibility: nil)
+            madeReady = ids
+        }
+        // Reevaluate each newly-made-eligible dependent through the same admission path.
+        var newlyAdmitted: [UUID] = []
+        for id in madeReady {
+            let ready = await reevaluate(taskID: id)
+            newlyAdmitted.append(contentsOf: ready)
+        }
+        return newlyAdmitted
         // Reevaluate each newly-made-eligible dependent through the same admission path.
         var newlyAdmitted: [UUID] = []
         for id in madeReady {

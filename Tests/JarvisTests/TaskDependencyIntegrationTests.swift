@@ -218,6 +218,10 @@ final class TaskDependencyIntegrationTests {
         #expect(outA.rejectedReason == nil)
         #expect(outA.blockedReason != nil)
 
+        // Simulate the pool workers completing b and c (the real workers would call
+        // broadcastOutcome(.completed) after finishing the run_shell step).
+        fresh.sm.setStateForTesting(taskId: b, state: .completed)
+        fresh.sm.setStateForTesting(taskId: c, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: b, state: .completed)
         await fresh.orch.broadcastOutcome(taskID: c, state: .completed)
         #expect((await fresh.orch.isEligible(taskID: a)) == true)
@@ -332,6 +336,10 @@ final class TaskDependencyIntegrationTests {
         #expect(outW.accepted == false)
         #expect((await fresh.orch.lockIsWaiting(task: waiter, resource: r)) == true)
 
+        // Mirror the production path: the waiter is marked .cancelled in the state
+        // machine before broadcastOutcome(.cancelled), so releaseAndReevaluateResourceWaiters
+        // routes to lock.cancel (which removes it from the wait queue).
+        fresh.sm.setStateForTesting(taskId: waiter, state: .cancelled)
         await fresh.orch.broadcastOutcome(taskID: waiter, state: .cancelled)
         #expect((await fresh.orch.lockIsWaiting(task: waiter, resource: r)) == false)
         #expect((await fresh.orch.lockOwner(of: r)) == holder)
@@ -349,6 +357,12 @@ final class TaskDependencyIntegrationTests {
         await fresh.orch.acquireAllResources(resources: [r], task: task)
         #expect((await fresh.orch.lockOwner(of: r)) == task)
 
+        // Mirror the production path: a task is marked .cancelled in the state
+        // machine (by the worker / TaskWorkerPool.cancelTask) BEFORE
+        // broadcastOutcome(.cancelled) is emitted, so that
+        // releaseAndReevaluateResourceWaiters routes to lock.cancel (which also
+        // removes the task from any wait queue).
+        fresh.sm.setStateForTesting(taskId: task, state: .cancelled)
         await fresh.orch.broadcastOutcome(taskID: task, state: .cancelled)
         #expect((await fresh.orch.lockOwner(of: r)) == nil)
         #expect((await fresh.orch.isEligible(taskID: task)) == false)
@@ -561,6 +575,11 @@ final class TaskDependencyIntegrationTests {
         #expect(oc1.accepted == true)
         #expect(oc2.accepted == true)
 
+        // Simulate the pool workers completing c1 and c2 so that a's prerequisites
+        // become satisfied (createTask hardcodes .created, so the state machine sees
+        // them as not-yet-completed until we set them here).
+        fresh.sm.setStateForTesting(taskId: c1, state: .completed)
+        fresh.sm.setStateForTesting(taskId: c2, state: .completed)
         let oa = await fresh.orch.submit(task: fresh.sm.getTask(id: a)!, priority: 0, prerequisiteIDs: [c1, c2])
         #expect(oa.accepted == false)
         #expect(oa.blockedReason != nil)

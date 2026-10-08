@@ -1,1 +1,25 @@
-feat(planner): implement bounded web_search deterministic extraction and offline test matrix
+fix: preserve replanned task steps by logical identity, not position
+
+A recovery replan preserved an already-resolved step by its INDEX. A replan that
+reorders, inserts, or removes steps could therefore hand one action's completion
+state — and its bound evidence — to a different logical action, violating State
+Over Transcript, Evidence Before Green, and Lossless Escalation.
+
+Steps are now preserved only when the new step is provably the SAME logical
+action: identical tool identity and canonical argument fingerprint (identical
+purpose for composition steps), matched through a deterministic FIFO queue so
+duplicates cannot cross-issue. Preservation also requires the same task's still
+valid bound evidence, so stale, tampered, or cross-task evidence is never reused.
+
+A replan now rewrites the task's resolution records atomically with its steps:
+preserved evidence is re-numbered to its new position and orphaned records are
+dropped, so a record's stepNumber can never point at a step of a different tool
+(which previously made the task silently unpersistable).
+
+Adds an adversarial regression suite (same/reordered/inserted/removed steps,
+changed tool, changed arguments, canonical-equivalent ordering, cross-task and
+tampered evidence, duplicate identities, malformed continuation, orphan-record
+poisoning, and restart-between-replan-and-execution) plus a release-gate check.
+
+🤖 Generated with Codebuff
+Co-Authored-By: Codebuff <noreply@codebuff.com>

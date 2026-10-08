@@ -1,6 +1,26 @@
-tree 62a596430023f6612337a7e1615de787914529dd
-parent 8655513edb727beddc93723da1ecca0ab95d7e6c
-author jayanth-afk <jaykonada007@gmail.com> 1790679464 +0530
-committer jayanth-afk <jaykonada007@gmail.com> 1790679464 +0530
+tree 8e457506855608ee8bef0fa5936021925c7292be
+parent 625122a8392dd66997a05bdd0ee7f7fdef609848
+author jayanth-afk <jaykonada007@gmail.com> 1791142010 +0530
+committer jayanth-afk <jaykonada007@gmail.com> 1791142010 +0530
 
-feat(planner): implement bounded web_search deterministic extraction and offline test matrix
+fix: reject program-launcher escapes (open, dot/source) in the shell sandbox
+
+The layer-3 program analysis classified interpreters, build runners, pagers and
+network launchers, but not process/document launchers. A command the sandbox
+called safe could therefore still execute arbitrary code:
+
+    open -a Terminal /tmp/x.sh        → Terminal runs the script
+    open -b com.apple.Terminal /tmp/x.sh → same, selected by bundle id
+    open /tmp/x.command               → LaunchServices runs the .command file
+    . /tmp/x.sh                       → the POSIX source builtin evaluates it
+
+macOS `open` is a program launcher and Zia already has dedicated, verified
+open_app/open_browser tools for legitimate launching, so run_shell never needs
+it; the `.`/source builtin is an alias of the already-blocked `source`. Both are
+now rejected, while `.` used as an ordinary argument (find . -name …) stays
+permitted.
+
+Adds a focused regression suite and strengthens the release-gate sandbox checks.
+
+🤖 Generated with Codebuff
+Co-Authored-By: Codebuff <noreply@codebuff.com>

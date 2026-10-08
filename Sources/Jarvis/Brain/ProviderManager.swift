@@ -455,7 +455,81 @@ final class ProviderManager {
             messages: messages,
             context: context,
             onChunk: onChunk,
-            label: "tier \(tier.rawValue)")
+            label: "tier \(tier.rawValue)",
+            requirements: requirements(for: tier))
+    }
+
+    // MARK: - Capability-aware selection (§6)
+
+    /// Static registry descriptor for every registered worker, in fleet order.
+    var providerDescriptors: [ProviderDescriptor] {
+        allProviders.map { ProviderDescriptor.default(for: $0.id) }
+    }
+
+    /// Requirements implied by a brain tier. This is the bridge between the
+    /// existing tier decision (BrainRouter) and the suitability scorer.
+    func requirements(for tier: BrainTier) -> TaskRequirements {
+        switch tier {
+        case .reflex:
+            return TaskRequirements(complexity: .trivial)
+        case .fast:
+            return TaskRequirements(complexity: .standard)
+        case .strong:
+            return TaskRequirements(complexity: .complex)
+        case .deep:
+            return TaskRequirements(complexity: .deep)
+        case .localFallback:
+            return TaskRequirements(complexity: .standard, privacy: .localOnly)
+        }
+    }
+
+    /// Requirements implied by an intent category.
+    func requirements(for category: IntentClassifier.IntentCategory) -> TaskRequirements {
+        switch category {
+        case .coding:
+            return TaskRequirements(complexity: .complex)
+        case .deepReasoning:
+            return TaskRequirements(complexity: .deep)
+        case .webSearch, .conversation, .systemQuery:
+            return TaskRequirements(complexity: .standard)
+        }
+    }
+
+    /// Capability-aware ranking of a fallback chain. Returns the workers that
+    /// are *eligible* under the requirements, ordered by suitability (best
+    /// first). If nothing is eligible the baseline chain is returned unchanged
+    /// so policy denials still surface their real reason downstream.
+    func rankProviders(for chain: [any LLMProvider],
+                       requirements: TaskRequirements,
+                       broker: ProviderResourceBroker = .shared) async -> [any LLMProvider] {
+        let snapshot = await broker.snapshot()
+        var contexts: [String: ProviderScoreContext] = [:]
+        for provider in chain {
+            var context = ProviderScoreContext()
+            context.isUnhealthy = isQuarantined(provider.id) || isRateLimited(provider.id)
+            if let state = snapshot.provider(provider.id) {
+                context.inFlight = state.inFlight
+                context.maxConcurrent = state.maxConcurrent
+                context.requestsRemaining = state.observedRequestsRemaining
+                context.tokensRemaining = state.observedTokensRemaining
+            }
+            contexts[provider.id] = context
+        }
+        let descriptors = chain.map { ProviderDescriptor.default(for: $0.id) }
+        let ranked = ProviderSuitabilityScorer.rank(descriptors, requirements: requirements, contexts: contexts)
+        for verdict in ranked where !verdict.isEligible {
+            JarvisLogger.brain.info("Suitability: \(verdict.explanation)")
+        }
+        let eligibleIDs = ranked.filter(\.isEligible).map(\.providerID)
+        let eligible = eligibleIDs.compactMap { id in chain.first { $0.id == id } }
+        guard !eligible.isEmpty else {
+            JarvisLogger.brain.info("Capability ranking found no eligible worker; using baseline chain")
+            return chain
+        }
+        if let best = eligible.first {
+            JarvisLogger.brain.info("Capability ranking selected \(best.id) for \(requirements.complexity.rawValue) task")
+        }
+        return eligible
     }
 
     /// Core fallback executor shared by the category and tier entry points.

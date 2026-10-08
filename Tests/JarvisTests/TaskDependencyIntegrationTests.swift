@@ -21,12 +21,14 @@ final class TaskDependencyIntegrationTests {
 
     // MARK: - helpers
 
-    private static func makeTask(id: UUID? = nil, title: String = "t", goal: String = "g",
-                                 prereqs: [UUID] = [], resources: [String] = [],
-                                 priority: Int = 0) -> JarvisTask {
-        JarvisTask(id: id ?? UUID(), title: title, goal: goal, state: .created,
-                   steps: [TaskStep(stepNumber: 1, description: "step", toolName: "run_shell",
-                                     arguments: ["command": "true"])],
+    private func makeTask(id: UUID? = nil, title: String = "t", goal: String = "g",
+                          state: TaskState = .created,
+                          prereqs: [UUID] = [], resources: [String] = [],
+                          priority: Int = 0,
+                          steps: [TaskStep]? = nil) -> JarvisTask {
+        JarvisTask(id: id ?? UUID(), title: title, goal: goal, state: state,
+                   steps: steps ?? [TaskStep(stepNumber: 1, description: "step", toolName: "run_shell",
+                                             arguments: ["command": "true"])],
                    priority: priority, prerequisiteTaskIDs: prereqs,
                    requiredResourceIDs: resources)
     }

@@ -134,12 +134,14 @@ actor TaskWorker: Identifiable {
             JarvisLogger.actions.info("Worker [\(self.id.uuidString.prefix(6))] successfully completed task [\(task.id.uuidString.prefix(8))]")
             self.isBusy = false
             self.currentTaskId = nil
+            Task { await TaskOrchestration.shared.broadcastOutcome(taskID: task.id, state: .completed) }
 
         } catch is CancellationError {
             JarvisLogger.actions.warning("Worker [\(self.id.uuidString.prefix(6))] task cancelled: [\(task.id.uuidString.prefix(8))]")
             _ = try? stateMachine.transition(taskId: task.id, to: .cancelled, error: "Task cancelled")
             self.isBusy = false
             self.currentTaskId = nil
+            Task { await TaskOrchestration.shared.broadcastOutcome(taskID: task.id, state: .cancelled) }
             throw CancellationError()
 
         } catch {
@@ -169,6 +171,7 @@ actor TaskWorker: Identifiable {
             _ = try? stateMachine.transition(taskId: task.id, to: .failed, error: error.localizedDescription)
             self.isBusy = false
             self.currentTaskId = nil
+            Task { await TaskOrchestration.shared.broadcastOutcome(taskID: task.id, state: .failed) }
             throw error
         }
     }

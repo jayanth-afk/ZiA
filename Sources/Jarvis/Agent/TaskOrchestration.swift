@@ -56,7 +56,7 @@ actor TaskOrchestration: @unchecked Sendable {
         guard let task = stateMachine.getTask(id: taskID) else {
             return SubmissionOutcome(accepted: false, rejectedReason: "task not found", blockedReason: nil, dependentIDsMadeReady: [])
         }
-        let knownIDs = Set(stateMachine.allTasks.map(\.id))
+        let knownIDs = Set(stateMachine.allTasks.map { $0.id })
         if let rejection = await graph.validateSubmission(
             taskID: taskID,
             prerequisiteIDs: prerequisiteIDs,
@@ -94,13 +94,12 @@ actor TaskOrchestration: @unchecked Sendable {
     func reevaluate(taskID: UUID) async -> [UUID] {
         guard let task = stateMachine.getTask(id: taskID) else { return [] }
         let prerequisiteIDs = task.prerequisiteTaskIDs
-        let knownIDs = Set(stateMachine.allTasks.map(\.id))
 
         // If the task is still blocked by a cycle, leave it alone.
         if blockedByDependencyCycle.contains(taskID) { return [] }
 
         // If prerequisites still missing, keep waiting registration accurate and stay blocked.
-        if !prerequisitesSatisfied(taskID: taskID, prerequisiteIDs) {
+        if !(await prerequisitesSatisfied(taskID: taskID, prerequisiteIDs)) {
             await graph.registerWaiting(taskID: taskID, prerequisiteIDs: prerequisiteIDs)
             blockedByMissingPrerequisite.insert(taskID)
             return []
@@ -126,7 +125,7 @@ actor TaskOrchestration: @unchecked Sendable {
         let madeReady = await graph.recordOutcome(outcome, eligibility: { [weak self] id in
             guard let self else { return false }
             let prerequisiteIDs = self.stateMachine.getTask(id: id)?.prerequisiteTaskIDs ?? []
-            return self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
+            return await self.prerequisitesSatisfied(taskID: id, prerequisiteIDs)
         })
         // Reevaluate each newly-made-eligible dependent through the same admission path.
         var newlyAdmitted: [UUID] = []
@@ -139,8 +138,8 @@ actor TaskOrchestration: @unchecked Sendable {
 
     // MARK: - private
 
-    private func prerequisitesSatisfied(taskID: UUID, _ prerequisiteIDs: [UUID]) -> Bool {
-        return stateMachine.arePrerequisitesSatisfied(taskId: taskID)
+    private func prerequisitesSatisfied(taskID: UUID, _ prerequisiteIDs: [UUID]) async -> Bool {
+        return await stateMachine.arePrerequisitesSatisfied(taskId: taskID)
     }
 
     private func dependencyBlockedReason(prerequisiteIDs: [UUID]) -> String {
@@ -149,9 +148,9 @@ actor TaskOrchestration: @unchecked Sendable {
     }
 
     private func dependencyGraphSnapshot() async -> [UUID: [UUID]] {
-        // The dependency graph tracks waiting dependents internally. Expose enough for
-        // submission-time cycle detection to see the current edges.
-        await graph.dependencyEdges()
+        // Expose the dependent->prerequisite edges currently tracked by the graph so
+        // submission-time cycle detection can see the live subgraph.
+        return graph.dependencyEdges()
     }
 }
 
